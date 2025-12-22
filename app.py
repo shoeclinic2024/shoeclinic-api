@@ -37,7 +37,7 @@ db.init_app(app)
 bcrypt = Bcrypt(app)
 
 # --- Import Models (after db initialization) ---
-from models import User, Order, OrderItem, Announcement, Attendance, Holiday, Expense
+from models import User, Order, OrderItem, Announcement, Attendance, Holiday, Expense, LoginAttempt
 
 # --- Flask-Migrate ---
 migrate = Migrate(app, db)
@@ -318,28 +318,96 @@ def login_page():
 
 @app.route("/login", methods=["POST"])
 def login():
+    """Enhanced secure login with rate limiting, account lockout, and 2FA"""
+    from security_service import security_service
+    from models import LoginAttempt
+    
     username = request.form.get("username")
     password = request.form.get("password")
+    ip_address = request.remote_addr
+    
+    # 1. Check IP-based rate limiting
+    if security_service.is_rate_limited(ip_address):
+        minutes_remaining = security_service.get_rate_limit_time_remaining(ip_address)
+        flash(f"🛡️ Too many login attempts. Please try again in {minutes_remaining} minutes.", "danger")
+        security_service.log_login_attempt(username or "unknown", ip_address, False, "rate_limited")
+        return redirect(url_for("login_page"))
+    
+    # 2. Find user
     user = User.query.filter_by(username=username).first()
-    if user and bcrypt.check_password_hash(user.password, password):
-        if not user.is_active:
-            flash("Account pending approval. Please contact the Owner.", "warning")
-            return redirect(url_for("login_page"))
+    
+    if not user:
+        # User doesn't exist - still track rate limit to prevent username enumeration
+        security_service.track_rate_limit(ip_address)
+        security_service.log_login_attempt(username, ip_address, False, "user_not_found")
+        flash("Invalid username or password", "danger")
+        return redirect(url_for("login_page"))
+    
+    # 3. Check if account is locked
+    if security_service.is_account_locked(user):
+        minutes_remaining = security_service.get_lockout_time_remaining(user)
+        flash(f"🔒 Account locked due to multiple failed attempts. Try again in {minutes_remaining} minutes.", "danger")
+        security_service.log_login_attempt(username, ip_address, False, "account_locked", user.id)
+        return redirect(url_for("login_page"))
+    
+    # 4. Verify password
+    if not bcrypt.check_password_hash(user.password, password):
+        # Failed login
+        is_locked = security_service.handle_failed_login(user)
+        security_service.track_rate_limit(ip_address)
         
-        login_user(user)
-        flash("Login successful!", "success")
-        return redirect(url_for("home"))
-    flash("Invalid username or password", "danger")
-    return redirect(url_for("login_page"))
+        if is_locked:
+            flash(f"🔒 Account locked after {security_service.MAX_LOGIN_ATTEMPTS} failed attempts. Locked for {security_service.LOCKOUT_DURATION_MINUTES} minutes.", "danger")
+            security_service.log_login_attempt(username, ip_address, False, "locked_now", user.id)
+        else:
+            attempts_remaining = security_service.MAX_LOGIN_ATTEMPTS - user.failed_login_attempts
+            flash(f"❌ Invalid password. {attempts_remaining} attempts remaining.", "danger")
+            security_service.log_login_attempt(username, ip_address, False, "wrong_password", user.id)
+        
+        return redirect(url_for("login_page"))
+    
+    # 5. Password correct - check account status
+    if not user.is_active:
+        flash("⏳ Account pending approval. Please contact the Owner.", "warning")
+        security_service.log_login_attempt(username, ip_address, False, "account_inactive", user.id)
+        return redirect(url_for("login_page"))
+    
+    # 6. Check if 2FA is enabled
+    if user.two_factor_enabled:
+        # Store user ID in session for 2FA verification
+        session['pending_2fa_user_id'] = user.id
+        session['pending_2fa_ip'] = ip_address
+        flash("🔐 Enter code from Google Authenticator", "info")
+        return redirect(url_for("verify_2fa_login"))
+    
+    # 7. Login successful!
+    security_service.handle_successful_login(user, ip_address)
+    security_service.reset_rate_limit(ip_address)
+    security_service.log_login_attempt(username, ip_address, True, None, user.id)
+    
+    login_user(user)
+    session['last_activity'] = datetime.utcnow().isoformat()
+    
+    flash("✅ Login successful!", "success")
+    return redirect(url_for("home"))
 
 @app.route("/register", methods=["POST"])
 def register():
+    """Enhanced registration with password strength validation"""
+    from security_service import security_service
+    
     username = request.form.get("username")
     password = request.form.get("password")
     role = request.form.get("role")
 
     if User.query.filter_by(username=username).first():
         flash("Username already taken.", "danger")
+        return redirect(url_for("login_page"))
+    
+    # Validate password strength
+    is_valid, error_message = security_service.validate_password_strength(password)
+    if not is_valid:
+        flash(f"❌ {error_message}", "danger")
         return redirect(url_for("login_page"))
 
     hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
@@ -488,6 +556,80 @@ def reset_password_otp():
         return redirect(url_for("login_page"))
     
     return render_template("reset_password_otp.html", username=username)
+
+# --- Two-Factor Authentication (Google Authenticator) ---
+@app.route("/verify-2fa-login", methods=["GET", "POST"])
+def verify_2fa_login():
+    """Verify Google Authenticator code during login"""
+    from security_service import security_service
+    
+    if 'pending_2fa_user_id' not in session:
+        flash("Invalid request. Please login again.", "warning")
+        return redirect(url_for("login_page"))
+    
+    user_id = session.get('pending_2fa_user_id')
+    user = User.query.get(user_id)
+    
+    if not user:
+        session.pop('pending_2fa_user_id', None)
+        flash("User not found.", "danger")
+        return redirect(url_for("login_page"))
+    
+    if request.method == "POST":
+        code = request.form.get("code")
+        
+        if security_service.verify_totp(user.two_factor_secret, code):
+            # 2FA successful
+            ip_address = session.get('pending_2fa_ip', request.remote_addr)
+            
+            security_service.handle_successful_login(user, ip_address)
+            security_service.reset_rate_limit(ip_address)
+            security_service.log_login_attempt(user.username, ip_address, True, "2fa_success", user.id)
+            
+            login_user(user)
+            session.pop('pending_2fa_user_id', None)
+            session.pop('pending_2fa_ip', None)
+            session['last_activity'] = datetime.utcnow().isoformat()
+            
+            flash("✅ Login successful!", "success")
+            return redirect(url_for("home"))
+        else:
+            flash("❌ Invalid code. Please try again.", "danger")
+    
+    return render_template("verify_2fa_login.html", username=user.username)
+
+# --- Session Timeout Middleware ---
+@app.before_request
+def check_session_timeout():
+    """Check for session timeout and enforce automatic logout"""
+    from security_service import security_service
+    
+    # Skip for login/logout/static routes
+    if request.endpoint in ['login', 'login_page', 'register', 'logout', 'static', 'version_info']:
+        return
+    
+    if current_user.is_authenticated:
+        if security_service.check_session_timeout():
+            logout_user()
+            session.clear()
+            flash("⏱️ Session expired due to inactivity. Please login again.", "info")
+            return redirect(url_for("login_page"))
+
+# --- Admin: Unlock Account ---
+@app.route("/admin/unlock-account/<int:user_id>", methods=["POST"])
+@login_required
+@super_admin_required
+def unlock_account(user_id):
+    """Admin can manually unlock a locked account"""
+    user = User.query.get_or_404(user_id)
+    
+    user.account_locked_until = None
+    user.failed_login_attempts = 0
+    db.session.commit()
+    
+    flash(f"✅ Account unlocked for {user.username}", "success")
+    return redirect(request.referrer or url_for("admin.manage_users"))
+
 
 # --- Home Route ---
 @app.route("/home")

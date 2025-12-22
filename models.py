@@ -18,6 +18,22 @@ class User(UserMixin, db.Model):
     can_export_customers = db.Column(db.Boolean, default=False)
     customer_access_expiry = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # --- Security Fields (v02) ---
+    # Login tracking
+    failed_login_attempts = db.Column(db.Integer, default=0)
+    last_failed_login = db.Column(db.DateTime, nullable=True)
+    account_locked_until = db.Column(db.DateTime, nullable=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+    last_login_ip = db.Column(db.String(45), nullable=True)
+    
+    # Two-Factor Authentication (Google Authenticator)
+    two_factor_enabled = db.Column(db.Boolean, default=False)
+    two_factor_secret = db.Column(db.String(32), nullable=True)  # TOTP secret for Google Authenticator
+    
+    # Session management
+    session_token = db.Column(db.String(100), nullable=True)
+    last_activity = db.Column(db.DateTime, nullable=True)
 
 # --- Order Model ---
 class Order(db.Model):
@@ -119,4 +135,19 @@ class Holiday(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.String(200), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
+
+# --- Login Attempt Model (v02 - Security) ---
+class LoginAttempt(db.Model):
+    """Track all login attempts for security monitoring"""
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), nullable=False, index=True)
+    ip_address = db.Column(db.String(45), nullable=False)
+    user_agent = db.Column(db.String(255))
+    success = db.Column(db.Boolean, default=False, index=True)
+    failure_reason = db.Column(db.String(100))  # wrong_password, account_locked, user_not_found, rate_limited
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    
+    user = db.relationship('User', backref='login_attempts')
+
 
