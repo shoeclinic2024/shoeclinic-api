@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="display-6 fw-bold mb-0">📋 Work Assignment</h2>
+            <p class="text-muted">Distribute tasks among active staff members.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <span class="badge bg-success px-3 py-2 rounded-pill">
+                <i class="bi bi-people-fill me-1"></i> {{ staff|length }} Active Staff
+            </span>
+            <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-secondary rounded-pill px-4">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Staff Workload Overview -->
+        <div class="col-lg-3 mb-4">
+            <div class="card border-0 shadow-sm sticky-top" style="top: 20px;">
+                <div class="card-header bg-dark text-white py-3 rounded-top-4">
+                    <h5 class="card-title mb-0 fs-6">👥 Active Staff</h5>
+                </div>
+                <div class="card-body p-0">
+                    <ul class="list-group list-group-flush">
+                        {% for person in staff %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+                            <div>
+                                <div class="fw-bold">{{ person.username }}</div>
+                                <small class="text-muted">{{ person.role|upper }}</small>
+                            </div>
+                            <span class="badge bg-primary rounded-pill">Online</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Orders for Assignment -->
+        <div class="col-lg-9">
+            {% if orders %}
+            {% for order in orders %}
+            <div class="card border-0 shadow-sm mb-4 overflow-hidden rounded-4">
+                <div class="card-header bg-light border-bottom py-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="badge bg-primary mb-1">JOB ID: {{ order.job_id }}</span>
+                        <h5 class="mb-0">{{ order.customer_name }}</h5>
+                        <small class="text-muted"><i class="bi bi-calendar-event me-1"></i>Pickup: {{
+                            order.pickup_date.strftime('%d %b %Y') }}</small>
+                    </div>
+                    <div class="text-end">
+                        <form action="{{ url_for('admin.assign_task') }}" method="POST"
+                            class="d-flex gap-2 align-items-center">
+                            <input type="hidden" name="order_id" value="{{ order.id }}">
+                            <select name="technician" class="form-select form-select-sm rounded-pill"
+                                style="min-width: 150px;" onchange="this.form.submit()">
+                                <option value="">Assign All Items...</option>
+                                {% for person in staff %}
+                                <option value="{{ person.username }}" {% if order.technician==person.username
+                                    %}selected{% endif %}>{{ person.username }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-primary btn-sm rounded-circle" title="Assign All">
+                                <i class="bi bi-person-check"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th class="ps-4">Product / Task</th>
+                                    <th>Services</th>
+                                    <th>Status</th>
+                                    <th class="text-end pe-4">Assignment</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in order.items %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="fw-bold fs-6">{{ item.product_name or 'Item' }}</div>
+                                        {% if item.technician %}
+                                        <small class="text-primary"><i class="bi bi-person-fill"></i> Lead: {{
+                                            item.technician }}</small>
+                                        {% else %}
+                                        <small class="text-danger"><i class="bi bi-exclamation-circle"></i>
+                                            No Lead</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if item.services %}
+                                        <div class="d-flex flex-column gap-2">
+                                            {% set assignments = item.service_assignments|from_json %}
+                                            {% for svc in item.services.split(',') %}
+                                            {% set s_name = svc|trim %}
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="badge rounded-pill bg-light text-dark border px-2 py-1"
+                                                    style="min-width: 80px;">{{ s_name }}</span>
+                                                <form action="{{ url_for('admin.assign_task') }}" method="POST"
+                                                    class="m-0">
+                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                    <input type="hidden" name="service_name" value="{{ s_name }}">
+                                                    <select name="technician"
+                                                        class="form-select form-select-sm rounded-pill border-0 bg-light"
+                                                        style="width: auto; font-size: 0.7rem;"
+                                                        onchange="this.form.submit()">
+                                                        <option value="">Assign...</option>
+                                                        {% for person in staff %}
+                                                        <option value="{{ person.username }}" {% if
+                                                            assignments.get(s_name)==person.username %}selected{% endif
+                                                            %}>{{ person.username }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </form>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge bg-{{ item.status|default('pending')|status_color }} fw-normal">
+                                            {{ item.status|default('Pending') }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <form action="{{ url_for('admin.assign_task') }}" method="POST"
+                                            class="d-inline-block">
+                                            <input type="hidden" name="item_id" value="{{ item.id }}">
+                                            <select name="technician"
+                                                class="form-select form-select-sm rounded-pill d-inline-block"
+                                                style="width: auto; min-width: 130px;" onchange="this.form.submit()">
+                                                <option value="">Select Staff...</option>
+                                                {% for person in staff %}
+                                                <option value="{{ person.username }}" {% if
+                                                    item.technician==person.username %}selected{% endif %}>{{
+                                                    person.username }}</option>
+                                                {% endfor %}
+                                            </select>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="text-center py-5 bg-white rounded-4 shadow-sm">
+                <i class="bi bi-clipboard-check text-success display-1 d-block mb-3"></i>
+                <h4 class="fw-bold">All caught up!</h4>
+                <p class="text-muted">There are no active orders requiring assignment at the moment.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background-color: #f8f9fa;
+    }
+
+    .card {
+        transition: transform 0.2s;
+    }
+
+    .card:hover {
+        transform: translateY(-2px);
+    }
+
+    .rounded-4 {
+        border-radius: 1rem !important;
+    }
+
+    .bg-outline-primary {
+        background: transparent;
+    }
+
+    .table thead th {
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #6c757d;
+    }
+
+    .form-select-sm {
+        font-size: 0.85rem;
+    }
+
+    .sticky-top {
+        z-index: 100;
+    }
+</style>
+{% endblock %}

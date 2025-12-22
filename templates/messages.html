@@ -1,0 +1,25 @@
+<h2 class="mb-4">📢 Broadcast WhatsApp Message</h2>
+
+<form method="post" action="{{ url_for('send_bulk_message') }}">
+  <div class="mb-3">
+    <label for="message" class="form-label">Message</label>
+    <textarea name="message" id="message" class="form-control" rows="4" placeholder="Type your message here..." required></textarea>
+  </div>
+
+  <table class="table table-bordered">
+    <thead class="table-light">
+      <tr>
+        <th><input type="checkbox" id="select-all"></th>
+        <th>Name</th>
+        <th>Phone</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for customer in customers %}
+      <tr>
+        <td><input type="checkbox" name="selected_numbers" value="{{ customer.mobile }}"></td>
+        <td>{{ customer.name }}</td>
+        <td>{{ customer.mobile }}</td>
+      </tr>
+      {% endfor %}
+    </tb

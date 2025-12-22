@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <!-- Back Button -->
+    <a href="{{ url_for('main.admin_panel') }}" class="btn btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left-circle"></i> Back to Admin Panel
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>📊 Weekly Report Summary</h2>
+            {% if start_date and end_date %}
+            <p class="text-muted">{{ start_date.strftime('%B %d') }} - {{ end_date.strftime('%B %d, %Y') }}</p>
+            {% endif %}
+        </div>
+        <form method="GET" class="d-flex">
+            <input type="week" name="week" class="form-control me-2" value="{{ selected_week or '' }}" required>
+            <button class="btn btn-primary">
+                <i class="bi bi-filter"></i> Filter
+            </button>
+        </form>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle"></i> {{ error }}
+    </div>
+    {% else %}
+    <!-- Summary Cards -->
+    <div class="row">
+        <div class="col-md-3 mb-3">
+            <div class="card bg-primary bg-gradient shadow-sm h-100">
+                <div class="card-body text-white">
+                    <h5><i class="bi bi-cart"></i> Total Orders</h5>
+                    <h3>{{ total_orders or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-success bg-gradient shadow-sm h-100">
+                <div class="card-body text-white">
+                    <h5><i class="bi bi-currency-rupee"></i> Total Revenue</h5>
+                    <h3>₹{{ total_revenue or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-warning bg-gradient shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="text-dark"><i class="bi bi-clock-history"></i> Unpaid Orders</h5>
+                    <h3 class="text-dark">{{ unpaid_orders or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card bg-info bg-gradient shadow-sm h-100">
+                <div class="card-body text-white">
+                    <h5><i class="bi bi-box-seam"></i> Ready to Deliver</h5>
+                    <h3>{{ ready_to_deliver or 0 }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Breakdown -->
+    <div class="card mt-4">
+        <div class="card-body">
+            <h4 class="card-title"><i class="bi bi-pie-chart"></i> Status Breakdown</h4>
+            <ul class="list-group list-group-flush">
+                {% for status, count in status_counts.items() %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>{{ status|capitalize }}</span>
+                    <span class="badge bg-primary rounded-pill">{{ count }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <!-- Top Employees -->
+    <div class="card mt-4">
+        <div class="card-body">
+            <h4 class="card-title"><i class="bi bi-trophy"></i> Top Employees This Week</h4>
+            {% if top_employees %}
+            <ul class="list-group list-group-flush">
+                {% for emp in top_employees %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <strong>{{ emp.name }}</strong>
+                    <span class="badge bg-success rounded-pill">{{ emp.completed_orders }} Orders</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-muted">No employee data available for this week.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

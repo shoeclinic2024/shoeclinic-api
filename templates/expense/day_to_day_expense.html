@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Day to Day Expense</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addExpenseModal">
+            <i class="bi bi-plus-circle"></i> Add New Expense
+        </button>
+    </div>
+
+    <!-- Date Range Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-control" name="start_date" 
+                           value="{{ request.args.get('start_date', '') }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-control" name="end_date" 
+                           value="{{ request.args.get('end_date', '') }}">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary me-2">Filter</button>
+                    <a href="{{ url_for('main.day_to_day_expense') }}" class="btn btn-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Expenses Table -->
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Expense</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for expense in expenses %}
+                <tr>
+                    <td>{{ expense.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ expense.description }}</td>
+                    <td>₹{{ "%.2f"|format(expense.expense) }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary edit-expense me-1" 
+                                data-bs-toggle="modal" 
+                                data-bs-target="#editExpenseModal"
+                                data-id="{{ expense.id }}"
+                                data-date="{{ expense.date.strftime('%Y-%m-%d') }}"
+                                data-paytm="{{ expense.settlement_paytm }}"
+                                data-cash="{{ expense.settlement_cash }}"
+                                data-expense="{{ expense.expense }}"
+                                data-description="{{ expense.description }}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger delete-expense" 
+                                onclick="deleteExpense({{ expense.id }})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div> <!-- end of .table-responsive -->
+    <div class="mt-3 text-end">
+        <h5>Total Expense: <span class="text-primary">₹{{ "%.2f"|format(total_expense) }}</span></h5>
+    </div>
+</div>
+
+<!-- Edit Expense Modal -->
+<div class="modal fade" id="editExpenseModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Expense</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editExpenseForm" method="POST" action="{{ url_for('main.day_to_day_expense') }}">
+                    <input type="hidden" name="expense_id" id="edit_expense_id">
+                    <div class="mb-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" name="date" id="edit_date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" name="description" id="edit_description" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expense Amount</label>
+                        <input type="number" step="0.01" class="form-control" name="expense" id="edit_expense" required>
+                    </div>
+                    <!-- Hidden fields for settlements -->
+                    <input type="hidden" name="settlement_paytm" id="edit_paytm" value="0">
+                    <input type="hidden" name="settlement_cash" id="edit_cash" value="0">
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="editExpenseForm" class="btn btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Expense Modal -->
+<div class="modal fade" id="addExpenseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Daily Expense</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addExpenseForm" method="POST" action="{{ url_for('main.day_to_day_expense') }}">
+                    <div class="mb-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" name="date" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <input type="text" class="form-control" name="description" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Expense Amount</label>
+                        <input type="number" step="0.01" class="form-control" name="expense" required>
+                    </div>
+                    <!-- Hidden fields for settlements -->
+                    <input type="hidden" name="settlement_paytm" value="0">
+                    <input type="hidden" name="settlement_cash" value="0">
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const editButtons = document.querySelectorAll('.edit-expense');
+    editButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            document.getElementById('edit_expense_id').value = this.dataset.id;
+            document.getElementById('edit_date').value = this.dataset.date;
+            document.getElementById('edit_paytm').value = this.dataset.paytm;
+            document.getElementById('edit_cash').value = this.dataset.cash;
+            document.getElementById('edit_expense').value = this.dataset.expense;
+            document.getElementById('edit_description').value = this.dataset.description;
+        });
+    });
+});
+
+function deleteExpense(expenseId) {
+    if (confirm('Are you sure you want to delete this expense?')) {
+        fetch(`/delete_expense/${expenseId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting expense');
+            }
+        });
+    }
+}
+</script>
+{% endblock %}
+
+{% endblock %}

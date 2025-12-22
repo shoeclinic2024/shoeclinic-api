@@ -1,0 +1,274 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="display-6 fw-bold mb-0">🛡️ Superior Control</h2>
+            <p class="text-muted">Review and approve new registrations and expenses.</p>
+        </div>
+        <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-secondary rounded-pill">
+            <i class="bi bi-arrow-left"></i> Back to Panel
+        </a>
+    </div>
+
+    <!-- PENDING USERS -->
+    <div class="card border-0 shadow-sm mb-5">
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="card-title mb-0"><i class="bi bi-person-plus-fill me-2"></i>New User Registrations</h5>
+        </div>
+        <div class="card-body">
+            {% if users %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Username</th>
+                            <th>Role</th>
+                            <th>Requested At</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td><strong>{{ user.username }}</strong></td>
+                            <td>
+                                <span
+                                    class="badge {% if user.role == 'admin' %}bg-warning text-dark{% else %}bg-info{% endif %} px-3">
+                                    {{ user.role|upper }}
+                                </span>
+                            </td>
+                            <td>{{ user.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+                            <td class="text-end">
+                                <a href="{{ url_for('admin.approve_user', user_id=user.id) }}"
+                                    class="btn btn-success btn-sm rounded-pill px-4">
+                                    Approve Access
+                                </a>
+                                class="btn btn-success btn-premium shadow-sm">
+                                Authorize Access
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-check-circle-fill empty-state-icon mb-3"></i>
+                <h5 class="fw-bold">Roster Clear</h5>
+                <p class="text-muted mb-0">No pending identity verifications at this time.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ACCESS REQUESTS -->
+    <div class="approval-card delay-2">
+        <div class="card-header-premium">
+            <h5 class="text-warning"><i class="bi bi-key-fill"></i> Database Access Requests</h5>
+            {% if access_requests %}
+            <span class="badge bg-warning-subtle text-warning-emphasis badge-premium">{{ access_requests|length }}
+                New</span>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            {% if access_requests %}
+            <div class="table-responsive">
+                <table class="table table-premium mb-0">
+                    <thead>
+                        <tr>
+                            <th>Administrator</th>
+                            <th>Role</th>
+                            <th class="text-end">Authorization Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in access_requests %}
+                        <tr>
+                            <td><span class="fw-bold">{{ req.username }}</span></td>
+                            <td><span class="text-muted small">{{ req.role|upper }}</span></td>
+                            <td class="text-end">
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-outline-primary btn-premium dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown">
+                                        Grant View Only
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-2">
+                                        <li>
+                                            <h6 class="dropdown-header small text-muted">Temporary (No Export)</h6>
+                                        </li>
+                                        <li><a class="dropdown-item rounded-3"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=1) }}"><i
+                                                    class="bi bi-clock me-2"></i>1 Hour</a></li>
+                                        <li><a class="dropdown-item rounded-3"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=4) }}"><i
+                                                    class="bi bi-clock-history me-2"></i>4 Hours</a></li>
+                                        <li>
+                                            <hr class="dropdown-divider">
+                                        </li>
+                                        <li><a class="dropdown-item rounded-3 fw-bold text-primary"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false') }}"><i
+                                                    class="bi bi-infinity me-2"></i>Permanent View Only</a></li>
+                                    </ul>
+                                </div>
+                                <div class="dropdown d-inline-block ms-2">
+                                    <button class="btn btn-primary btn-premium dropdown-toggle" type="button"
+                                        data-bs-toggle="dropdown">
+                                        Grant Full Access
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-2 bg-dark">
+                                        <li>
+                                            <h6 class="dropdown-header small text-secondary">Export Capabilities Enabled
+                                            </h6>
+                                        </li>
+                                        <li><a class="dropdown-item text-white rounded-3"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=1) }}"><i
+                                                    class="bi bi-clock me-2"></i>1 Hour Full</a></li>
+                                        <li><a class="dropdown-item text-white rounded-3"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=4) }}"><i
+                                                    class="bi bi-clock-history me-2"></i>4 Hours Full</a></li>
+                                        <li>
+                                            <hr class="dropdown-divider border-secondary">
+                                        </li>
+                                        <li><a class="dropdown-item text-primary rounded-3 fw-bold"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true') }}"><i
+                                                    class="bi bi-infinity me-2"></i>Permanent Full Access</a></li>
+                                    </ul>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-shield-check empty-state-icon mb-3"></i>
+                <h5 class="fw-bold">Access Stable</h5>
+                <p class="text-muted mb-0">No elevated permission requests pending.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ACTIVE ACCESS SESSIONS -->
+    <div class="approval-card delay-3">
+        <div class="card-header-premium">
+            <h5 class="text-success"><i class="bi bi-shield-lock-fill"></i> Active Access Sessions</h5>
+        </div>
+        <div class="card-body p-0">
+            {% if authorized_users %}
+            <div class="table-responsive">
+                <table class="table table-premium mb-0">
+                    <thead>
+                        <tr>
+                            <th>Active User</th>
+                            <th>Expiration Status</th>
+                            <th>Export Status</th>
+                            <th class="text-end">Command</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in authorized_users %}
+                        <tr>
+                            <td><span class="fw-bold">{{ user.username }}</span></td>
+                            <td>
+                                {% if user.customer_access_expiry %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis badge-premium">
+                                    <i class="bi bi-clock-history me-1"></i> {{ user.customer_access_expiry.strftime('%d
+                                    %b, %H:%M') }}
+                                </span>
+                                {% else %}
+                                <span class="badge bg-success-subtle text-success-emphasis badge-premium">Unlimited
+                                    Access</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.can_export_customers %}
+                                <span class="badge bg-primary-subtle text-primary badge-premium">Export Enabled</span>
+                                {% else %}
+                                <span class="badge bg-light text-muted border badge-premium">Disabled</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{{ url_for('admin.toggle_customer_view', user_id=user.id) }}"
+                                    class="btn btn-outline-danger btn-premium"
+                                    onclick="return confirm('Immediately revoke all access for {{ user.username }}?')">
+                                    Revoke Access
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <p class="text-muted mb-0">No temporary sessions currently active.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- PENDING EXPENSES -->
+    <div class="approval-card delay-4">
+        <div class="card-header-premium">
+            <h5 class="text-danger"><i class="bi bi-currency-exchange"></i> Expense Verification</h5>
+            {% if expenses %}
+            <span class="badge bg-danger text-white badge-premium">{{ expenses|length }} Pending Audit</span>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            {% if expenses %}
+            <div class="table-responsive">
+                <table class="table table-premium mb-0">
+                    <thead>
+                        <tr>
+                            <th>Billing Date</th>
+                            <th>Transaction Detail</th>
+                            <th>Category</th>
+                            <th>Reporting User</th>
+                            <th>Amount</th>
+                            <th class="text-end">Command</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for exp in expenses %}
+                        <tr>
+                            <td><span class="text-muted">{{ exp.expense_date.strftime('%d %b %Y') }}</span></td>
+                            <td><span class="fw-bold">{{ exp.title }}</span></td>
+                            <td><span class="badge bg-light text-dark border badge-premium">{{ exp.category }}</span>
+                            </td>
+                            <td><span class="small">{{ exp.creator.username if exp.creator else 'System' }}</span></td>
+                            <td><span class="fw-bold text-danger fs-5">₹{{ "{:,.2f}".format(exp.amount) }}</span></td>
+                            <td class="text-end">
+                                <div class="btn-group">
+                                    <a href="{{ url_for('admin.approve_expense', expense_id=exp.id) }}"
+                                        class="btn btn-success btn-premium shadow-sm">
+                                        Approve
+                                    </a>
+                                    <a href="{{ url_for('admin.reject_expense', expense_id=exp.id) }}"
+                                        class="btn btn-outline-danger btn-premium ms-2"
+                                        onclick="return confirm('Permenantly reject this claim?')">
+                                        Reject
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-clipboard2-check empty-state-icon mb-3"></i>
+                <h5 class="fw-bold">Financials Verified</h5>
+                <p class="text-muted mb-0">All expense reports have been audited.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,441 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-0">📊 Advanced Analytics</h2>
+            <p class="text-muted">Detailed business performance insights</p>
+        </div>
+        <div class="d-flex gap-2">
+            <div class="btn-group">
+                <button type="button"
+                    class="btn btn-outline-dark dropdown-toggle {% if current_user.role != 'super_admin' %}disabled{% endif %}"
+                    {% if current_user.role !='super_admin' %}title="Restricted to Owner" {% else
+                    %}data-bs-toggle="dropdown" {% endif %}>
+                    <i class="bi bi-download"></i> Export {% if current_user.role != 'super_admin' %}<i
+                        class="bi bi-lock-fill ms-1"></i>{% endif %}
+                </button>
+                {% if current_user.role == 'super_admin' %}
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                    <li>
+                        <a class="dropdown-item py-2"
+                            href="{{ url_for('admin.export_analytics_excel', filter_type=filter_type, filter_date=filter_date, filter_month=filter_month, filter_year=filter_year) }}">
+                            <i class="bi bi-file-earmark-excel me-2 text-success"></i> Excel Report
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item py-2"
+                            href="{{ url_for('admin.export_analytics_pdf', filter_type=filter_type, filter_date=filter_date, filter_month=filter_month, filter_year=filter_year) }}">
+                            <i class="bi bi-file-earmark-pdf me-2 text-danger"></i> PDF Report
+                        </a>
+                    </li>
+                </ul>
+                {% endif %}
+            </div>
+            <a href="{{ url_for('admin.admin_panel') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left-circle"></i> Back
+            </a>
+        </div>
+    </div>
+
+    <!-- Simple Period Filters -->
+    <div class="card shadow-sm mb-4 border-0 bg-light">
+        <div class="card-body py-3">
+            <form action="{{ url_for('admin.analytics') }}" method="GET" class="row g-2 align-items-center"
+                id="analytics-filter-form">
+                <div class="col-auto">
+                    <label class="small fw-bold text-muted me-2">Analysis Level:</label>
+                    <select name="filter_type" id="filterType"
+                        class="form-select form-select-sm border-0 shadow-sm fw-bold text-primary"
+                        onchange="updateFilterInput();">
+                        <option value="daily" {% if filter_type=='daily' %}selected{% endif %}>Daily</option>
+                        <option value="month" {% if filter_type=='month' %}selected{% endif %}>Monthly</option>
+                        <option value="year" {% if filter_type=='year' %}selected{% endif %}>Yearly</option>
+                    </select>
+                </div>
+
+                <div class="col-auto">
+                    <!-- Daily Controls -->
+                    <div id="input-daily" class="filter-input-group {% if filter_type != 'daily' %}d-none{% endif %}">
+                        <input type="date" name="filter_date"
+                            class="form-control form-control-sm border-0 shadow-sm fw-bold" value="{{ filter_date }}"
+                            onchange="this.form.submit()">
+                    </div>
+
+                    <!-- Monthly Controls -->
+                    <div id="input-month" class="filter-input-group {% if filter_type != 'month' %}d-none{% endif %}">
+                        <input type="month" name="filter_month"
+                            class="form-control form-control-sm border-0 shadow-sm fw-bold" value="{{ filter_month }}"
+                            onchange="this.form.submit()">
+                    </div>
+
+                    <!-- Yearly Controls -->
+                    <div id="input-year" class="filter-input-group {% if filter_type != 'year' %}d-none{% endif %}">
+                        <select name="filter_year" class="form-select form-select-sm border-0 shadow-sm fw-bold"
+                            onchange="this.form.submit()">
+                            {% for y in range(2023, 2031) %}
+                            <option value="{{ y }}" {% if filter_year|string==y|string %}selected{% endif %}>{{ y }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-auto ms-auto">
+                    <a href="{{ url_for('admin.analytics') }}" class="btn btn-sm btn-outline-danger shadow-sm">
+                        <i class="bi bi-arrow-clockwise"></i> Reset
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Revenue KPIs (Total vs Billed) -->
+    <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+            <div class="card bg-primary text-white shadow-sm border-0 overflow-hidden">
+                <div class="card-body position-relative">
+                    <div class="position-absolute end-0 top-0 mt-2 me-2 opacity-25">
+                        <i class="bi bi-cash-stack display-4"></i>
+                    </div>
+                    <h6 class="text-white-50 fw-bold mb-1">Total Revenue (Gross)</h6>
+                    <h2 class="mb-0 fw-bold">₹{{ "%.2f"|format(month1.revenue) }}</h2>
+                    <p class="mb-0 small mt-2">
+                        <span class="badge bg-white text-primary">Potential Income</span>
+                        Includes all services booked in {{ month1_label }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card bg-success text-white shadow-sm border-0 overflow-hidden">
+                <div class="card-body position-relative">
+                    <div class="position-absolute end-0 top-0 mt-2 me-2 opacity-25">
+                        <i class="bi bi-check-circle-fill display-4"></i>
+                    </div>
+                    <h6 class="text-white-50 fw-bold mb-1">Billed Revenue (Net)</h6>
+                    <h2 class="mb-0 fw-bold">₹{{ "%.2f"|format(month1.billed_revenue) }}</h2>
+                    <p class="mb-0 small mt-2">
+                        <span class="badge bg-white text-success">Actual Cash/Billed</span>
+                        Money already billed/received for {{ month1_label }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-3">
+            <div class="card bg-warning text-dark shadow-sm border-0 overflow-hidden">
+                <div class="card-body position-relative">
+                    <div class="position-absolute end-0 top-0 mt-2 me-2 opacity-25">
+                        <i class="bi bi-clock-history display-4"></i>
+                    </div>
+                    <h6 class="text-dark-50 fw-bold mb-1">Pending to Bill</h6>
+                    <h2 class="mb-0 fw-bold">₹{{ "%.2f"|format(month1.revenue - month1.billed_revenue) }}</h2>
+                    <div class="progress mt-2" style="height: 5px; background: rgba(0,0,0,0.1);">
+                        <div class="progress-bar bg-dark" style="width: {{ month1.billing_rate }}%"></div>
+                    </div>
+                    <p class="mb-0 small mt-1">
+                        {{ "%.1f"|format(month1.billing_rate) }}% Billing Efficiency
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtered Analysis Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold">📦 Total Orders</h6>
+                    <h3 class="mb-0">{{ month1.orders }}</h3>
+                    <div class="mt-2 small">
+                        <span
+                            class="badge bg-{% if month1.orders >= month2.orders %}success{% else %}danger{% endif %}">
+                            {{ "%.1f"|format(month_growth) }}% vs Previous
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold">🔧 Service Count</h6>
+                    <h3 class="mb-0">{{ month1.total_services }}</h3>
+                    <small class="text-muted">Avg {{ "%.1f"|format(month1.svcs_per_order) }} per order</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold">✅ Completion</h6>
+                    <h3 class="mb-0">{{ "%.1f"|format(month1.completion_rate) }}%</h3>
+                    <small class="text-muted">{{ month1.completed }} of {{ month1.orders }} done</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-muted fw-bold">🏷️ Avg Ticket</h6>
+                    <h3 class="mb-0">₹{{ "%.0f"|format(month1.avg_order_value) }}</h3>
+                    <small class="text-muted">Per single order</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Billing Snapshot -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">🔄 Order Pipeline & Billing Status ({{ month1_label }})</h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center mb-4">
+                <div class="col">
+                    <div class="bg-light p-3 rounded">
+                        <small class="text-muted fw-bold">YTS</small>
+                        <h4 class="mb-0 text-danger">{{ month1.yts }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="bg-light p-3 rounded">
+                        <small class="text-muted fw-bold">WIP</small>
+                        <h4 class="mb-0 text-warning">{{ month1.wip }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="bg-light p-3 rounded">
+                        <small class="text-muted fw-bold">DONE</small>
+                        <h4 class="mb-0 text-success">{{ month1.completed }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="bg-light p-3 rounded border border-success">
+                        <small class="text-muted fw-bold">BILLED</small>
+                        <h4 class="mb-0 text-success">{{ month1.billed }}</h4>
+                    </div>
+                </div>
+                <div class="col">
+                    <div class="bg-light p-3 rounded border border-danger">
+                        <small class="text-muted fw-bold">UNBILLED</small>
+                        <h4 class="mb-0 text-danger">{{ month1.unbilled }}</h4>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h6 class="small fw-bold">Execution Progress</h6>
+                    <div class="progress" style="height: 25px;">
+                        {% set done_p = month1.completion_rate %}
+                        {% set wip_p = (month1.wip / month1.orders * 100) if month1.orders > 0 else 0 %}
+                        {% set yts_p = (month1.yts / month1.orders * 100) if month1.orders > 0 else 0 %}
+                        <div class="progress-bar bg-success" style="width: {{ done_p }}%">Done {{ "%.0f"|format(done_p)
+                            }}%</div>
+                        <div class="progress-bar bg-warning text-dark" style="width: {{ wip_p }}%">WIP {{
+                            "%.0f"|format(wip_p) }}%</div>
+                        <div class="progress-bar bg-danger" style="width: {{ yts_p }}%">YTS {{ "%.0f"|format(yts_p) }}%
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h6 class="small fw-bold">Billing Efficiency (Billed vs Total)</h6>
+                    <div class="progress" style="height: 25px;">
+                        <div class="progress-bar bg-info" style="width: {{ month1.billing_rate }}%">{{
+                            "%.1f"|format(month1.billing_rate) }}% Billed</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Trend & Revenue Breakdown -->
+    <div class="row mb-4">
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title fw-bold"><i class="bi bi-graph-up-arrow me-2"></i>Revenue Trend (Last 12
+                        Months)</h6>
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="card-title fw-bold"><i class="bi bi-pie-chart-fill me-2"></i>Service Revenue</h6>
+                    <canvas id="serviceChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboards -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-dark text-white py-3">
+                    <h5 class="mb-0">👨‍🔧 Technician Performance</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Technician</th>
+                                    <th>Jobs</th>
+                                    <th>Revenue</th>
+                                    <th>Completion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tech in technician_list[:5] %}
+                                <tr>
+                                    <td><span class="badge bg-primary rounded-pill">{{ tech.name }}</span></td>
+                                    <td>{{ tech.orders }}</td>
+                                    <td class="fw-bold text-success">₹{{ "%.0f"|format(tech.revenue) }}</td>
+                                    <td style="width: 100px;">
+                                        <div class="progress" style="height: 8px;">
+                                            <div class="progress-bar bg-success"
+                                                style="width: {{ tech.completion_rate }}%"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-dark text-white py-3">
+                    <h5 class="mb-0">🔧 Top Services</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Service</th>
+                                    <th>Count</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in service_list[:5] %}
+                                <tr>
+                                    <td class="fw-bold">{{ item.name }}</td>
+                                    <td><span class="badge bg-info">{{ item.count }}</span></td>
+                                    <td class="text-success">₹{{ "%.0f"|format(item.revenue) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function updateFilterInput() {
+        const type = document.getElementById('filterType').value;
+        // Hide all inputs
+        document.querySelectorAll('.filter-input-group').forEach(el => el.classList.add('d-none'));
+        // Show selected
+        const selectedGroup = document.getElementById('input-' + type);
+        if (selectedGroup) selectedGroup.classList.remove('d-none');
+
+        // If switching types, don't auto-submit immediately because we need the user to pick a date/month
+        // But if they want current day/month/year by default, we can submit. 
+        // For now, let's submit to refresh the view with default values for that type.
+        document.getElementById('analytics-filter-form').submit();
+    }
+
+    (function () {
+        // Data from Backend
+        var trendLabels = {{ monthly_trend.keys() | list | tojson
+    }};
+    var trendTotal = {{ monthly_trend.values() | map(attribute = 'revenue') | list | tojson }};
+    var trendBilled = {{ monthly_trend.values() | map(attribute = 'billed_revenue') | list | tojson }};
+
+    // Trend Chart
+    var trendCtx = document.getElementById('trendChart').getContext('2d');
+    new Chart(trendCtx, {
+        type: 'line',
+        data: {
+            labels: trendLabels,
+            datasets: [
+                {
+                    label: 'Total Potential Revenue (₹)',
+                    data: trendTotal,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3
+                },
+                {
+                    label: 'Billed Revenue (₹)',
+                    data: trendBilled,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { callback: function (value) { return '₹' + value.toLocaleString(); } }
+                }
+            }
+        }
+    });
+
+    // Service Distribution Chart
+    var sLabels = {{ service_list | map(attribute = 'name') | list | tojson }};
+    var sData = {{ service_list | map(attribute = 'revenue') | list | tojson }};
+    var sCtx = document.getElementById('serviceChart').getContext('2d');
+    new Chart(sCtx, {
+        type: 'doughnut',
+        data: {
+            labels: sLabels.slice(0, 8),
+            datasets: [{
+                data: sData.slice(0, 8),
+                backgroundColor: [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+                    '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 15 } }
+            }
+        }
+    });
+    }) ();
+</script>
+{% endblock %}

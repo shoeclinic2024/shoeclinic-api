@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="text-primary fw-bold mb-0">
+                <i class="bi bi-graph-up-arrow me-2"></i>{{ type }} Performance Report
+            </h4>
+            <div class="text-muted small">Period: <span class="fw-bold">{{ title }}</span></div>
+        </div>
+        <div class="d-flex gap-2">
+            <button onclick="window.print()" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                <i class="bi bi-printer me-1"></i> Print
+            </button>
+            <a href="{{ url_for('home') }}" class="btn btn-primary btn-sm rounded-pill px-3">
+                <i class="bi bi-house me-1"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Conclusion/Summary Section -->
+    <div class="row g-3 mb-4">
+        <!-- Revenue Card -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden">
+                <div class="bg-success" style="height: 4px;"></div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small fw-bold text-uppercase">Total Revenue</div>
+                        <i class="bi bi-currency-rupee text-success fs-4"></i>
+                    </div>
+                    <h3 class="fw-bold mb-0">₹ {{ "%.2f"|format(total_revenue) }}</h3>
+                    <div class="text-muted small mt-1">From {{ total_orders }} orders</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expenses Card -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden">
+                <div class="bg-danger" style="height: 4px;"></div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small fw-bold text-uppercase">Total Expenses</div>
+                        <i class="bi bi-cart-x text-danger fs-4"></i>
+                    </div>
+                    <h3 class="fw-bold mb-0 text-danger">₹ {{ "%.2f"|format(total_expenses) }}</h3>
+                    <div class="text-muted small mt-1">Direct business costs</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Net Profit Card -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden">
+                <div class="bg-primary" style="height: 4px;"></div>
+                <div class="card-body rounded">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small fw-bold text-uppercase">Net Profit</div>
+                        <i class="bi bi-piggy-bank text-primary fs-4"></i>
+                    </div>
+                    <h3 class="fw-bold mb-0 text-primary">₹ {{ "%.2f"|format(net_profit) }}</h3>
+                    <div class="small mt-1 {{ 'text-success' if net_profit > 0 else 'text-danger' }}">
+                        {{ 'Profit' if net_profit > 0 else 'Loss' }} for this period
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Efficiency Card -->
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm h-100 overflow-hidden">
+                <div class="bg-info" style="height: 4px;"></div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small fw-bold text-uppercase">Order Status</div>
+                        <i class="bi bi-check-circle text-info fs-4"></i>
+                    </div>
+                    <div class="d-flex align-items-end gap-2">
+                        <h3 class="fw-bold mb-0">{{ completed }}</h3>
+                        <span class="text-muted small mb-1">Done / {{ pending }} Pending</span>
+                    </div>
+                    <div class="progress mt-2" style="height: 6px;">
+                        {% set total = completed + pending %}
+                        <div class="progress-bar bg-info"
+                            style="width: {{ (completed/total * 100) if total > 0 else 0 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Table Section -->
+    <div class="row">
+        <!-- Order List -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-list-task me-2 text-primary"></i>Revenue Detailed Breakdown
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" style="font-size: 0.9rem;">
+                            <thead class="bg-light text-muted small text-uppercase">
+                                <tr>
+                                    <th class="ps-4">Job ID & Name</th>
+                                    <th>Status</th>
+                                    <th>Product</th>
+                                    <th class="text-end pe-4">Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in orders %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-dark">{{ order.job_id }}</div>
+                                        <div class="small text-muted">{{ order.customer_name }}</div>
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge rounded-pill bg-{{ order.status|status_color if order.status else 'secondary' }} small">
+                                            {{ order.status or 'Pending' }}
+                                        </span>
+                                    </td>
+                                    <td class="small">{{ order.product_name }}</td>
+                                    <td class="text-end pe-4 fw-bold">₹ {{ "%.2f"|format(order.price or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% if not orders %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted small">No revenue recorded in
+                                        this period</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expense Detailed Breakdown -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-wallet2 me-2 text-danger"></i>Expense Summary</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                            <thead class="bg-light text-muted small text-uppercase">
+                                <tr>
+                                    <th class="ps-3">Category</th>
+                                    <th class="text-end pe-3">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set exp_summary = {} %}
+                                {% for exp in expenses %}
+                                {% set _ = exp_summary.update({exp.category: exp_summary.get(exp.category, 0) +
+                                exp.amount}) %}
+                                {% endfor %}
+
+                                {% for cat, amt in exp_summary.items() %}
+                                <tr>
+                                    <td class="ps-3 fw-medium text-dark">{{ cat }}</td>
+                                    <td class="text-end pe-3 text-danger fw-bold">₹ {{ "%.2f"|format(amt) }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% if not expenses %}
+                                <tr>
+                                    <td colspan="2" class="text-center py-4 text-muted small">No expenses recorded</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if expenses %}
+                    <div class="p-3 border-top mt-auto">
+                        <div class="d-flex justify-content-between">
+                            <span class="text-muted small fw-bold">Total Payouts:</span>
+                            <span class="text-danger fw-bold">₹ {{ "%.2f"|format(total_expenses) }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+
+        .sidebar,
+        .btn,
+        .d-flex.gap-2 {
+            display: none !important;
+        }
+
+        .container-fluid {
+            width: 100% !important;
+            padding: 0 !important;
+        }
+
+        .card {
+            border: 1px solid #ddd !important;
+            box-shadow: none !important;
+        }
+
+        .bg-success,
+        .bg-danger,
+        .bg-primary,
+        .bg-info {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,132 @@
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📦 Total Orders</h6>
+                <h3 class="text-primary">{{ monthly.total_orders }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">✅ Completed</h6>
+                <h3 class="text-success">{{ monthly.completed }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">⏳ Pending</h6>
+                <h3 class="text-warning">{{ monthly.pending }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💰 Revenue</h6>
+                <h3 class="text-info">₹{{ "%.2f"|format(monthly.total_revenue) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📅 Select Month & Year</h6>
+                <div class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" style="max-width: 120px;" onchange="changeMonthYear()">
+                        {% for y in years %}
+                            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                    <select class="form-select form-select-sm" style="max-width: 150px;" onchange="changeMonthYear()" id="monthSelect">
+                        <option value="">Select Month</option>
+                        <option value="1" {% if selected_month == 1 %}selected{% endif %}>January</option>
+                        <option value="2" {% if selected_month == 2 %}selected{% endif %}>February</option>
+                        <option value="3" {% if selected_month == 3 %}selected{% endif %}>March</option>
+                        <option value="4" {% if selected_month == 4 %}selected{% endif %}>April</option>
+                        <option value="5" {% if selected_month == 5 %}selected{% endif %}>May</option>
+                        <option value="6" {% if selected_month == 6 %}selected{% endif %}>June</option>
+                        <option value="7" {% if selected_month == 7 %}selected{% endif %}>July</option>
+                        <option value="8" {% if selected_month == 8 %}selected{% endif %}>August</option>
+                        <option value="9" {% if selected_month == 9 %}selected{% endif %}>September</option>
+                        <option value="10" {% if selected_month == 10 %}selected{% endif %}>October</option>
+                        <option value="11" {% if selected_month == 11 %}selected{% endif %}>November</option>
+                        <option value="12" {% if selected_month == 12 %}selected{% endif %}>December</option>
+                    </select>
+                    <span class="badge bg-primary">
+                        {% if monthly.month_start %}
+                            {{ monthly.month_start.strftime('%B %Y') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💸 Total Discount</h6>
+                <h3 class="text-danger">₹{{ "%.2f"|format(monthly.total_discount) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💹 Average Per Order</h6>
+                <h3 class="text-info">₹{{ "%.2f"|format(monthly.total_revenue / monthly.total_orders if monthly.total_orders > 0 else 0) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mb-3">📋 Order Details</h5>
+<div class="table-responsive">
+    <table class="table table-hover table-sm">
+        <thead class="table-light">
+            <tr>
+                <th>Job ID</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Technician</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Discount</th>
+                <th>Net</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if monthly.orders %}
+                {% for order in monthly.orders %}
+                <tr>
+                    <td><strong>{{ order.job_id }}</strong></td>
+                    <td><small>{{ order.pickup_date.strftime('%d-%m-%Y') if order.pickup_date else '-' }}</small></td>
+                    <td>{{ order.customer_name }}</td>
+                    <td><small>{{ order.technician or '-' }}</small></td>
+                    <td><span class="badge bg-{{ order.status|status_color }}">{{ order.status }}</span></td>
+                    <td>₹{{ "%.2f"|format(order.price or 0) }}</td>
+                    <td>-₹{{ "%.2f"|format(order.discount|float(0)) }}</td>
+                    <td><strong>₹{{ "%.2f"|format((order.price or 0) - (order.discount|float(0))) }}</strong></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox"></i> No orders for this month
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>

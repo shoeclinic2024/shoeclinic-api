@@ -1,0 +1,435 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+  /* Table & Dashboard Styles */
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .expand-button {
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+
+  .expand-button.expanded {
+    transform: rotate(90deg);
+  }
+
+  .child-row {
+    display: none;
+    background-color: #f8f9fa;
+  }
+
+  .child-row.show {
+    display: table-row;
+  }
+
+  .child-content {
+    padding: 1rem;
+    border-bottom: 1px solid #dee2e6;
+  }
+
+  .services-list {
+    list-style: none;
+    padding-left: 0;
+    font-size: 0.9em;
+    color: #666;
+    margin: 5px 0 5px 20px;
+  }
+
+  .services-list li {
+    margin-bottom: 3px;
+  }
+
+  .dashboard-header {
+    margin: 8px 0 6px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .compact-filters {
+    max-width: 100%;
+    margin: 10px 18px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 6px 18px rgba(17, 24, 39, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+  }
+
+  .compact-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .compact-left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+  }
+
+  .compact-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .compact-row .form-control,
+  .compact-row .form-select {
+    height: 38px;
+    padding: 6px 10px;
+    font-size: 0.92rem;
+    border-radius: 8px;
+  }
+
+  .compact-search {
+    min-width: 200px;
+    max-width: 360px;
+  }
+
+  .btn-compact {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+    border-radius: 8px;
+  }
+
+  @media (max-width: 900px) {
+    .compact-filters {
+      padding: 10px;
+    }
+
+    .compact-search {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .compact-right {
+      width: 100%;
+      justify-content: flex-end;
+    }
+  }
+</style>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start mb-2 px-1 dashboard-header">
+  <div class="d-flex flex-column align-items-start" style="margin-left: 18px;">
+    <!-- FIXED: Use 'home' instead of non-existing 'dashboard' -->
+    <a href="{{ url_for('home') }}" class="btn btn-sm btn-outline-secondary mb-1">← Back to Main Page</a>
+    <h5 class="text-primary fw-bold mb-0 d-flex align-items-center">
+      <span class="me-2">👤</span> Welcome, {{ current_user.username }}
+    </h5>
+  </div>
+
+  <form method="GET" action="{{ url_for('tsc_dashboard') }}" class="d-flex align-items-center"
+    style="gap:8px; margin-right:18px;">
+    <input type="text" name="search" class="form-control compact-search" placeholder="Search name, job ID..."
+      value="{{ request.args.get('search', '') }}">
+    <button type="submit" class="btn btn-primary btn-compact">🔍</button>
+  </form>
+</div>
+
+<!-- Compact Filters -->
+<div class="compact-filters" style="position: relative;">
+  <form id="filterForm" method="GET" action="{{ url_for('tsc_dashboard') }}">
+    <div class="compact-row">
+      <input type="date" class="form-control" name="pickup_date_filter"
+        value="{{ request.args.get('pickup_date_filter', '') }}" style="width:150px;">
+      <input type="date" class="form-control" name="drop_date_filter"
+        value="{{ request.args.get('drop_date_filter', '') }}" style="width:150px;">
+      <select class="form-select" name="status_filter" style="width:140px;">
+        <option value="" {% if request.args.get('status_filter','')=='' %}selected{% endif %}>All status</option>
+        <option value="yts" {% if request.args.get('status_filter')=='yts' %}selected{% endif %}>yts</option>
+        <option value="wip" {% if request.args.get('status_filter')=='wip' %}selected{% endif %}>wip</option>
+        <option value="done" {% if request.args.get('status_filter')=='done' %}selected{% endif %}>done</option>
+        <option value="re wash" {% if request.args.get('status_filter')=='re wash' %}selected{% endif %}>re wash
+        </option>
+        <option value="pack" {% if request.args.get('status_filter')=='pack' %}selected{% endif %}>pack pend</option>
+        <option value="ready to deliver" {% if request.args.get('status_filter')=='ready to deliver' %}selected{% endif
+          %}>ready to deliver</option>
+      </select>
+      <input type="number" class="form-control" name="discount_filter" placeholder="Discount"
+        value="{{ request.args.get('discount_filter', '') }}" style="width:110px;">
+      <select class="form-select" name="outsource_filter" style="width:120px;">
+        <option value="" {% if request.args.get('outsource_filter','')=='' %}selected{% endif %}>Outsource</option>
+        <option value="yes" {% if request.args.get('outsource_filter')=='yes' %}selected{% endif %}>Yes</option>
+        <option value="no" {% if request.args.get('outsource_filter')=='no' %}selected{% endif %}>No</option>
+      </select>
+      <select class="form-select" name="technician_filter" style="width:160px;">
+        <option value="" {% if request.args.get('technician_filter','')=='' %}selected{% endif %}>All Technicians
+        </option>
+        {% for person in staff %}
+        <option value="{{ person.username }}" {% if request.args.get('technician_filter')==person.username %}selected{%
+          endif %}>{{ person.username }}</option>
+        {% endfor %}
+      </select>
+
+      <button type="submit" class="btn btn-primary btn-compact">Apply</button>
+      <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary btn-compact">Clear</a>
+      {% if current_user.role == 'super_admin' %}
+      <a href="{{ url_for('export_dashboard_excel', **request.args) }}" class="btn btn-success btn-compact">
+        <i class="bi bi-file-earmark-excel me-1"></i> Excel
+      </a>
+      <a href="{{ url_for('export_dashboard_pdf', **request.args) }}" class="btn btn-danger btn-compact">
+        <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+      </a>
+      {% else %}
+      <button class="btn btn-success btn-compact disabled" title="Restricted to Super Admin"
+        style="opacity: 0.6; cursor: not-allowed;">
+        <i class="bi bi-file-earmark-excel me-1"></i> Excel <i class="bi bi-lock-fill ms-1"></i>
+      </button>
+      <button class="btn btn-danger btn-compact disabled" title="Restricted to Super Admin"
+        style="opacity: 0.6; cursor: not-allowed;">
+        <i class="bi bi-file-earmark-pdf me-1"></i> PDF <i class="bi bi-lock-fill ms-1"></i>
+      </button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<!-- Orders Table -->
+<div class="table-container">
+  <table class="table table-bordered table-hover table-striped text-center">
+    <thead class="table-dark">
+      <tr>
+        <th></th>
+        <th>Sl. No</th>
+        <th>Technician</th>
+        <th>Job ID</th>
+        <th>Name</th>
+        <th>Pickup Date</th>
+        <th>Service Date</th>
+        <th>Drop Date</th>
+        <th>Place</th>
+        <th>Service Note</th>
+        <th>Status</th>
+        <th>Mobile</th>
+        <th>Product</th>
+        <th>Token</th>
+        <th>Price</th>
+        <th>Payment Mode</th>
+        <th>Payment Status</th>
+        <th>Discount</th>
+        <th>Outsource</th>
+        <th>Count</th>
+        <th>Dispatch</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr class="parent-row" data-order-id="{{ order.id }}">
+        <td><i class="bi bi-chevron-right expand-button" onclick="toggleChildRow(this, '{{ order.id }}')"></i></td>
+        <td>{{ loop.index }}</td>
+        <td>
+          {% if order.technician %}
+          <span class="fw-bold text-dark">{{ order.technician }}</span>
+          {% else %}
+          {% set tech_list = [] %}
+          {% for itm in order.items %}
+          {% if itm.technician and itm.technician not in tech_list %}
+          {% set _ = tech_list.append(itm.technician) %}
+          {% endif %}
+          {% endfor %}
+
+          {% if tech_list %}
+          <span class="fw-bold text-dark">{{ tech_list|join(', ') }}</span>
+          {% else %}
+          <span class="text-muted small">-</span>
+          {% endif %}
+          {% endif %}
+        </td>
+        <td>{{ order.job_id }}</td>
+        <td>{{ order.customer_name }}</td>
+        <td>{{ order.pickup_date | format_date }}</td>
+        <td>{{ order.service_date | format_date }}</td>
+        <td>{{ order.drop_date | format_date }}</td>
+        <td>{{ order.place }}</td>
+        <td>
+          {% set services = [] %}
+          {% for item in order.items %}
+          {% if item.services %}
+          {% for s in item.services.split(',') %}
+          {% set svc = s|trim %}
+          {% if svc and svc not in services %}
+          {% set _ = services.append(svc) %}
+          {% endif %}
+          {% endfor %}
+          {% endif %}
+          {% endfor %}
+          {{ services|join(', ') }}
+          {% if order.service_note %}<br><small class="text-muted">{{ order.service_note }}</small>{% endif %}
+        </td>
+        <td><span class="badge bg-{{ order.status | status_color }}">{{ order.status }}</span></td>
+        <td>{{ order.mobile }}</td>
+        <td>{{ order.product_name }}</td>
+        <td>{{ order.token }}</td>
+        <td>{{ order.price }}</td>
+        <td>{{ order.payment_mode or '' }}</td>
+        <td>{{ order.payment_status or '' }}</td>
+        <td>{{ order.discount }}</td>
+        <td>{{ order.outsource }}</td>
+        <td>{{ order.item_count }}</td>
+        <td>{{ order.dispatch or '' }}</td>
+        <td>
+          <a href="{{ url_for('edit_order', order_id=order.id) }}" class="btn btn-sm btn-warning">✏️</a>
+          <form action="{{ url_for('delete_order', order_id=order.id) }}" method="POST" style="display:inline;">
+            <button type="submit" class="btn btn-sm btn-danger"
+              onclick="return confirm('Delete this order?')">🗑️</button>
+          </form>
+        </td>
+      </tr>
+
+      <!-- Child row -->
+      <tr class="child-row" id="child-{{ order.id }}">
+        <td colspan="26">
+          <div class="child-content">
+            {% if order.items %}
+            <h6 class="mb-3">📦 Order Items Breakdown</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>#</th>
+                    <th>Product Name</th>
+                    <th>Services</th>
+                    <th>Service Status</th>
+                    <th>Price</th>
+                    <th>Discount</th>
+                    <th>Subtotal</th>
+                    <th>Item Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in order.items %}
+                  <tr>
+                    <td class="text-center fw-bold">{{ loop.index }}</td>
+                    <td>
+                      <strong>{{ item.product_name or 'Item' }}</strong>
+                      {% if item.defects %}
+                      <br><small class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> DETECTED:
+                        {{ item.defects }}</small>
+                      {% endif %}
+                      {% if item.technician %}<br><small class="text-muted">👤 {{ item.technician }}</small>{% endif %}
+                    </td>
+                    <td>
+                      {% if item.services %}
+                      {% set service_list = item.services.split(',') %}
+                      {% set assignments = item.service_assignments|from_json %}
+                      <div class="d-flex flex-wrap gap-2">
+                        {% for svc in service_list %}
+                        {% set s_name = svc|trim %}
+                        <div class="d-inline-flex align-items-center">
+                          <span class="badge bg-primary rounded-end-0">{{ s_name }}</span>
+                          <span
+                            class="badge bg-light text-dark border-top border-bottom border-start-0 border-end-0 rounded-0 fw-normal">
+                            <i class="bi bi-person-fill small me-1"></i>{{ assignments.get(s_name) or '-' }}
+                          </span>
+                          {% set statuses = item.service_statuses|from_json %}
+                          {% set s_status = statuses.get(s_name)|default('yts') %}
+                          <span
+                            class="badge bg-{{ s_status|status_color }} rounded-start-0 border border-start-0 fw-normal"
+                            style="font-size: 0.65rem;">
+                            {{ s_status|upper }}
+                          </span>
+                        </div>
+                        {% endfor %}
+                      </div>
+                      {% else %}
+                      <span class="text-muted">-</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if item.status %}
+                      {% if item.status|lower == 'done' or item.status|lower == 'completed' %}
+                      <span class="badge bg-success">✓ {{ item.status }}</span>
+                      {% elif item.status|lower in ['wip', 'in progress', 'started'] %}
+                      <span class="badge bg-warning">⏳ {{ item.status }}</span>
+                      {% elif item.status|lower in ['pending', 'yts'] %}
+                      <span class="badge bg-secondary">⏸ {{ item.status }}</span>
+                      {% elif item.status|lower in ['cancelled', 'rejected'] %}
+                      <span class="badge bg-danger">✗ {{ item.status }}</span>
+                      {% else %}
+                      <span class="badge bg-info">{{ item.status }}</span>
+                      {% endif %}
+                      {% else %}
+                      <span class="text-muted">-</span>
+                      {% endif %}
+                    </td>
+                    <td class="text-end">₹{{ "%.2f" | format(item.price or 0) }}</td>
+                    <td class="text-end text-danger">-₹{{ "%.2f" | format(item.discount or 0) }}</td>
+                    <td class="text-end fw-bold">₹{{ "%.2f" | format((item.price or 0) - (item.discount or 0)) }}</td>
+                    <td>
+                      {% if item.status %}
+                      {% if item.status|lower == 'done' or item.status|lower == 'completed' %}
+                      <span class="badge bg-success">DONE</span>
+                      {% elif item.status|lower in ['wip', 'in progress', 'started'] %}
+                      <span class="badge bg-warning text-dark">IN PROGRESS</span>
+                      {% elif item.status|lower in ['pending', 'yts'] %}
+                      <span class="badge bg-secondary">PENDING</span>
+                      {% elif item.status|lower in ['cancelled', 'rejected'] %}
+                      <span class="badge bg-danger">CANCELLED</span>
+                      {% else %}
+                      <span class="badge bg-info">{{ item.status }}</span>
+                      {% endif %}
+                      {% else %}
+                      <span class="badge bg-light text-dark">UNASSIGNED</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <p class="text-muted">No items added to this order</p>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+
+<script>
+  function toggleChildRow(button, orderId) {
+    const childRow = document.getElementById(`child-${orderId}`);
+    button.classList.toggle('expanded');
+    childRow.classList.toggle('show');
+  }
+
+  // Live table refresh every 30s
+  function fetchOrders() {
+    $.ajax({
+      url: window.location.pathname + window.location.search,
+      type: 'GET',
+      dataType: 'html',
+      success: function (data) {
+        var newTable = $(data).find('.table-container').html();
+        if (newTable) $('.table-container').html(newTable);
+      }
+    });
+  }
+  setInterval(fetchOrders, 30000);
+</script>
+
+{% endblock %}

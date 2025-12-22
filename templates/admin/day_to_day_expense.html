@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <!-- Header & Navigation -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+        <!-- Title -->
+        <div>
+            <h4 class="mb-1 text-primary fw-bold"><i class="bi bi-calendar-check me-2"></i>Day-to-Day Expenses</h4>
+            <p class="text-muted mb-0">Track your monthly and daily spending</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="d-flex align-items-center gap-2">
+            <form id="filter-form" method="GET" class="d-flex align-items-center gap-2">
+                <!-- Category Filter -->
+                <select name="category" class="form-select form-select-sm shadow-sm border-0" style="width: 150px;"
+                    onchange="this.form.submit()">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if selected_category==cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Mode Filter -->
+                <select name="filter_type" id="filterType"
+                    class="form-select form-select-sm shadow-sm border-0 fw-bold text-primary" style="width: auto;"
+                    onchange="updateFilterInput();">
+                    <option value="date" {% if filter_type=='date' %}selected{% endif %}>Daily</option>
+                    <option value="month" {% if filter_type=='month' %}selected{% endif %}>Monthly</option>
+                    <option value="year" {% if filter_type=='year' %}selected{% endif %}>Yearly</option>
+                    <option value="range" {% if filter_type=='range' %}selected{% endif %}>Range</option>
+                </select>
+
+                <!-- Daily Controls -->
+                <div id="input-date"
+                    class="filter-input-group {% if filter_type != 'date' %}d-none{% endif %} bg-white rounded shadow-sm d-flex align-items-center p-1">
+                    <a href="{{ url_for('admin.day_to_day_expense', filter_type='date', date=(selected_date - timedelta(days=1)).strftime('%Y-%m-%d'), category=selected_category) }}"
+                        class="btn btn-sm btn-light text-muted"><i class="bi bi-chevron-left"></i></a>
+                    <input type="date" name="date_date"
+                        class="form-control form-control-sm border-0 fw-bold text-center p-0 mx-1"
+                        value="{{ display_date if filter_type == 'date' else '' }}" onchange="this.form.submit()"
+                        style="width: 130px;">
+                    <a href="{{ url_for('admin.day_to_day_expense', filter_type='date', date=(selected_date + timedelta(days=1)).strftime('%Y-%m-%d'), category=selected_category) }}"
+                        class="btn btn-sm btn-light text-muted"><i class="bi bi-chevron-right"></i></a>
+                </div>
+
+                <!-- Monthly Controls -->
+                <div id="input-month"
+                    class="filter-input-group {% if filter_type != 'month' %}d-none{% endif %} bg-white rounded shadow-sm p-1">
+                    <input type="month" name="date_month" class="form-control form-control-sm border-0 fw-bold"
+                        value="{{ display_date if filter_type == 'month' else '' }}" onchange="this.form.submit()">
+                </div>
+
+                <!-- Yearly Controls -->
+                <div id="input-year"
+                    class="filter-input-group {% if filter_type != 'year' %}d-none{% endif %} bg-white rounded shadow-sm p-1">
+                    <select name="date_year" class="form-select form-select-sm border-0 fw-bold"
+                        onchange="this.form.submit()">
+                        {% for y in range(2023, 2031) %}
+                        <option value="{{ y }}" {% if filter_type=='year' and display_date==y|string %}selected{% endif
+                            %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Range Controls -->
+                <div id="input-range"
+                    class="filter-input-group {% if filter_type != 'range' %}d-none{% endif %} bg-white rounded shadow-sm d-flex align-items-center p-1 gap-1">
+                    <input type="date" name="start_date" class="form-control form-control-sm border-0 fw-bold"
+                        value="{{ request.args.get('start_date', '') }}" onchange="this.form.submit()"
+                        style="width: 130px;">
+                    <span class="text-muted small">to</span>
+                    <input type="date" name="end_date" class="form-control form-control-sm border-0 fw-bold"
+                        value="{{ request.args.get('end_date', '') }}" onchange="this.form.submit()"
+                        style="width: 130px;">
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function updateFilterInput() {
+            const type = document.getElementById('filterType').value;
+            // Hide all inputs
+            document.getElementById('input-date').classList.add('d-none');
+            document.getElementById('input-month').classList.add('d-none');
+            document.getElementById('input-year').classList.add('d-none');
+            if (document.getElementById('input-range')) document.getElementById('input-range').classList.add('d-none');
+
+            // Show selected
+            document.getElementById('input-' + type).classList.remove('d-none');
+
+            // Auto submit to switch mode view immediately
+            document.getElementById('filter-form').submit();
+        }
+    </script>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm bg-primary text-white h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="display-5 me-3"><i class="bi bi-wallet2"></i></div>
+                    <div>
+                        <div class="text-white-50 text-uppercase small">Total Spent ({{ filter_type.title() }})</div>
+                        <h3 class="mb-0 fw-bold">₹ {{ "%.2f"|format(total_amount) }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm bg-white h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="display-6 me-3 text-secondary"><i class="bi bi-receipt"></i></div>
+                    <div>
+                        <div class="text-muted text-uppercase small">Transactions</div>
+                        <h3 class="mb-0 fw-bold text-dark">{{ transaction_count }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expense List -->
+    <div class="card border-0 shadow-sm">
+        <div
+            class="card-header bg-white py-3 border-0 d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <h5 class="mb-0 fw-bold">Transactions</h5>
+            <div class="d-flex gap-2">
+                <!-- Export Buttons -->
+                <div class="btn-group">
+                    <button type="button"
+                        class="btn btn-outline-secondary btn-sm dropdown-toggle rounded-pill px-3 {% if current_user.role != 'super_admin' %}disabled{% endif %}"
+                        {% if current_user.role !='super_admin' %}title="Restricted to Owner" {% else
+                        %}data-bs-toggle="dropdown" aria-expanded="false" {% endif %}>
+                        <i class="bi bi-download me-1"></i> Export {% if current_user.role != 'super_admin' %}<i
+                            class="bi bi-lock-fill ms-1"></i>{% endif %}
+                    </button>
+                    {% if current_user.role == 'super_admin' %}
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0">
+                        <li>
+                            <a class="dropdown-item py-2"
+                                href="{{ url_for('admin.export_expenses_excel', filter_type=filter_type, date=selected_date, category=selected_category) }}">
+                                <i class="bi bi-file-earmark-excel me-2 text-success"></i> Excel Report
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2"
+                                href="{{ url_for('admin.export_expenses_pdf', filter_type=filter_type, date=selected_date, category=selected_category) }}">
+                                <i class="bi bi-file-earmark-pdf me-2 text-danger"></i> PDF Report
+                            </a>
+                        </li>
+                    </ul>
+                    {% endif %}
+                </div>
+
+                <a href="{{ url_for('admin.add_expense') }}" class="btn btn-primary btn-sm rounded-pill px-3">
+                    <i class="bi bi-plus-lg me-1"></i> Add New
+                </a>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if expenses %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light text-muted">
+                        <tr>
+                            <th class="ps-4">Title</th>
+                            <th>Date</th>
+                            <th>Category</th>
+                            <th>Description</th>
+                            <th class="text-end pe-4">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for expense in expenses %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ expense.title }}</div>
+                                <div class="text-muted small">Added: {{ expense.created_at.strftime('%I:%M %p') }}</div>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-dark border rounded px-2 py-1 bg-light d-inline-block">{{
+                                    expense.expense_date.strftime('%d-%b-%Y') }}</div>
+                            </td>
+                            <td><span class="badge bg-secondary-subtle text-secondary rounded-pill px-2">{{
+                                    expense.category }}</span></td>
+                            <td class="text-muted small">{{ expense.description or '-' }}</td>
+                            <td class="text-end pe-4 fw-bold text-danger">
+                                - ₹ {{ "%.2f"|format(expense.amount) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <div class="mb-3 text-muted display-1 opacity-25"><i class="bi bi-wallet"></i></div>
+                <h5 class="text-muted">No expenses recorded for this date.</h5>
+                <p class="text-muted small">Click "Add New" to track your spending.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Visual Analytics Section -->
+    <div class="mt-5">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
+            <h4 class="text-primary fw-bold mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Visual Analytics</h4>
+
+            <!-- Dedicated Graph Filters -->
+            <form id="graph-filter-form" class="d-flex flex-wrap gap-2 justify-content-end">
+                <!-- Category Filter -->
+                <select id="graphCategory" class="form-select form-select-sm" style="width: 140px;">
+                    <option value="">All Categories</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}">{{ cat }}</option>
+                    {% endfor %}
+                </select>
+
+                <select id="graphFilterType" class="form-select form-select-sm" style="width: auto;"
+                    onchange="toggleGraphInputs()">
+                    <option value="month">Monthly</option>
+                    <option value="year">Yearly</option>
+                    <option value="range">Range</option>
+                </select>
+
+                <input type="month" id="graphDateMonth" class="form-control form-control-sm"
+                    value="{{ selected_date.strftime('%Y-%m') }}">
+
+                <select id="graphDateYear" class="form-select form-select-sm d-none">
+                    {% for y in range(2023, 2031) %}
+                    <option value="{{ y }}" {% if selected_date.year==y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+
+                <div id="graphDateRange" class="d-none d-flex align-items-center gap-1">
+                    <input type="date" id="graphStartDate" class="form-control form-control-sm" style="width: 140px;">
+                    <span class="text-muted small">to</span>
+                    <input type="date" id="graphEndDate" class="form-control form-control-sm" style="width: 140px;">
+                </div>
+
+                <button type="button" class="btn btn-primary btn-sm rounded-pill px-3" onclick="fetchChartData()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Update
+                </button>
+            </form>
+        </div>
+
+        <!-- Analytics Stats Row -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm bg-light-subtle border-start border-4 border-primary">
+                    <div class="card-body py-3">
+                        <div class="text-muted small text-uppercase fw-bold">Period Total Spending</div>
+                        <h4 class="mb-0 fw-bold text-dark" id="stat-total">₹ 0.00</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-4">
+                <div class="card border-0 shadow-sm bg-light-subtle border-start border-4 border-danger">
+                    <div class="card-body py-3">
+                        <div class="text-muted small text-uppercase fw-bold">Highest Spend Category</div>
+                        <h4 class="mb-0 fw-bold text-dark" id="stat-top-cat">N/A</h4>
+                        <div class="text-muted small" id="stat-top-cat-amount">₹ 0.00 spent</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row row-cols-1 row-cols-lg-2 g-4">
+            <!-- Time Trend Chart -->
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted fw-bold mb-3">Spending Trend</h6>
+                        <div style="height: 300px;">
+                            <canvas id="timeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Category Distribution Chart -->
+            <div class="col-lg-4">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <h6 class="card-title text-muted fw-bold mb-3">Category Distribution</h6>
+                        <div style="height: 300px;">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let timeChartInstance = null;
+    let categoryChartInstance = null;
+
+    function toggleGraphInputs() {
+        const type = document.getElementById('graphFilterType').value;
+        const monthInp = document.getElementById('graphDateMonth');
+        const yearInp = document.getElementById('graphDateYear');
+        const rangeInp = document.getElementById('graphDateRange');
+
+        monthInp.classList.add('d-none');
+        yearInp.classList.add('d-none');
+        rangeInp.classList.add('d-none');
+
+        if (type === 'month') {
+            monthInp.classList.remove('d-none');
+        } else if (type === 'year') {
+            yearInp.classList.remove('d-none');
+        } else if (type === 'range') {
+            rangeInp.classList.remove('d-none');
+        }
+    }
+
+    async function fetchChartData() {
+        const type = document.getElementById('graphFilterType').value;
+        const category = document.getElementById('graphCategory').value;
+        let url = `/admin/expense_chart_data?filter_type=${type}&category=${category}`;
+
+        if (type === 'month') {
+            url += `&date=${document.getElementById('graphDateMonth').value}-01`;
+        } else if (type === 'year') {
+            url += `&date=${document.getElementById('graphDateYear').value}-01-01`;
+        } else if (type === 'range') {
+            url += `&start_date=${document.getElementById('graphStartDate').value}&end_date=${document.getElementById('graphEndDate').value}`;
+        }
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            // Update Stats
+            document.getElementById('stat-total').innerText = "₹ " + data.summary.total.toLocaleString(undefined, { minimumFractionDigits: 2 });
+            document.getElementById('stat-top-cat').innerText = data.summary.top_cat_name;
+            document.getElementById('stat-top-cat-amount').innerText = "₹ " + data.summary.top_cat_amount.toLocaleString() + " spent";
+
+            renderCharts(data, type);
+        } catch (error) {
+            console.error('Error loading chart data:', error);
+        }
+    }
+
+    function renderCharts(data, type) {
+        if (timeChartInstance) timeChartInstance.destroy();
+        if (categoryChartInstance) categoryChartInstance.destroy();
+
+        // 1. Time Chart (Area/Line)
+        const timeCtx = document.getElementById('timeChart').getContext('2d');
+
+        // Month names for Year view
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let labels = data.by_time.labels;
+        if (type === 'year') {
+            labels = labels.map(m => monthNames[m - 1]);
+        } else if (type === 'month') {
+            labels = labels.map(d => "Day " + d);
+        }
+        // If 'range', labels are already strings like '20 Dec' or 'Dec 2025' from backend
+
+        timeChartInstance = new Chart(timeCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: type === 'month' ? 'Daily Spending' : (type === 'year' ? 'Monthly Spending' : 'Spending Trend'),
+                    data: data.by_time.data,
+                    backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                    borderColor: '#0d6efd',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+        // 2. Category Chart (Doughnut)
+        const catCtx = document.getElementById('categoryChart').getContext('2d');
+        categoryChartInstance = new Chart(catCtx, {
+            type: 'doughnut',
+            data: {
+                labels: data.by_category.labels,
+                datasets: [{
+                    data: data.by_category.data,
+                    backgroundColor: [
+                        '#0d6efd', // Blue
+                        '#198754', // Green
+                        '#ffc107', // Yellow
+                        '#dc3545', // Red
+                        '#6610f2', // Purple
+                        '#fd7e14', // Orange
+                        '#0dcaf0', // Cyan
+                        '#20c997'  // Teal
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 10, usePointStyle: true, padding: 20 }
+                    }
+                }
+            }
+        });
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', fetchChartData);
+</script>
+{% endblock %}

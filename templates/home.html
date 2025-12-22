@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    @keyframes professionalSlideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-entrance {
+        animation: professionalSlideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+
+    .home-card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .home-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .professional-headline {
+        font-size: 2.5rem;
+        line-height: 1.2;
+        white-space: nowrap;
+    }
+
+    .professional-tagline {
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+    }
+
+    @media (max-width: 1200px) {
+        .professional-headline {
+            font-size: 2rem;
+        }
+
+        .professional-tagline {
+            font-size: 1rem;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .professional-headline {
+            font-size: 1.5rem;
+            white-space: normal;
+        }
+
+        .professional-tagline {
+            font-size: 0.9rem;
+        }
+    }
+</style>
+
+<div class="container py-5 animate-entrance">
+    <!-- Welcome Section -->
+    <!-- Welcome Section -->
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div class="text-start">
+            <h1 class="fw-bold mb-0 professional-headline">
+                👟 Welcome to <span class="text-primary">The Shoe Clinic</span>
+            </h1>
+            <p class="text-muted mb-0 professional-tagline">
+                Expert care, Exceptional comfort ✨
+            </p>
+        </div>
+        <div class="d-flex gap-2">
+            {% if current_user.role in ['admin', 'super_admin'] %}
+            <a href="{{ url_for('add_order') }}" class="btn btn-primary px-3 rounded-pill shadow-sm">
+                <i class="bi bi-plus-circle me-1"></i>New Order
+            </a>
+            {% endif %}
+            <a href="{{ url_for('my_works') }}" class="btn btn-outline-primary px-3 rounded-pill shadow-sm">
+                <i class="bi bi-tools me-1"></i>My Works
+            </a>
+            {% if current_user.role in ['admin', 'super_admin'] %}
+            <a href="{{ url_for('admin.add_expense') }}" class="btn btn-outline-secondary px-3 rounded-pill shadow-sm">
+                <i class="bi bi-cash-coin me-1"></i>Add Expense
+            </a>
+            <a href="{{ url_for('print_bill') }}" class="btn btn-outline-info px-3 rounded-pill shadow-sm">
+                <i class="bi bi-printer me-1"></i>Print Bill
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Announcements Section -->
+    {% if announcements %}
+    <div class="row justify-content-center mb-5">
+        <div class="col-lg-10">
+            {% for ann in announcements %}
+            <div class="card border-0 shadow-sm rounded-4 mb-3 overflow-hidden animate-entrance"
+                style="border-left: 5px solid #0d6efd !important;">
+                <div class="card-body p-4 position-relative">
+                    <!-- Background Watermark Icon -->
+                    <div class="position-absolute end-0 bottom-0 mb-n4 me-n2 opacity-10"
+                        style="z-index: 0; pointer-events: none;">
+                        <i class="bi bi-megaphone" style="font-size: 8rem; transform: rotate(-15deg);"></i>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-start position-relative" style="z-index: 1;">
+                        <div class="pe-5">
+                            <span class="badge bg-primary bg-opacity-10 text-primary border-0 mb-2">
+                                <i class="bi bi-info-circle me-1"></i> ANNOUNCEMENT
+                            </span>
+                            <h4 class="fw-bold mb-2">{{ ann.title }}</h4>
+                            <p class="text-muted mb-0 fs-5">{{ ann.content }}</p>
+                        </div>
+                        <div class="text-end flex-shrink-0">
+                            <div class="bg-light rounded-3 p-2 px-3">
+                                <small class="text-primary d-block fw-bold">{{ ann.created_at.strftime('%d %b')
+                                    }}</small>
+                                <small class="text-muted fw-bold">{{ ann.created_at.strftime('%H:%M') }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Today's Stats and Holidays -->
+    <div class="row justify-content-center mb-5">
+        <div class="col-lg-7">
+            <div class="row g-3">
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm home-card h-100 rounded-4">
+                        <div class="card-body text-center p-4">
+                            <div class="h2 text-primary mb-2">
+                                <i class="bi bi-truck"></i>
+                            </div>
+                            <div class="text-muted small text-uppercase fw-bold mb-1">Today's Delivery</div>
+                            <h3 class="mb-0 fw-bold">{{ todays_delivery_count }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm home-card h-100 rounded-4">
+                        <div class="card-body text-center p-4">
+                            <div class="h2 text-success mb-2">
+                                <i class="bi bi-box-seam"></i>
+                            </div>
+                            <div class="text-muted small text-uppercase fw-bold mb-1">Today's Pickup</div>
+                            <h3 class="mb-0 fw-bold">{{ todays_pickup_count }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upcoming Holidays -->
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm rounded-4 h-100 bg-dark text-white shadow">
+                <div class="card-body p-4 d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="small fw-bold text-uppercase opacity-75 mb-0">Upcoming Holidays</h6>
+                        {% if upcoming_holidays|length > 1 %}
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-link btn-sm text-white p-0 opacity-50 hover-opacity-100"
+                                id="prevHol">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                            <button class="btn btn-link btn-sm text-white p-0 opacity-50 hover-opacity-100"
+                                id="nextHol">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div id="holidayContainer">
+                        {% if upcoming_holidays %}
+                        {% for holiday in upcoming_holidays %}
+                        <div class="holiday-item {% if not loop.first %}d-none{% endif %}"
+                            data-index="{{ loop.index0 }}">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0 bg-white bg-opacity-10 rounded-3 p-2 text-center"
+                                    style="width: 50px;">
+                                    <div class="small fw-bold text-primary">{{ holiday.date.strftime('%b') }}</div>
+                                    <div class="fw-bold fs-5">{{ holiday.date.strftime('%d') }}</div>
+                                </div>
+                                <div class="ms-3">
+                                    <div class="fw-bold small text-truncate" style="max-width: 130px;">{{ holiday.name
+                                        }}</div>
+                                    <div class="small opacity-50">{{ holiday.date.strftime('%A') }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="py-2 text-center">
+                            <i class="bi bi-calendar3 opacity-25 display-6 mb-2 d-block"></i>
+                            <p class="small opacity-50 mb-0">No upcoming holidays</p>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div
+                        class="mt-auto pt-3 border-top border-white border-opacity-10 d-flex justify-content-between align-items-center">
+                        <a href="{{ url_for('calendar') }}"
+                            class="btn btn-link btn-sm text-white text-decoration-none p-0">
+                            View Calendar <i class="bi bi-arrow-right ms-1"></i>
+                        </a>
+                        {% if upcoming_holidays %}
+                        <small class="opacity-25" id="holCount">1 / {{ upcoming_holidays|length }}</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                let currentIndex = 0;
+                const items = document.querySelectorAll('.holiday-item');
+                const total = items.length;
+                const countText = document.getElementById('holCount');
+
+                if (total > 1) {
+                    const nextBtn = document.getElementById('nextHol');
+                    const prevBtn = document.getElementById('prevHol');
+
+                    function updateDisplay(newIndex) {
+                        items[currentIndex].classList.add('d-none');
+                        items[newIndex].classList.remove('d-none');
+                        currentIndex = newIndex;
+                        if (countText) countText.innerText = `${currentIndex + 1} / ${total}`;
+                    }
+
+                    nextBtn.addEventListener('click', () => {
+                        let next = (currentIndex + 1) % total;
+                        updateDisplay(next);
+                    });
+
+                    prevBtn.addEventListener('click', () => {
+                        let prev = (currentIndex - 1 + total) % total;
+                        updateDisplay(prev);
+                    });
+                }
+            });
+        </script>
+    </div>
+
+    <!-- Action Buttons -->
+    <!-- Action Buttons (Moved to Header) -->
+</div>
+{% endblock %}

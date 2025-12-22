@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <!-- Header & Filters -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Pro Expense Dashboard</h2>
+    <form class="d-flex" method="get">
+      <input type="date" name="start" class="form-control me-2" value="{{ start }}">
+      <input type="date" name="end" class="form-control me-2" value="{{ end }}">
+      <select name="category" class="form-select me-2">
+        <option value="">All Categories</option>
+        {% for cat in all_categories %}
+          <option value="{{ cat }}" {% if selected_category==cat %}selected{% endif %}>{{ cat }}</option>
+        {% endfor %}
+      </select>
+      <input type="text" name="search" class="form-control me-2" placeholder="Search description" value="{{ search or '' }}">
+      <button class="btn btn-primary">Filter</button>
+    </form>
+  </div>
+
+  <!-- Quick Range Buttons -->
+  <div class="mb-3">
+    <a href="?start={{ start }}" class="btn btn-outline-secondary btn-sm">Today</a>
+    <a href="?start={{ (start-timedelta(days=start.weekday())).strftime('%Y-%m-%d') }}&end={{ (start+timedelta(days=6-start.weekday())).strftime('%Y-%m-%d') }}" class="btn btn-outline-secondary btn-sm">This Week</a>
+    <a href="?start={{ start.replace(day=1) }}&end={{ end }}" class="btn btn-outline-secondary btn-sm">This Month</a>
+    <a href="?start={{ start.replace(month=1, day=1) }}&end={{ end }}" class="btn btn-outline-secondary btn-sm">This Year</a>
+  </div>
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-2">
+      <div class="card border-primary shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">All Time Total</h6>
+          <h4 class="text-primary">₹{{ "%.2f"|format(all_time_total or 0) }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card border-success shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">This Month</h6>
+          <h4 class="text-success">₹{{ "%.2f"|format(month_total or 0) }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card border-info shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">This Week</h6>
+          <h4 class="text-info">₹{{ "%.2f"|format(week_total or 0) }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card border-warning shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Transactions</h6>
+          <h4 class="text-warning">{{ transaction_count or 0 }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card border-danger shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Highest Expense</h6>
+          {% if highest_expense %}
+            <div class="fw-bold">₹{{ "%.2f"|format(highest_expense.expense) }}</div>
+            <small class="text-muted">{{ highest_expense.description }}<br>{{ highest_expense.date.strftime('%Y-%m-%d') }}</small>
+          {% else %}
+            <div class="text-muted">No data</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card border-secondary shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Budget vs Actual</h6>
+          <h4 class="{% if overspend %}text-danger{% else %}text-success{% endif %}">₹{{ "%.2f"|format(month_total) }} / ₹{{ "%.2f"|format(monthly_budget) }}</h4>
+          {% if overspend %}
+            <span class="badge bg-danger">Overspent!</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="row mb-4">
+    <div class="col-lg-4 mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Category-wise Spending</h6>
+          <canvas id="pieChart" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Daily Trend</h6>
+          <canvas id="lineChart" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Monthly Totals</h6>
+          <canvas id="barChart" height="180"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top 5 Categories & Projected -->
+  <div class="row mb-4">
+    <div class="col-lg-6 mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Top 5 Categories</h6>
+          <ul class="list-group">
+            {% for cat, val in top5 %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                {{ cat }}
+                <span class="badge bg-primary rounded-pill">₹{{ "%.2f"|format(val) }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h6 class="card-title">Smart Insights</h6>
+          <p>Average Daily Spend: <b>₹{{ "%.2f"|format(daily_avg) }}</b></p>
+          <p>Projected Next Month: <b>₹{{ "%.2f"|format(projected_next_month) }}</b></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Consolidated Table -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="card-title">All Expenses</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Category</th>
+              <th>Description</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in expenses %}
+            <tr>
+              <td>{{ e.date.strftime('%Y-%m-%d') }}</td>
+              <td>{{ e.category or '—' }}</td>
+              <td>{{ e.description or '—' }}</td>
+              <td class="text-end">₹{{ "%.2f"|format(e.expense) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <!-- Export Buttons -->
+      <div class="mt-3">
+        <button class="btn btn-outline-secondary btn-sm">Export PDF</button>
+        <button class="btn btn-outline-secondary btn-sm">Export Excel</button>
+        <button class="btn btn-outline-secondary btn-sm">Export CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const pieLabels = {{ cat_labels|tojson }};
+const pieValues = {{ cat_values|tojson }};
+const lineLabels = {{ daily_labels|tojson }};
+const lineValues = {{ daily_values|tojson }};
+const barLabels = {{ monthly_labels|tojson }};
+const barValues = {{ monthly_values|tojson }};
+
+new Chart(document.getElementById('pieChart').getContext('2d'), {
+  type: 'pie',
+  data: { labels: pieLabels, datasets: [{ data: pieValues, backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#0dcaf0','#6f42c1','#fd7e14','#6c757d'] }] },
+  options: { responsive:true, plugins:{legend:{position:'bottom'}} }
+});
+new Chart(document.getElementById('lineChart').getContext('2d'), {
+  type: 'line',
+  data: { labels: lineLabels, datasets: [{ label: 'Daily Spend', data: lineValues, borderColor: '#007bff', backgroundColor: 'rgba(0,123,255,0.08)', tension: 0.3, fill: true }] },
+  options: { responsive: true, plugins:{legend:{display:false}} }
+});
+new Chart(document.getElementById('barChart').getContext('2d'), {
+  type: 'bar',
+  data: { labels: barLabels, datasets: [{ label: 'Monthly Total', data: barValues, backgroundColor: '#198754' }] },
+  options: { responsive:true, plugins:{legend:{display:false}} }
+});
+</script>
+{% endblock %}

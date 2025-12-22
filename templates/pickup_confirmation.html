@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-lg rounded-4 overflow-hidden">
+                <!-- Header with Success Icon -->
+                <div class="bg-success text-white text-center py-5">
+                    <div class="display-1 mb-3">
+                        <i class="bi bi-check-circle-fill"></i>
+                    </div>
+                    <h2 class="fw-bold">Order Saved!</h2>
+                    <p class="mb-0 opacity-75">Pickup Confirmation Receipt</p>
+                </div>
+
+                <div class="card-body p-4 p-md-5">
+                    <!-- Receipt Details Box -->
+                    <div class="bg-light rounded-4 p-4 mb-4 border" id="receiptContent">
+                        <div class="text-center mb-4 border-bottom pb-3">
+                            <h4 class="fw-bold mb-0">SHOECLINIC</h4>
+                            <small class="text-muted text-uppercase letter-spacing-1">Digital Receipt</small>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="small text-muted d-block">Job ID</label>
+                                <span class="fw-bold">{{ order.job_id }}</span>
+                            </div>
+                            <div class="col-6 text-end">
+                                <label class="small text-muted d-block text-primary fw-bold">Expected Delivery</label>
+                                <span class="fw-bold text-primary">{{ order.drop_date.strftime('%d-%m-%Y') if
+                                    order.drop_date else 'TBA' }}</span>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <small class="text-muted">Pickup Date: {{ order.pickup_date.strftime('%d-%m-%Y')
+                                    }}</small>
+                            </div>
+                            <div class="col-12 mt-3">
+                                <label class="small text-muted d-block">Customer Name</label>
+                                <span class="fw-bold fs-5">{{ order.customer_name }}</span>
+                            </div>
+                            <div class="col-6 mt-3">
+                                <label class="small text-muted d-block">Mobile</label>
+                                <span>{{ order.mobile }}</span>
+                            </div>
+                            <div class="col-6 text-end mt-3">
+                                <label class="small text-muted d-block">Items</label>
+                                <span>{{ order.item_count }}</span>
+                            </div>
+                        </div>
+
+                        {# Condition/Defects Section #}
+                        {% set has_defects = false %}
+                        {% for item in order.items %}
+                        {% if item.defects %}{% set has_defects = true %}{% endif %}
+                        {% endfor %}
+
+                        {% if has_defects %}
+                        <div class="mt-4 p-3 bg-warning-subtle rounded-3 border border-warning-subtle">
+                            <h6 class="small fw-bold text-uppercase mb-2"><i class="bi bi-shield-check me-1"></i>
+                                Condition Report</h6>
+                            <ul class="list-unstyled mb-0">
+                                {% for item in order.items %}
+                                {% if item.defects %}
+                                <li class="small mb-1">
+                                    <span class="fw-bold">{{ item.product_name or 'Item' }}:</span> {{ item.defects }}
+                                </li>
+                                {% endif %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+
+                        <div class="border-top mt-4 pt-3 d-flex justify-content-between align-items-center">
+                            <span class="fw-bold fs-5">TOTAL PRICE</span>
+                            <span class="fw-bold fs-4 text-primary">₹{{ order.price }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-grid gap-3">
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <a href="https://wa.me/{{ order.mobile if order.mobile.startswith('+') else '+91' + order.mobile }}?text={{ encoded_msg }}"
+                                    target="_blank" class="btn btn-success w-100 rounded-pill py-2 shadow-sm">
+                                    <i class="bi bi-whatsapp me-1"></i> WhatsApp
+                                </a>
+                            </div>
+                            <div class="col-6">
+                                <a href="sms:{{ order.mobile }}?body={{ encoded_msg }}"
+                                    class="btn btn-info text-white w-100 rounded-pill py-2 shadow-sm">
+                                    <i class="bi bi-chat-dots me-1"></i> SMS
+                                </a>
+                            </div>
+                        </div>
+
+                        <button onclick="copyToClipboard()" class="btn btn-outline-dark rounded-pill py-2">
+                            <i class="bi bi-clipboard me-1"></i> Copy Details
+                        </button>
+
+                        <a href="{{ url_for('tsc_dashboard') }}"
+                            class="btn btn-primary rounded-pill py-3 mt-2 shadow-sm">
+                            <i class="bi bi-speedometer2 me-1"></i> Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+
+                <div class="card-footer bg-white border-0 text-center pb-4">
+                    <small class="text-muted italic">Share this receipt with the customer for their proof of
+                        pickup.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="msgBuffer" style="display:none;">{{ msg }}</div>
+
+<script>
+    function copyToClipboard() {
+        const text = document.getElementById('msgBuffer').innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Receipt details copied to clipboard! ✅');
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+        });
+    }
+</script>
+
+<style>
+    .letter-spacing-1 {
+        letter-spacing: 2px;
+    }
+
+    .italic {
+        font-style: italic;
+    }
+
+    .rounded-4 {
+        border-radius: 1.5rem !important;
+    }
+
+    .shadow-lg {
+        box-shadow: 0 1rem 3rem rgba(0, 0, 0, .175) !important;
+    }
+</style>
+{% endblock %}

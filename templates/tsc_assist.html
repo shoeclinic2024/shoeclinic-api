@@ -1,0 +1,467 @@
+<!-- TSC Assist Chatbot -->
+<div id="tsc-assist-trigger" class="tsc-assist-trigger shadow-lg">
+    <img src="{{ url_for('static', filename='images/chatbot_avatar.jpg') }}" alt="Assist"
+        style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">
+    <span class="pulse"></span>
+</div>
+
+<div id="tsc-assist-window" class="tsc-assist-window shadow-lg d-none">
+    <div class="tsc-assist-header">
+        <div class="d-flex align-items-center">
+            <div class="assist-avatar overflow-hidden">
+                <img src="{{ url_for('static', filename='images/chatbot_avatar.jpg') }}" alt="TSC Assist"
+                    class="img-fluid">
+            </div>
+            <div class="ms-2">
+                <h6 class="mb-0 fw-bold">TSC Assist</h6>
+                <small class="opacity-75">Online | Powered by AI</small>
+            </div>
+        </div>
+        <button id="close-assist" class="btn btn-link text-white p-0"><i class="bi bi-dash-lg"></i></button>
+    </div>
+
+    <div class="tsc-assist-body" id="assist-chat-body">
+        <div class="message-wrapper bot-wrapper">
+            <div class="msg-avatar">
+                <img src="{{ url_for('static', filename='images/chatbot_avatar.jpg') }}" alt="Bot">
+            </div>
+            <div class="message bot-message">
+                Hi <strong>{{ current_user.username }}</strong>! I'm TSC Assist. How can I help you today?
+            </div>
+        </div>
+        <div class="options-container" id="initial-options">
+            {% if current_user.role in ['admin', 'super_admin'] %}
+            <button class="btn btn-sm btn-outline-primary rounded-pill mb-2"
+                onclick="handleOption('stats_pending')">Orders Pending?</button>
+            <button class="btn btn-sm btn-outline-primary rounded-pill mb-2"
+                onclick="handleOption('stats_billed')">Today's Revenue?</button>
+            <button class="btn btn-sm btn-outline-primary rounded-pill mb-2"
+                onclick="handleOption('stats_today_pending')">Today's Pending?</button>
+            {% endif %}
+
+            <button class="btn btn-sm btn-outline-success rounded-pill mb-2" onclick="startFlow('add_order')">Add New
+                Order</button>
+            <button class="btn btn-sm btn-outline-info rounded-pill mb-2" onclick="startFlow('add_expense')">Add
+                Expense</button>
+            <button class="btn btn-sm btn-outline-secondary rounded-pill mb-2" onclick="startFlow('search')">Search
+                Order / Token</button>
+        </div>
+    </div>
+
+    <div class="tsc-assist-footer">
+        <div class="input-group">
+            <input type="text" id="assist-input" class="form-control border-0 bg-light shadow-none"
+                placeholder="Type a value..." disabled>
+            <button id="assist-send" class="btn btn-primary" disabled><i class="bi bi-send-fill"></i></button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .tsc-assist-trigger {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        width: 60px;
+        height: 60px;
+        background: #0d6efd;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        cursor: pointer;
+        z-index: 9999;
+        transition: transform 0.3s;
+    }
+
+    .tsc-assist-trigger:hover {
+        transform: scale(1.1);
+    }
+
+    .pulse {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background: rgba(13, 110, 253, 0.4);
+        animation: pulse-anim 2s infinite;
+    }
+
+    @keyframes pulse-anim {
+        0% {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        100% {
+            transform: scale(1.5);
+            opacity: 0;
+        }
+    }
+
+    .tsc-assist-window {
+        position: fixed;
+        bottom: 95px;
+        right: 25px;
+        width: 380px;
+        height: 550px;
+        max-width: 90vw;
+        max-height: 70vh;
+        background: white;
+        border-radius: 20px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 9999;
+        transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .tsc-assist-header {
+        background: #212529;
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .assist-avatar {
+        width: 40px;
+        height: 40px;
+        background: #343a40;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        overflow: hidden;
+    }
+
+    .assist-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .tsc-assist-body {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        background: #f8f9fa;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .message {
+        padding: 10px 15px;
+        border-radius: 15px;
+        font-size: 0.9rem;
+        max-width: 85%;
+        line-height: 1.4;
+    }
+
+    .bot-message {
+        background: white;
+        color: #333;
+        align-self: flex-start;
+        border-bottom-left-radius: 2px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        margin-left: 10px;
+    }
+
+    .user-message {
+        background: #0d6efd;
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 2px;
+        margin-right: 10px;
+    }
+
+    .message-wrapper {
+        display: flex;
+        align-items: flex-end;
+        margin-bottom: 5px;
+    }
+
+    .bot-wrapper {
+        flex-direction: row;
+    }
+
+    .user-wrapper {
+        flex-direction: row-reverse;
+    }
+
+    .msg-avatar {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        overflow: hidden;
+        flex-shrink: 0;
+        border: 1px solid #eee;
+    }
+
+    .msg-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .options-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 5px 0;
+        margin-left: 40px;
+    }
+
+    .tsc-assist-footer {
+        padding: 15px;
+        background: white;
+        border-top: 1px solid #eee;
+    }
+
+    .tsc-assist-footer input {
+        height: 40px;
+        border-radius: 20px 0 0 20px;
+    }
+
+    .tsc-assist-footer button {
+        border-radius: 0 20px 20px 0;
+        padding: 0 20px;
+    }
+
+    /* Typing Animation */
+    .typing {
+        display: flex;
+        gap: 4px;
+        padding: 5px 0;
+    }
+
+    .typing span {
+        width: 6px;
+        height: 6px;
+        background: #aaa;
+        border-radius: 50%;
+        animation: blink 1s infinite alternate;
+    }
+
+    @keyframes blink {
+        from {
+            opacity: 1;
+        }
+
+        to {
+            opacity: 0.3;
+        }
+    }
+</style>
+
+<script>
+    const assistTrigger = document.getElementById('tsc-assist-trigger');
+    const assistWindow = document.getElementById('tsc-assist-window');
+    const closeAssist = document.getElementById('close-assist');
+    const chatBody = document.getElementById('assist-chat-body');
+    const assistInput = document.getElementById('assist-input');
+    const assistSend = document.getElementById('assist-send');
+
+    let currentFlow = null;
+    let currentStep = 0;
+    let flowData = {};
+
+    const flows = {
+        'add_order': [
+            { field: 'name', q: "Got it! Let's add an order. What is the **Customer Name**?" },
+            { field: 'mobile', q: "And their **Mobile Number**?" },
+            { field: 'place', q: "Where are they from? (**Place**)" },
+            { field: 'product', q: "What **Product** (e.g. Shoes, Bag)?" },
+            { field: 'service', q: "What **Service** is needed?" },
+            { field: 'price', q: "What's the **Total Price**?" }
+        ],
+        'add_expense': [
+            { field: 'title', q: "Adding an expense. What is a short **Title** for this expense?" },
+            { field: 'category', q: "What is the **Category**? (e.g. Electricity, Fuel, Salary)" },
+            { field: 'amount', q: "How much is the **Amount**?" },
+            { field: 'description', q: "Any additional **Description**?" }
+        ],
+        'search': [
+            { field: 'term', q: "Enter the **Customer Name** or **Job ID** to search." }
+        ]
+    };
+
+    assistTrigger.addEventListener('click', () => {
+        assistWindow.classList.remove('d-none');
+        assistTrigger.classList.add('d-none');
+    });
+
+    closeAssist.addEventListener('click', () => {
+        assistWindow.classList.add('d-none');
+        assistTrigger.classList.remove('d-none');
+    });
+
+    // Auto-pop on home page
+    if (window.location.pathname === '/' || window.location.pathname === '/home') {
+        setTimeout(() => {
+            if (assistWindow.classList.contains('d-none')) {
+                assistTrigger.click();
+            }
+        }, 2000);
+    }
+
+    function addMessage(text, isUser = false) {
+        const wrapper = document.createElement('div');
+        wrapper.className = `message-wrapper ${isUser ? 'user-wrapper' : 'bot-wrapper'}`;
+
+        let avatarHtml = '';
+        if (!isUser) {
+            avatarHtml = `<div class="msg-avatar">
+                <img src="{{ url_for('static', filename='images/chatbot_avatar.jpg') }}" alt="Bot">
+            </div>`;
+        }
+
+        const div = document.createElement('div');
+        div.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+        div.innerHTML = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+        if (!isUser) wrapper.innerHTML = avatarHtml;
+        wrapper.appendChild(div);
+
+        chatBody.appendChild(wrapper);
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
+
+    function showTyping() {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-wrapper bot-wrapper typing-indicator';
+
+        const avatarHtml = `<div class="msg-avatar">
+            <img src="{{ url_for('static', filename='images/chatbot_avatar.jpg') }}" alt="Bot">
+        </div>`;
+
+        const div = document.createElement('div');
+        div.className = 'message bot-message';
+        div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+
+        wrapper.innerHTML = avatarHtml;
+        wrapper.appendChild(div);
+
+        chatBody.appendChild(wrapper);
+        chatBody.scrollTop = chatBody.scrollHeight;
+        return wrapper;
+    }
+
+    async function handleOption(type) {
+        addMessage(type.replace(/_/g, ' '), true);
+        const typing = showTyping();
+
+        try {
+            const res = await fetch('/api/tsc-assist/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: type })
+            });
+            const data = await res.json();
+            typing.remove();
+            addMessage(data.message);
+        } catch (e) {
+            typing.remove();
+            addMessage("Oops! I had trouble connecting to the server.");
+        }
+    }
+
+    function startFlow(name) {
+        currentFlow = name;
+        currentStep = 0;
+        flowData = {};
+        addMessage(name.replace(/_/g, ' '), true);
+        document.getElementById('initial-options').classList.add('d-none');
+
+        assistInput.disabled = false;
+        assistSend.disabled = false;
+        assistInput.focus();
+
+        addMessage(flows[name][0].q);
+    }
+
+    assistSend.addEventListener('click', processInput);
+    assistInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') processInput(); });
+
+    async function processInput() {
+        const val = assistInput.value.trim();
+        if (!val) return;
+
+        addMessage(val, true);
+        assistInput.value = '';
+
+        if (!currentFlow) {
+            addMessage("I'm not sure what you mean. Please select one of the options above!");
+            return;
+        }
+
+        const flowSteps = flows[currentFlow];
+        const step = flowSteps[currentStep];
+        flowData[step.field] = val;
+
+        currentStep++;
+
+        if (currentStep < flowSteps.length) {
+            addMessage(flowSteps[currentStep].q);
+        } else {
+            // End of flow
+            const typing = showTyping();
+            let endpoint = '/api/tsc-assist/submit-order';
+            if (currentFlow === 'add_expense') endpoint = '/api/tsc-assist/submit-expense';
+            if (currentFlow === 'search') endpoint = '/api/tsc-assist/query';
+
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...flowData, type: currentFlow })
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Server returned ${res.status}`);
+                }
+
+                const data = await res.json();
+                typing.remove();
+
+                if (data.status === 'success') {
+                    if (currentFlow === 'add_order') {
+                        addMessage(`Awesome! Order created successfully. The Job ID is **${data.job_id}**.`);
+                    } else if (currentFlow === 'add_expense') {
+                        addMessage("Expense has been recorded and sent for approval!");
+                    } else if (currentFlow === 'search') {
+                        addMessage(data.message);
+                    }
+                } else {
+                    addMessage("Something went wrong: " + (data.message || "Unknown error"));
+                }
+            } catch (e) {
+                typing.remove();
+                addMessage(`Communication Error: ${e.message}. Please check if you are still logged in.`);
+            }
+
+            resetToInitial();
+        }
+    }
+
+    function resetToInitial() {
+        currentFlow = null;
+        currentStep = 0;
+        assistInput.disabled = true;
+        assistSend.disabled = true;
+
+        setTimeout(() => {
+            addMessage("Is there anything else I can help you with?");
+            const opts = document.getElementById('initial-options').cloneNode(true);
+            opts.id = '';
+            opts.classList.remove('d-none');
+            chatBody.appendChild(opts);
+            chatBody.scrollTop = chatBody.scrollHeight;
+        }, 1000);
+    }
+</script>

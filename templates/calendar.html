@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1"><i class="bi bi-calendar-check-fill text-primary me-2"></i>Company Calendar</h3>
+            <p class="text-muted mb-0">Super Admin Control: Mark public holidays and office closures.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary rounded-pill px-4 shadow-sm" onclick="openHolidayModal(null, '', '')">
+                <i class="bi bi-plus-lg me-2"></i>Add Holiday
+            </button>
+            <a href="{{ url_for('admin_panel') }}" class="btn btn-outline-dark rounded-pill px-4">
+                <i class="bi bi-arrow-left me-2"></i>Admin Panel
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Calendar Grid -->
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center gap-3">
+                        <a href="{{ url_for('calendar', year=prev_year, month=prev_month) }}"
+                            class="btn btn-sm btn-outline-primary rounded-circle">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                        <h4 class="mb-0 fw-bold">{{ month_name }} {{ year }}</h4>
+                        <a href="{{ url_for('calendar', year=next_year, month=next_month) }}"
+                            class="btn btn-sm btn-outline-primary rounded-circle">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="calendar-grid">
+                        <div class="calendar-header">
+                            <div>Sun</div>
+                            <div>Mon</div>
+                            <div>Tue</div>
+                            <div>Wed</div>
+                            <div>Thu</div>
+                            <div>Fri</div>
+                            <div>Sat</div>
+                        </div>
+                        <div class="calendar-body">
+                            {% for week in month_days %}
+                            <div class="calendar-week">
+                                {% for day in week %}
+                                <div class="calendar-day {% if day == 0 %}empty{% endif %} {% if day == today_day %}today{% endif %} {% if day in holiday_map %}holiday{% endif %}"
+                                    {% if day !=0
+                                    %}onclick="openHolidayModal({{ day }}, '{{ holiday_map[day].name if day in holiday_map else '' }}', '{{ holiday_map[day].description if day in holiday_map else '' }}')"
+                                    {% endif %}>
+                                    {% if day != 0 %}
+                                    <span class="day-number">{{ day }}</span>
+                                    {% if day in holiday_map %}
+                                    <div class="holiday-pill">
+                                        <i class="bi bi-stars"></i> {{ holiday_map[day].name }}
+                                    </div>
+                                    {% endif %}
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar / Statistics -->
+        <div class="col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-primary text-white mb-4">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3">Holiday Manager</h5>
+                    <p class="small opacity-75">Click on any date in the calendar to mark it as a Public Holiday or
+                        Office Closure. You can also edit existing holidays by clicking on them.</p>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="mb-0 fw-bold">Holidays in {{ month_name }}</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for day, h in holiday_map.items() %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-bold">{{ h.name }}</div>
+                                <small class="text-muted">{{ day }} {{ month_name }}</small>
+                            </div>
+                            <form action="{{ url_for('delete_holiday', id=h.id) }}" method="POST"
+                                onsubmit="return confirm('Remove this holiday?');">
+                                <button type="submit" class="btn btn-sm text-danger border-0">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted small">
+                            No holidays marked for this month.
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <!-- Kerala Govt. Suggestions -->
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mt-4">
+                <div
+                    class="card-header bg-dark text-white py-3 border-0 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold">Kerala Govt. Holidays ({{ year }})</h6>
+                    <span class="badge bg-primary">Suggestions</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for sug_day, sug_name in kerala_suggestions %}
+                        <div
+                            class="list-group-item d-flex justify-content-between align-items-center bg-light bg-opacity-50">
+                            <div>
+                                <div class="fw-bold small">{{ sug_name }}</div>
+                                <small class="text-muted">{{ sug_day }} {{ month_name }}</small>
+                            </div>
+                            {% if sug_day in holiday_map %}
+                            <span class="badge bg-success rounded-pill"><i class="bi bi-check"></i> Marked</span>
+                            {% else %}
+                            <button class="btn btn-sm btn-outline-dark rounded-pill px-3 py-1"
+                                style="font-size: 0.7rem;"
+                                onclick="openHolidayModal('{{ sug_day }}', '{{ sug_name }}', 'Kerala Govt. Public Holiday')">
+                                Mark
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <div class="p-4 text-center text-muted small">
+                            No Kerala Govt. holidays in this month.
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="card-footer bg-white border-0 py-2">
+                    <small class="text-muted" style="font-size: 0.7rem;">* Religious dates are subject to moon
+                        sighting.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mark Holiday Modal -->
+<div class="modal fade" id="holidayModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold" id="modalTitle">Mark Holiday</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST">
+                <div class="modal-body">
+                    <div id="modalDateInputGroup" class="mb-3">
+                        <label class="form-label small fw-bold text-muted">HOLIDAY DATE</label>
+                        <input type="date" name="date" id="modalDateInput"
+                            class="form-control border-0 bg-light shadow-none" required>
+                    </div>
+                    <div id="modalDisplayDateGroup" class="mb-3 d-none">
+                        <label class="form-label small fw-bold text-muted">DATE</label>
+                        <h5 id="modalDisplayDate" class="fw-bold"></h5>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">HOLIDAY NAME</label>
+                        <input type="text" name="name" id="modalNameInput"
+                            class="form-control border-0 bg-light shadow-none" placeholder="e.g. Christmas Day"
+                            required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">DESCRIPTION (OPTIONAL)</label>
+                        <textarea name="description" id="modalDescInput"
+                            class="form-control border-0 bg-light shadow-none" rows="3"
+                            placeholder="Additional details..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0 text-center">
+                    <button type="submit" class="btn btn-primary rounded-pill px-5 shadow-sm">Save Holiday</button>
+                    <button type="button" class="btn btn-light rounded-pill px-4"
+                        data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .calendar-grid {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #eee;
+    }
+
+    .calendar-header {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        background: #f8f9fa;
+        text-align: center;
+        font-weight: bold;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+
+    .calendar-week {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        min-height: 120px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .calendar-day {
+        border-right: 1px solid #eee;
+        padding: 10px;
+        position: relative;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .calendar-day:last-child {
+        border-right: none;
+    }
+
+    .calendar-day:hover:not(.empty) {
+        background: #f1f3f5;
+    }
+
+    .calendar-day.empty {
+        background: #fcfcfc;
+        cursor: default;
+    }
+
+    .calendar-day.today {
+        background: rgba(13, 110, 253, 0.05);
+    }
+
+    .calendar-day.today .day-number {
+        background: #0d6efd;
+        color: white;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+    }
+
+    .day-number {
+        font-weight: bold;
+        color: #adb5bd;
+    }
+
+    .calendar-day.holiday {
+        background: rgba(255, 193, 7, 0.1);
+    }
+
+    .holiday-pill {
+        background: #ffc107;
+        color: #000;
+        font-size: 0.75rem;
+        padding: 4px 8px;
+        border-radius: 4px;
+        margin-top: 5px;
+        font-weight: bold;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+</style>
+
+<script>
+    function openHolidayModal(day, name, desc) {
+        const year = "{{ year }}";
+        const month = String("{{ month }}").padStart(2, '0');
+
+        if (day) {
+            const dayStr = String(day).padStart(2, '0');
+            const fullDate = `${year}-${month}-${dayStr}`;
+            document.getElementById('modalDateInput').value = fullDate;
+            document.getElementById('modalDisplayDate').innerText = `${dayStr} {{ month_name }} ${year}`;
+            document.getElementById('modalDateInput').type = "hidden";
+            document.getElementById('modalDateInputGroup').classList.add('d-none');
+            document.getElementById('modalDisplayDateGroup').classList.remove('d-none');
+        } else {
+            document.getElementById('modalDateInput').value = "";
+            document.getElementById('modalDateInput').type = "date";
+            document.getElementById('modalDateInputGroup').classList.remove('d-none');
+            document.getElementById('modalDisplayDateGroup').classList.add('d-none');
+        }
+
+        document.getElementById('modalNameInput').value = name;
+        document.getElementById('modalDescInput').value = desc;
+
+        if (name) {
+            document.getElementById('modalTitle').innerText = 'Edit Holiday';
+        } else {
+            document.getElementById('modalTitle').innerText = 'Mark Holiday';
+        }
+
+        new bootstrap.Modal(document.getElementById('regularizeModal_placeholder') || document.getElementById('holidayModal')).show();
+    }
+</script>
+{% endblock %}

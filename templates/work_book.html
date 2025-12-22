@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Work Book - THE SHOE CLINIC</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      background-color: #343a40;
+      color: white;
+      z-index: 2;
+    }
+
+    .scroll-container {
+      overflow-x: auto;
+      border: 1px solid #dee2e6;
+    }
+
+    .row-started {
+      background-color: #198754 !important;  /* dark green */
+      color: white !important;
+      font-weight: bold;
+    }
+
+    .row-completed {
+      background-color: #dc3545 !important;  /* Bootstrap red */
+      color: white !important;
+      font-weight: bold;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn {
+      transition: all 0.15s ease-in-out;
+    }
+
+    input[type="radio"] {
+      transform: scale(1.3);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h3 class="mb-4 text-primary">📒 Work Book</h3>
+
+  <!-- Control Buttons -->
+  <div class="mb-3">
+    <button id="startBtn" class="btn btn-success me-2">▶ Start</button>
+    <button id="stopBtn" class="btn btn-danger">⏹ Stop</button>
+  </div>
+
+  <!-- Table -->
+  <div class="scroll-container">
+    <table class="table table-bordered text-center align-middle">
+
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Sl. No</th>
+          <th>Technician</th>
+          <th>Job ID</th>
+          <th>Name</th>
+          <th>Drop Date</th>
+          <th>Place</th>
+          <th>Service Note</th>
+          <th>Status</th>
+          <th>Rewash Count</th>
+          <th>Mobile</th>
+          <th>Product</th>
+          <th>Price</th>
+          <th>Item Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr>
+          <td><input type="radio" name="select_task" title="Select this task"></td>
+          <td>{{ loop.index }}</td>
+          <td>{{ order.technician }}</td>
+          <td>{{ order.job_id }}</td>
+          <td>{{ order.name }}</td>
+          <td>{{ order.drop_date | format_date }}</td>
+          <td>{{ order.place }}</td>
+          <td>{{ order.service_note }}</td>
+          <td>{{ order.status }}</td>
+          <td>{{ order.re_work_count or '' }}</td>
+          <td>{{ order.mobile }}</td>
+          <td>{{ order.product_name }}</td>
+          <td>{{ order.price }}</td>
+          <td>{{ order.item_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Script -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const startBtn = document.getElementById("startBtn");
+      const stopBtn = document.getElementById("stopBtn");
+      let selectedRow = null;
+
+      startBtn.addEventListener("click", () => {
+        const selected = document.querySelector('input[name="select_task"]:checked');
+        if (!selected) {
+          alert("Please select a task to start.");
+          return;
+        }
+
+        const row = selected.closest("tr");
+        // Skip if already completed
+        if (row.classList.contains("row-completed")) {
+          alert("This task is already completed.");
+          return;
+        }
+
+        // Remove 'row-started' from other rows, but keep 'row-completed'
+        document.querySelectorAll("tbody tr").forEach(r => {
+          if (!r.classList.contains("row-completed")) {
+            r.classList.remove("row-started");
+          }
+        });
+
+        row.classList.add("row-started");
+        selectedRow = row;
+      });
+
+      stopBtn.addEventListener("click", () => {
+        if (!selectedRow) {
+          alert("Please start a task before stopping.");
+          return;
+        }
+
+        selectedRow.classList.remove("row-started");
+        selectedRow.classList.add("row-completed");
+        selectedRow = null;
+      });
+    });
+  </script>
+
+</body>
+</html>

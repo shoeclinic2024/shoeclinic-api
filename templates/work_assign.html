@@ -1,0 +1,964 @@
+{% extends "dashboard.html" %}
+{% block content %}
+<!-- Header Section -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h4 class="mb-1">
+      <i class="bi bi-briefcase-fill text-primary"></i> Work Assignment Dashboard
+    </h4>
+    <p class="text-muted mb-0">
+      <i class="bi bi-clock"></i> {{ current_date.strftime('%B %d, %Y') }}
+    </p>
+  </div>
+  <a href="{{ url_for('main.admin_panel') }}" class="btn btn-outline-primary">
+    <i class="bi bi-arrow-left-circle"></i> Back to Admin
+  </a>
+</div>
+
+<!-- Quick Assign Panel -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-primary text-white">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-lightning-fill"></i> Quick Assign
+    </h5>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for emp in employees %}
+      <div class="col-md-2">
+        <button class="btn btn-outline-primary btn-sm w-100 quick-assign-btn" 
+                data-tech="{{ emp.username }}"
+                onclick="quickAssign('{{ emp.username }}')">
+          <i class="bi bi-person-fill"></i> {{ emp.username }}
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card bg-primary bg-gradient text-white">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-0">Total Orders</h6>
+          <h3 class="mb-0">{{ orders|length }}</h3>
+        </div>
+        <i class="bi bi-cart-fill fs-1 opacity-50"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-success bg-gradient text-white">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-0">Assigned</h6>
+          <h3 class="mb-0">{{ orders|selectattr('technician')|list|length }}</h3>
+        </div>
+        <i class="bi bi-person-check-fill fs-1 opacity-50"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-warning bg-gradient">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-0">Pending</h6>
+          <h3 class="mb-0">{{ orders|rejectattr('technician')|list|length }}</h3>
+        </div>
+        <i class="bi bi-hourglass-split fs-1 opacity-50"></i>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-info bg-gradient text-white">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+          <h6 class="mb-0">Technicians</h6>
+          <h3 class="mb-0">{{ employees|length }}</h3>
+        </div>
+        <i class="bi bi-people-fill fs-1 opacity-50"></i>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Orders Overview: Kanban columns (Pend | Deep Clean | Re-wash | Done | Pack Pend | Ready to Deliver) -->
+<div class="row g-4 mb-4">
+  <!-- Unassigned (was Pend) -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+        <span>Unassigned</span>
+        <span class="badge bg-light text-dark">{{ pend_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="pendList" class="kanban-list">
+          {% for order in pend_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">
+                  {{ order.drop_date | format_date if order.drop_date else '' }}
+                </span>
+              </div>
+              <div class="small text-muted">{{ order.name }} • {{ order.product_name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-secondary">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Deep Clean -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <span>Deep Clean</span>
+        <span class="badge bg-light text-dark">{{ deep_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="deepList" class="kanban-list">
+          {% for order in deep_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">
+                  {{ order.service_date | format_date if order.service_date else '' }}
+                </span>
+              </div>
+              <div class="small text-muted">{{ order.name }} • {{ order.product_name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-secondary">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Re-wash -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+        <span>Re-wash</span>
+        <span class="badge bg-light text-dark">{{ rewash_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="rewashList" class="kanban-list">
+          {% for order in rewash_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">{{ order.drop_date | format_date }}</span>
+              </div>
+              <div class="small text-muted">{{ order.name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-danger">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Done -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <span>Done</span>
+        <span class="badge bg-light text-dark">{{ done_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="doneList" class="kanban-list">
+          {% for order in done_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">{{ order.drop_date | format_date }}</span>
+              </div>
+              <div class="small text-muted">{{ order.name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-success">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Pack Pend -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+        <span>Pack Pend</span>
+        <span class="badge bg-light text-dark">{{ pack_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="packPendList" class="kanban-list">
+          {% for order in pack_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">{{ order.drop_date | format_date }}</span>
+              </div>
+              <div class="small text-muted">{{ order.name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-info">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Ready to Deliver -->
+  <div class="col-md-2">
+    <div class="card shadow-sm h-100">
+      <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+        <span>Ready to Deliver</span>
+        <span class="badge bg-light text-dark">{{ ready_orders|length }}</span>
+      </div>
+      <div class="card-body p-2">
+        <div id="readyList" class="kanban-list">
+          {% for order in ready_orders %}
+          <div class="card mb-2 kanban-card" data-job="{{ order.job_id }}">
+            <div class="card-body p-2 small">
+              <div class="d-flex justify-content-between">
+                <strong>{{ order.job_id }}</strong>
+                <span class="text-muted small">{{ order.drop_date | format_date }}</span>
+              </div>
+              <div class="small text-muted">{{ order.name }}</div>
+              <div class="mt-2 d-flex justify-content-between">
+                <span class="badge bg-success">{{ order.status }}</span>
+                <small class="text-muted tech-name">{{ order.technician or 'Unassigned' }}</small>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Modal (shown when a card is moved) -->
+<div class="modal fade" id="assignModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form id="assignFormKanban">
+        <div class="modal-header">
+          <h5 class="modal-title">Assign Technician</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modalJobId" name="job_id">
+          <div class="mb-2">
+            <label class="form-label small">Work Stage</label>
+            <input type="text" id="modalStage" class="form-control form-control-sm" readonly>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Technician</label>
+            <select id="modalTech" name="technician" class="form-select form-select-sm">
+              <option value="">Unassigned</option>
+              {% for emp in employees %}
+                <option value="{{ emp.username }}">{{ emp.username }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small">Status</label>
+            <select id="modalStatus" name="status" class="form-select form-select-sm">
+              <option value="">(leave)</option>
+              <option value="wip">WIP</option>
+              <option value="re-wash">Re-wash</option>
+              <option value="ready_to_deliver">Ready to Deliver</option>
+              <option value="done">Done</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Assign Form -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header bg-light">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-pencil-square"></i> Assign
+    </h5>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('main.update_technician') }}" id="assignForm" class="small-form">
+      <!-- Hidden input for job IDs -->
+      <div id="jobIdsContainer"></div>
+      
+      <div class="row g-3">
+        <div class="col-md-2">
+          <label for="edit_service_date" class="form-label small">Service Date</label>
+          <input type="date" id="edit_service_date" name="service_date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label for="edit_drop_date" class="form-label small">Drop Date</label>
+          <input type="date" id="edit_drop_date" name="drop_date" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label for="edit_token" class="form-label small">Token</label>
+          <input type="text" id="edit_token" name="token" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label for="status" class="form-label">Status</label>
+          <select class="form-select" id="status" name="status">
+              <option value="">Select Status</option>
+              <option value="yts">yts</option>
+              <option value="wip">wip</option>
+              <option value="done">done</option>
+              <option value="re wash">re wash</option>
+              <option value="pack">pack pend</option>
+              <option value="ready to deliver">ready to deliver</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label for="edit_service_note" class="form-label small">Service Note</label>
+          <input type="text" id="edit_service_note" name="service_note" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label for="edit_technician" class="form-label small">Technician</label>
+          <select id="edit_technician" name="technician" class="form-select form-select-sm">
+            <option value="">Unassigned</option>
+            {% for emp in employees %}
+              <option value="{{ emp.username }}">{{ emp.username }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="text-end mt-3">
+        <button type="button" class="btn btn-outline-secondary btn-sm me-2" id="undoBtn" onclick="resetAssignForm()" disabled>
+          <i class="bi bi-arrow-counterclockwise"></i> Undo Changes
+        </button>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-check2-circle"></i> Update Assignments
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Orders Table -->
+<div class="card shadow-sm">
+  <div class="card-header bg-light">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5 class="card-title mb-0">
+        <i class="bi bi-table"></i> Work Orders
+      </h5>
+      <div class="d-flex gap-2">
+        <div class="input-group input-group-sm" style="width: 200px;">
+          <span class="input-group-text">
+            <i class="bi bi-search"></i>
+          </span>
+          <input type="text" class="form-control" id="orderSearch" placeholder="Search orders...">
+        </div>
+        <select class="form-select form-select-sm" id="serviceFilter" style="width: 150px;">
+          <option value="">All Services</option>
+          <option value="wash">Wash</option>
+          <option value="paint">Paint</option>
+          <option value="repair">Repair</option>
+        </select>
+        <select class="form-select form-select-sm" id="sortBy" style="width: 150px;">
+          <option value="date_asc">Date ↑</option>
+          <option value="date_desc">Date ↓</option>
+          <option value="urgent">Urgent First</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="assignTable" class="table table-hover align-middle text-nowrap mb-0">
+        <thead class="table-light text-center sticky-top">
+          <tr>
+            <th><input type="checkbox" id="selectAll"></th>
+            <th>SL No</th>
+            <th>Job ID</th>
+            <th>Name</th>
+            <th>Pickup Date</th>
+            <th>Service Date</th>
+            <th>Drop Date</th>
+            <th>Service Note</th>
+            <th>Status</th>
+            <th>Product</th>
+            <th>Token</th>
+            <th>Count</th>
+            <th>Technician</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in orders %}
+          <tr id="row_{{ order.job_id }}">
+            <td class="text-center">
+              <input type="checkbox" class="selectRow" value="{{ order.job_id }}" onclick="handleSelect(this)">
+            </td>
+            <td>{{ order.id }}</td>
+            <td>{{ order.job_id }}</td>
+            <td>{{ order.name }}</td>
+            <td>{{ order.pickup_date | format_date }}</td>
+            <td>{{ order.service_date | format_date }}</td>
+            <td>{{ order.drop_date | format_date }}</td>
+            <td>{{ order.service_note }}</td>
+            <td><span class="badge bg-secondary">{{ order.status }}</span></td>
+            <td>{{ order.product_name }}</td>
+            <td>{{ order.token }}</td>
+            <td>{{ order.item_count }}</td>
+            <td>{{ order.technician }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Toast Notifications -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <!-- Success Toast -->
+  <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        <span id="successMessage"></span>
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+  
+  <!-- Undo Toast -->
+  <div id="undoToast" class="toast align-items-center text-white bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body">
+        <i class="bi bi-check-circle-fill me-2"></i> Changes have been undone
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<!-- Add this to your existing script section -->
+<script>
+    // Embed role-specific tech lists (server must pass deep_techs, rewash_techs, pack_techs)
+    const TECH_LISTS = {
+      deep: {{ deep_techs | tojson | safe }},
+      rewash: {{ rewash_techs | tojson | safe }},
+      pack: {{ pack_techs | tojson | safe }}
+    };
+
+    function quickAssign(technician) {
+      const selectedBoxes = document.querySelectorAll('.selectRow:checked');
+      if (selectedBoxes.length === 0) {
+        alert('Please select at least one order');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('technician', technician);
+      selectedBoxes.forEach(box => {
+        formData.append('job_ids[]', box.value);
+      });
+
+      fetch('/update_technician', {
+        method: 'POST',
+        body: formData
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.updates) {
+          selectedBoxes.forEach(box => {
+            const jobId = box.value;
+            const row = box.closest('tr');
+            const update = data.updates[jobId];
+            if (row && update) {
+              row.cells[12].textContent = update.technician || 'Unassigned';
+              row.classList.remove('table-warning');
+              box.checked = false;
+            }
+          });
+
+          // Show success message
+          const successToast = document.getElementById('successToast');
+          const successMessage = document.getElementById('successMessage');
+          successMessage.textContent = `Orders assigned to ${technician}!`;
+          const bsToast = new bootstrap.Toast(successToast);
+          bsToast.show();
+
+          // Update kanban cards if they exist
+          updateKanbanCards(data.updates);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to assign orders: ' + error.message);
+      });
+    }
+
+    function updateKanbanCards(updates) {
+      Object.entries(updates).forEach(([jobId, update]) => {
+        const card = document.querySelector(`.kanban-card[data-job="${jobId}"]`);
+        if (card) {
+          const techName = card.querySelector('.tech-name');
+          if (techName) {
+            techName.textContent = update.technician || 'Unassigned';
+          }
+          if (update.status) {
+            const badge = card.querySelector('.badge');
+            if (badge) {
+              badge.textContent = update.status;
+            }
+          }
+        }
+      });
+    }
+    let selectedJobs = [];
+    let originalData = {};
+
+    function handleSelect(checkbox) {
+      const jobId = checkbox.value;
+      const row = document.getElementById('row_' + jobId);
+      const cells = row.getElementsByTagName('td');
+
+      if (checkbox.checked) {
+        // Fill form fields with selected row's data
+        document.getElementById('edit_service_date').value = formatDateForInput(cells[5].innerText.trim());
+        document.getElementById('edit_drop_date').value = formatDateForInput(cells[6].innerText.trim());
+        document.getElementById('edit_token').value = cells[10].innerText.trim();
+        document.getElementById('status').value = cells[8].innerText.trim().toLowerCase().replace(/\s/g, '_');
+        document.getElementById('edit_service_note').value = cells[7].innerText.trim();
+        document.getElementById('edit_technician').value = cells[12].innerText.trim();
+      } else {
+        clearFormFields();
+      }
+
+      if (!storedUndo) return;
+
+      Object.keys(storedUndo).forEach(jobId => {
+        const row = document.getElementById('row_' + jobId);
+        const cells = row.getElementsByTagName('td');
+        const data = storedUndo[jobId];
+
+        cells[5].innerText = data.service_date;
+        cells[6].innerText = data.drop_date;
+        cells[7].innerText = data.service_note;
+        cells[8].innerHTML = `<span class="badge bg-secondary">${data.status}</span>`;
+        cells[10].innerText = data.token;
+        cells[12].innerText = data.technician;
+
+        row.classList.remove('table-warning');
+        row.querySelector('.selectRow').checked = false;
+      });
+
+      selectedJobs = [];
+      clearFormFields();
+      updateUndoSnapshot();
+      toggleUndoButton();
+      localStorage.removeItem("undo_assign_data");
+      showUndoToast();
+    }
+
+    // Helper to convert dd-mm-yyyy to yyyy-mm-dd for input[type=date]
+    function formatDateForInput(ddmmyyyy) {
+      const parts = ddmmyyyy.split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      return '';
+    }
+
+    function formatDateInput(ddmmyyyy) {
+      const parts = ddmmyyyy.split('-');
+      return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : '';
+    }
+
+    function showUndoToast() {
+      const toast = new bootstrap.Toast(document.getElementById('undoToast'));
+      toast.show();
+    }
+
+    document.getElementById('selectAll')?.addEventListener('change', function () {
+      const checkboxes = document.querySelectorAll('.selectRow');
+      selectedJobs = [];
+      originalData = {};
+
+      checkboxes.forEach(cb => {
+        cb.checked = this.checked;
+        const jobId = cb.value;
+        const row = document.getElementById('row_' + jobId);
+        const cells = row.getElementsByTagName('td');
+
+        if (this.checked) {
+          row.classList.add('table-warning');
+          selectedJobs.push(jobId);
+          originalData[jobId] = {
+            service_date: cells[5].innerText.trim(),
+            drop_date: cells[6].innerText.trim(),
+            service_note: cells[7].innerText.trim(),
+            status: cells[8].innerText.trim(),
+            token: cells[10].innerText.trim(),
+            technician: cells[12].innerText.trim()
+          };
+        } else {
+          row.classList.remove('table-warning');
+        }
+      });
+
+      updateFormFields();
+      updateUndoSnapshot();
+      toggleUndoButton();
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      if (localStorage.getItem("undo_assign_data")) {
+        document.getElementById('undoBtn').disabled = false;
+      }
+    });
+
+    document.getElementById('assignForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const selectedBoxes = document.querySelectorAll('.selectRow:checked');
+      if (selectedBoxes.length === 0) {
+          alert('Please select at least one order');
+          return;
+      }
+
+      const formData = new FormData(this);
+      selectedBoxes.forEach(box => {
+          formData.append('job_ids[]', box.value);
+      });
+
+      const submitBtn = this.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="bi bi-arrow-sync-fill spin"></i> Updating...';
+
+      fetch('/update_technician', {
+          method: 'POST',
+          body: formData
+      })
+      .then(async response => {
+          const contentType = response.headers.get("content-type");
+          if (!response.ok) {
+              throw new Error("Server error: " + response.status);
+          }
+          if (contentType && contentType.indexOf("application/json") !== -1) {
+              return response.json();
+          } else {
+              const text = await response.text();
+              throw new Error("Server did not return JSON. Response: " + text.substring(0, 200));
+          }
+      })
+      .then(data => {
+          console.log('Response:', data);
+
+          // Update table rows for each job
+          if (data.updates) {
+            selectedBoxes.forEach(box => {
+              const jobId = box.value;
+              const row = box.closest('tr');
+              const update = data.updates[jobId];
+              if (row && update) {
+                if (update.service_date) row.cells[5].textContent = update.service_date;
+                if (update.drop_date) row.cells[6].textContent = update.drop_date;
+                if (update.service_note) row.cells[7].textContent = update.service_note;
+                if (update.status) {
+                    row.cells[8].innerHTML = `<span class="badge bg-secondary">${update.status}</span>`;
+                }
+                if (update.token) row.cells[10].textContent = update.token;
+                // Always update technician cell, show "Unassigned" if blank/null
+                if (!update.technician) {
+                  row.cells[12].textContent = "Unassigned";
+                } else {
+                  row.cells[12].textContent = update.technician;
+                }
+              }
+              row.classList.remove('table-warning');
+              box.checked = false;
+            });
+          }
+
+          // Show success message
+          const successToast = document.getElementById('successToast');
+          const successMessage = document.getElementById('successMessage');
+          successMessage.textContent = "Orders updated successfully!";
+          const bsToast = new bootstrap.Toast(successToast);
+          bsToast.show();
+      })
+      .catch(error => {
+          console.error('Error:', error);
+          alert('Failed to update orders: ' + error.message);
+      })
+      .finally(() => {
+          // Reset form state
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="bi bi-check2-circle"></i> Update Assignments';
+          
+          // Clear form
+          this.reset();
+          document.getElementById('selectAll').checked = false;
+          selectedJobs = [];
+          originalData = {};
+          toggleUndoButton();
+      });
+    });
+
+    // Add spinning animation style
+    const style = document.createElement('style');
+    style.textContent = `
+        .spin {
+            animation: rotate 1s linear infinite;
+        }
+        @keyframes rotate {
+            100% { transform: rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+
+    // Improved search, filter, and sort functionality
+    function filterAndSortOrders() {
+      const searchTerm = document.getElementById('orderSearch').value.toLowerCase();
+      const serviceFilter = document.getElementById('serviceFilter').value.toLowerCase();
+      const sortBy = document.getElementById('sortBy').value;
+      const rows = Array.from(document.querySelectorAll('#assignTable tbody tr'));
+      
+      // Filter rows
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const services = row.querySelector('[data-services]')?.dataset.services?.toLowerCase() || '';
+        const matchesSearch = text.includes(searchTerm);
+        const matchesService = !serviceFilter || services.includes(serviceFilter);
+        row.style.display = (matchesSearch && matchesService) ? '' : 'none';
+      });
+
+      // Sort visible rows
+      const visibleRows = rows.filter(row => row.style.display !== 'none');
+      visibleRows.sort((a, b) => {
+        switch(sortBy) {
+          case 'date_asc':
+            return new Date(a.cells[4].textContent) - new Date(b.cells[4].textContent);
+          case 'date_desc':
+            return new Date(b.cells[4].textContent) - new Date(a.cells[4].textContent);
+          case 'urgent':
+            const aUrgent = a.cells[6].textContent.includes('urgent');
+            const bUrgent = b.cells[6].textContent.includes('urgent');
+            return (bUrgent - aUrgent);
+          default:
+            return 0;
+        }
+      });
+
+      // Reorder rows
+      const tbody = document.querySelector('#assignTable tbody');
+      visibleRows.forEach(row => tbody.appendChild(row));
+    }
+
+    // Add event listeners for search, filter, and sort
+    document.getElementById('orderSearch').addEventListener('input', filterAndSortOrders);
+    document.getElementById('serviceFilter').addEventListener('change', filterAndSortOrders);
+    document.getElementById('sortBy').addEventListener('change', filterAndSortOrders);
+
+    // Add table row hover animation
+    document.querySelectorAll('#assignTable tbody tr').forEach(row => {
+      row.addEventListener('mouseenter', () => {
+        row.style.transition = 'all 0.3s ease';
+        row.style.transform = 'translateX(5px)';
+      });
+      
+      row.addEventListener('mouseleave', () => {
+        row.style.transform = 'translateX(0)';
+      });
+    });
+
+    // Add this new function for date formatting
+    function formatDateForDisplay(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      return `${String(date.getDate()).padStart(2, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${date.getFullYear()}`;
+    }
+
+    function buildTechOptions(list) {
+      return list.map(t => `<option value="${t.username}">${t.name || t.username}</option>`).join('');
+    }
+
+    const modalEl = new bootstrap.Modal(document.getElementById('assignModal'));
+    let pendingMove = null; // { jobId, toStage, cardEl }
+
+    function onCardMoved(jobId, toStage, cardEl) {
+      pendingMove = { jobId, toStage, cardEl };
+      document.getElementById('modalJobId').value = jobId;
+      document.getElementById('modalStage').value = toStage;
+      document.getElementById('modalTech').innerHTML = buildTechOptions(
+        toStage === 'deep' ? TECH_LISTS.deep :
+        toStage === 'rewash' ? TECH_LISTS.rewash :
+        TECH_LISTS.pack ? TECH_LISTS.pack : []
+      );
+      document.getElementById('modalStatus').value = '';
+      modalEl.show();
+    }
+
+    // Initialize Sortable on each column
+    new Sortable(document.getElementById('deepList'), {
+      group: 'kanban',
+      animation: 150,
+      onAdd: evt => {
+        const jobId = evt.item.dataset.job;
+        onCardMoved(jobId, 'deep', evt.item);
+      }
+    });
+    new Sortable(document.getElementById('rewashList'), {
+      group: 'kanban',
+      animation: 150,
+      onAdd: evt => {
+        const jobId = evt.item.dataset.job;
+        onCardMoved(jobId, 'rewash', evt.item);
+      }
+    });
+    new Sortable(document.getElementById('packList'), {
+      group: 'kanban',
+      animation: 150,
+      onAdd: evt => {
+        const jobId = evt.item.dataset.job;
+        onCardMoved(jobId, 'pack', evt.item);
+      }
+    });
+
+    // submit assign modal -> call server to persist
+    document.getElementById('assignFormKanban').addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!pendingMove) return;
+      const job_id = document.getElementById('modalJobId').value;
+      const technician = document.getElementById('modalTech').value;
+      const status = document.getElementById('modalStatus').value;
+      const stage = pendingMove.toStage;
+
+      fetch('/api/order/move', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ job_id, stage, technician, status })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          // update card UI
+          const card = pendingMove.cardEl;
+          card.querySelector('.tech-name').textContent = technician || '-';
+          const badge = card.querySelector('.badge');
+          if (data.updated_status) badge.textContent = data.updated_status;
+        } else {
+          alert('Save failed: ' + (data.error || 'unknown'));
+          // revert: move card back (full page refresh simpler)
+          location.reload();
+        }
+      })
+      .catch(err => { console.error(err); location.reload(); })
+      .finally(() => {
+        pendingMove = null;
+        modalEl.hide();
+      });
+    });
+  </script>
+
+  <style>
+    .card {
+      transition: all 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+    }
+
+    .quick-assign-btn {
+      transition: all 0.2s ease;
+      border-width: 2px;
+    }
+
+    .quick-assign-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .kanban-card {
+      border-left: 4px solid transparent;
+    }
+
+    .kanban-card[data-service="wash"] {
+      border-left-color: #0d6efd;
+    }
+
+    .kanban-card[data-service="paint"] {
+      border-left-color: #dc3545;
+    }
+
+    .kanban-card[data-service="repair"] {
+      border-left-color: #198754;
+    }
+
+    .service-tag {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 12px;
+      background: rgba(13, 110, 253, 0.1);
+      color: #0d6efd;
+      margin-right: 0.5rem;
+      display: inline-block;
+      margin-bottom: 0.25rem;
+    }
+
+    .table th {
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.5px;
+    }
+
+    .badge {
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .btn {
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 500;
+    }
+
+    .form-control:focus, .form-select:focus {
+      box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
+    }
+
+    .kanban-list { min-height: 80px; }
+    .kanban-card { cursor: grab; }
+  </style>
+{% endblock %}

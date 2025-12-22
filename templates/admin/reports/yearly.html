@@ -1,0 +1,119 @@
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📦 Total Orders</h6>
+                <h3 class="text-primary">{{ yearly.total_orders }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">✅ Completed</h6>
+                <h3 class="text-success">{{ yearly.completed }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">⏳ Pending</h6>
+                <h3 class="text-warning">{{ yearly.pending }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💰 Total Revenue</h6>
+                <h3 class="text-info">₹{{ "%.2f"|format(yearly.total_revenue) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📅 Select Year</h6>
+                <div class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" style="max-width: 150px;" onchange="changeYear(this.value)">
+                        {% for y in years %}
+                            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                    <span class="badge bg-primary">Year: {{ selected_year }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💸 Total Discount</h6>
+                <h3 class="text-danger">₹{{ "%.2f"|format(yearly.total_discount) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💹 Average Per Order</h6>
+                <h3 class="text-info">₹{{ "%.2f"|format(yearly.total_revenue / yearly.total_orders if yearly.total_orders > 0 else 0) }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📊 Completion Rate</h6>
+                <h3 class="text-success">{{ "%.1f"|format(yearly.completed / yearly.total_orders * 100 if yearly.total_orders > 0 else 0) }}%</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mb-3">📋 Order Details</h5>
+<div class="table-responsive">
+    <table class="table table-hover table-sm">
+        <thead class="table-light">
+            <tr>
+                <th>Job ID</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Technician</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Discount</th>
+                <th>Net</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if yearly.orders %}
+                {% for order in yearly.orders|sort(attribute='pickup_date', reverse=True) %}
+                <tr>
+                    <td><strong>{{ order.job_id }}</strong></td>
+                    <td><small>{{ order.pickup_date.strftime('%d-%m-%Y') if order.pickup_date else '-' }}</small></td>
+                    <td>{{ order.customer_name }}</td>
+                    <td><small>{{ order.technician or '-' }}</small></td>
+                    <td><span class="badge bg-{{ order.status|status_color }}">{{ order.status }}</span></td>
+                    <td>₹{{ "%.2f"|format(order.price or 0) }}</td>
+                    <td>-₹{{ "%.2f"|format(order.discount|float(0)) }}</td>
+                    <td><strong>₹{{ "%.2f"|format((order.price or 0) - (order.discount|float(0))) }}</strong></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox"></i> No orders for this year
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>

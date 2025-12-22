@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>📊 Reports</h2>
+        <a href="{{ url_for('admin.admin_panel') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left-circle"></i> Back to Admin Panel
+        </a>
+    </div>
+
+    <!-- Nav Tabs -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="daily-tab" data-bs-toggle="tab" data-bs-target="#daily" type="button" role="tab" aria-controls="daily" aria-selected="true">
+                        <i class="bi bi-calendar-day"></i> Daily
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="weekly-tab" data-bs-toggle="tab" data-bs-target="#weekly" type="button" role="tab" aria-controls="weekly" aria-selected="false">
+                        <i class="bi bi-calendar-week"></i> Weekly
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly" type="button" role="tab" aria-controls="monthly" aria-selected="false">
+                        <i class="bi bi-calendar3"></i> Monthly
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="yearly-tab" data-bs-toggle="tab" data-bs-target="#yearly" type="button" role="tab" aria-controls="yearly" aria-selected="false">
+                        <i class="bi bi-calendar2"></i> Yearly
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card-body">
+            <div class="tab-content">
+                <!-- Daily Report -->
+                <div class="tab-pane fade show active" id="daily" role="tabpanel" aria-labelledby="daily-tab">
+                    {% include 'admin/reports/daily.html' %}
+                </div>
+
+                <!-- Weekly Report -->
+                <div class="tab-pane fade" id="weekly" role="tabpanel" aria-labelledby="weekly-tab">
+                    {% include 'admin/reports/weekly.html' %}
+                </div>
+
+                <!-- Monthly Report -->
+                <div class="tab-pane fade" id="monthly" role="tabpanel" aria-labelledby="monthly-tab">
+                    {% include 'admin/reports/monthly.html' %}
+                </div>
+
+                <!-- Yearly Report -->
+                <div class="tab-pane fade" id="yearly" role="tabpanel" aria-labelledby="yearly-tab">
+                    {% include 'admin/reports/yearly.html' %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function changeDate(dateStr) {
+    window.location.href = `{{ url_for('admin.reports') }}?date=${dateStr}`;
+}
+
+function changeWeek(dateStr) {
+    window.location.href = `{{ url_for('admin.reports') }}?week_start=${dateStr}`;
+}
+
+function changeYear(year) {
+    window.location.href = `{{ url_for('admin.reports') }}?year=${year}`;
+}
+
+function changeMonthYear() {
+    const yearSelect = document.querySelector('select[style*="max-width: 120px"]');
+    const monthSelect = document.getElementById('monthSelect');
+    
+    const year = yearSelect.value;
+    const month = monthSelect.value;
+    
+    if (year && month) {
+        window.location.href = `{{ url_for('admin.reports') }}?year=${year}&month=${month}`;
+    }
+}
+</script>
+{% endblock %}

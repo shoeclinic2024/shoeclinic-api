@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if current_user.role in ['admin', 'super_admin'] %}
+<div class="container mt-4">
+    <!-- Back Button -->
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left-circle"></i> Back to Dashboard
+    </a>
+
+    <!-- Header -->
+    <h2 class="mb-1 text-center">👨‍💼 Admin Panel</h2>
+    <div class="text-center mb-4">
+        <span class="badge {{ 'bg-success' if 'PostgreSQL' in db_engine else 'bg-secondary' }}">
+            <i class="bi bi-database-fill"></i> Database: {{ db_engine }}
+        </span>
+    </div>
+
+    <!-- Admin Action Panels -->
+    <div class="row g-4">
+        {% set panels = [
+        {
+        'icon': 'bi-graph-up-arrow',
+        'color': 'success',
+        'title': 'Advanced Analytics',
+        'desc': 'Week-to-week, month-to-month comparisons & insights.',
+        'url': 'admin.analytics'
+        },
+        {
+        'icon': 'bi-people-fill',
+        'color': 'primary',
+        'title': 'Manage Users',
+        'desc': 'Approve or deactivate employee accounts.',
+        'url': 'admin.manage_users'
+        },
+        {
+        'icon': 'bi-bar-chart-line-fill',
+        'color': 'info',
+        'title': 'Reports',
+        'desc': 'Daily, weekly, and monthly reports.',
+        'url': 'admin.reports'
+        },
+        {
+        'icon': 'bi-brush',
+        'color': 'warning',
+        'title': 'Work Assign',
+        'desc': 'Assign daily work.',
+        'url': 'admin.work_assign',
+        'super_admin_only': True
+        },
+        {
+        'icon': 'bi-cash-coin',
+        'color': 'danger',
+        'title': 'Expenses',
+        'desc': 'Track all operational expenses.',
+        'url': 'admin.day_to_day_expense'
+        },
+        {
+        'icon': 'bi-wallet2',
+        'color': 'secondary',
+        'title': 'Payouts',
+        'desc': 'View and manage employee payouts.',
+        'url': 'admin.payouts'
+        },
+        {
+        'icon': 'bi-clipboard2-check-fill',
+        'color': 'dark',
+        'title': 'Technician Status',
+        'desc': 'Live work status of technicians.',
+        'url': 'admin.technician_status'
+        },
+        {
+        'icon': 'bi-person-lines-fill',
+        'color': 'primary',
+        'title': 'Customer Database',
+        'desc': 'View registered customers.',
+        'url': 'admin.customer_database',
+        'restricted': True
+        },
+        {
+        'icon': 'bi-calendar3',
+        'color': 'info',
+        'title': 'Company Calendar',
+        'desc': 'Mark holidays and special office dates.',
+        'url': 'calendar',
+        'super_admin_only': True
+        }
+        ] %}
+
+        {% if current_user.role == 'super_admin' %}
+        <div class="col-md-4">
+            <a href="{{ url_for('admin.pending_approvals') }}" class="text-decoration-none"
+                aria-label="Superior Control">
+                <div class="card shadow-sm h-100 border-primary hover-shadow text-center p-3 position-relative">
+                    {% if total_pending and total_pending > 0 %}
+                    <span
+                        class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger shadow">
+                        {{ total_pending }}
+                        <span class="visually-hidden">pending approvals</span>
+                    </span>
+                    {% endif %}
+
+                    <i class="bi bi-shield-check fs-1 text-primary"></i>
+                    <h5 class="card-title mt-2">Superior Control</h5>
+                    <p class="card-text text-muted">Review users, expenses & access requests.</p>
+                </div>
+            </a>
+        </div>
+        {% endif %}
+
+        {% for p in panels %}
+        {% if not p.get('super_admin_only') or current_user.role == 'super_admin' %}
+        <div class="col-md-4">
+
+            {% set is_expired = current_user.customer_access_expiry and now > current_user.customer_access_expiry %}
+            {% set is_locked = p.get('restricted') and current_user.role != 'super_admin' and (not
+            current_user.can_view_customers or is_expired) %}
+
+            {% if is_locked %}
+            <div class="card shadow-sm h-100 text-center p-3 bg-light" style="position: relative;">
+                <div class="position-absolute top-0 end-0 p-2 text-danger">
+                    <i class="bi bi-lock-fill fs-4"></i>
+                </div>
+                <div class="opacity-50">
+                    <i class="bi {{ p.icon }} fs-1 text-secondary"></i>
+                    <h5 class="card-title mt-2 text-muted">{{ p.title }}</h5>
+                    <p class="card-text text-muted small">{{ p.desc }}</p>
+                </div>
+
+                <!-- Request Access Overlay -->
+                {% if not current_user.customer_view_requested %}
+                <a href="{{ url_for('admin.request_customer_access') }}"
+                    class="btn btn-sm btn-outline-primary position-absolute start-50 top-50 translate-middle"
+                    style="width: 80%;">
+                    Request Access
+                </a>
+                {% else %}
+                <button class="btn btn-sm btn-secondary position-absolute start-50 top-50 translate-middle" disabled
+                    style="width: 80%;">
+                    Request Sent
+                </button>
+                {% endif %}
+            </div>
+            {% else %}
+            <a href="{{ url_for(p.url) }}" class="text-decoration-none" aria-label="{{ p.title }}">
+                <div class="card shadow-sm h-100 hover-shadow text-center p-3">
+                    <i class="bi {{ p.icon }} fs-1 text-{{ p.color }}"></i>
+                    <h5 class="card-title mt-2">{{ p.title }}</h5>
+                    <p class="card-text text-muted">{{ p.desc }}</p>
+
+                    {% if p.restricted and current_user.customer_access_expiry and current_user.role != 'super_admin' %}
+                    <div class="mt-n2 mb-1">
+                        <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">
+                            <i class="bi bi-clock me-1"></i> Temporary Access
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+            </a>
+            {% endif %}
+
+        </div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Hover card effect -->
+<style>
+    .hover-shadow {
+        transition: 0.3s ease-in-out;
+    }
+
+    .hover-shadow:hover {
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        transform: translateY(-2px);
+    }
+</style>
+
+{% else %}
+<div class="container mt-5">
+    <div class="alert alert-danger text-center">
+        <i class="bi bi-shield-lock"></i> You are not authorized to view this page.
+    </div>
+</div>
+{% endif %}
+{% endblock %}

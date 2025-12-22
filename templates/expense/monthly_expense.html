@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Expense Dashboard</h2>
+    <form class="d-flex" method="get">
+      <input type="month" name="month" class="form-control me-2" value="{{ selected_month }}">
+      <button class="btn btn-primary">Apply</button>
+    </form>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-primary">
+        <div class="card-body">
+          <h6 class="card-title">Monthly Total</h6>
+          <h4 class="text-primary">₹{{ "%.2f"|format(month_total or 0) }}</h4>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-success">
+        <div class="card-body">
+          <h6 class="card-title">Frequent Expense</h6>
+          {% if frequent_expense and frequent_count >= 2 %}
+            <div class="fw-bold">{{ frequent_expense }}</div>
+            <small class="text-muted">{{ frequent_count }} times</small>
+          {% else %}
+            <div class="text-muted">No frequent item</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-warning">
+        <div class="card-body">
+          <h6 class="card-title">Highest Single Expense</h6>
+          {% if highest_expense %}
+            <div class="fw-bold">₹{{ "%.2f"|format(highest_expense.expense) }}</div>
+            <small class="text-muted">{{ highest_expense.description }} • {{ highest_expense.date.strftime('%Y-%m-%d') }}</small>
+          {% else %}
+            <div class="text-muted">No data</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 text-end">
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#quickAddModal">Quick Add</button>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-8 mb-3">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="card-title">6-month Trend</h6>
+          <canvas id="trendChart" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4 mb-3">
+      <div class="card">
+        <div class="card-body">
+          <h6 class="card-title">Top Categories</h6>
+          <canvas id="categoryChart" height="200"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h6 class="card-title">Recent Transactions</h6>
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead><tr><th>Date</th><th>Description</th><th class="text-end">Expense</th></tr></thead>
+          <tbody>
+            {% for e in recent_expenses %}
+            <tr>
+              <td>{{ e.date.strftime('%Y-%m-%d') }}</td>
+              <td>{{ e.description or '—' }}</td>
+              <td class="text-end">₹{{ "%.2f"|format(e.expense) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick Add Modal -->
+<div class="modal fade" id="quickAddModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ url_for('main.day_to_day_expense') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Quick Add Expense</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" required value="{{ selected_month + '-01' }}">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Description</label>
+          <input type="text" name="description" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Expense</label>
+          <input type="number" step="0.01" name="expense" class="form-control" required>
+        </div>
+        <!-- keep settlement fields hidden if your DB needs them -->
+        <input type="hidden" name="settlement_paytm" value="0">
+        <input type="hidden" name="settlement_cash" value="0">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const labels = {{ monthly_labels|tojson }};
+const values = {{ monthly_values|tojson }};
+const topLabels = {{ top_labels|tojson }};
+const topValues = {{ top_values|tojson }};
+
+const ctx = document.getElementById('trendChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels,
+    datasets: [{
+      label: 'Expense',
+      data: values,
+      borderColor: '#007bff',
+      backgroundColor: 'rgba(0,123,255,0.08)',
+      tension: 0.3,
+      fill: true
+    }]
+  },
+  options: { responsive: true, plugins:{legend:{display:false}} }
+});
+
+const ctx2 = document.getElementById('categoryChart').getContext('2d');
+new Chart(ctx2, {
+  type: 'pie',
+  data: {
+    labels: topLabels,
+    datasets: [{ data: topValues, backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#0dcaf0','#6f42c1'] }]
+  },
+  options: { responsive:true, plugins:{legend:{position:'right'}} }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Edit Order - THE SHOE CLINIC</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light p-5">
+    <div class="container">
+        <h3 class="mb-4">Edit Order</h3>
+        <form method="POST" class="row g-3">
+
+            <!-- Basic Info -->
+            <div class="col-md-6">
+                <label>Technician</label>
+                <select name="technician" class="form-select">
+                    <option value="">Unassigned</option>
+                    {% for person in staff %}
+                    <option value="{{ person.username }}" {% if order.technician==person.username %}selected{% endif %}>
+                        {{ person.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label>Job ID</label>
+                <input type="text" name="job_id" class="form-control" value="{{ order.job_id }}">
+            </div>
+            <div class="col-md-6">
+                <label>Customer Name</label>
+                <input type="text" name="customer_name" class="form-control" value="{{ order.customer_name }}">
+            </div>
+            <div class="col-md-6">
+                <label>Pickup Date</label>
+                <input type="date" name="pickup_date" class="form-control"
+                    value="{{ order.pickup_date.strftime('%Y-%m-%d') if order.pickup_date }}">
+            </div>
+            <div class="col-md-6">
+                <label>Service Date</label>
+                <input type="date" name="service_date" class="form-control"
+                    value="{{ order.service_date.strftime('%Y-%m-%d') if order.service_date }}">
+            </div>
+            <div class="col-md-6">
+                <label>Drop Date</label>
+                <input type="date" name="drop_date" class="form-control"
+                    value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}">
+            </div>
+            <div class="col-md-6">
+                <label>Place</label>
+                <input type="text" name="place" class="form-control" value="{{ order.place }}">
+            </div>
+            <div class="col-md-6">
+                <label>Service Note</label>
+                <input type="text" name="service_note" class="form-control" value="{{ order.service_note or '' }}">
+            </div>
+
+            <!-- Status -->
+            <div class="col-md-6">
+                <label>Status</label>
+                <select name="status" class="form-select">
+                    <option value="yts" {% if order.status=='yts' %}selected{% endif %}>YTS</option>
+                    <option value="wip" {% if order.status=='wip' %}selected{% endif %}>WIP</option>
+                    <option value="re wash" {% if order.status=='re wash' %}selected{% endif %}>Re Wash</option>
+                    <option value="done" {% if order.status=='done' %}selected{% endif %}>Ready to Deliver</option>
+                </select>
+            </div>
+
+            <!-- Rework Fields -->
+            <div class="col-md-6">
+                <label>Re Work Status</label>
+                <select name="re_work_status" class="form-select">
+                    <option value="yts" {% if order.re_work_status=='yts' %}selected{% endif %}>YTS</option>
+                    <option value="wip" {% if order.re_work_status=='wip' %}selected{% endif %}>WIP</option>
+                    <option value="done" {% if order.re_work_status=='done' %}selected{% endif %}>DONE</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label>Re Work Count</label>
+                <input type="number" name="re_work_count" class="form-control" value="{{ order.re_work_count or '' }}">
+            </div>
+            <div class="col-md-6">
+                <label>Re Work Token</label>
+                <input type="text" name="re_work_token" class="form-control" value="{{ order.re_work_token or '' }}">
+            </div>
+            <div class="col-md-6">
+                <label>Re Work Date</label>
+                <input type="date" name="re_work_date" class="form-control"
+                    value="{{ order.re_work_date.strftime('%Y-%m-%d') if order.re_work_date }}">
+            </div>
+
+            <!-- Other Info -->
+            <div class="col-md-6"><label>Mobile</label><input type="text" name="mobile" class="form-control"
+                    value="{{ order.mobile }}"></div>
+            <div class="col-md-6"><label>Product Name</label><input type="text" name="product_name" class="form-control"
+                    value="{{ order.product_name or '' }}"></div>
+            <div class="col-md-6"><label>Token</label><input type="text" name="token" class="form-control"
+                    value="{{ order.token or '' }}"></div>
+            <div class="col-md-6"><label>Price</label><input type="number" step="0.01" name="price" class="form-control"
+                    value="{{ order.price or '' }}"></div>
+            <div class="col-md-6"><label>Payment Mode</label><input type="text" name="payment_mode" class="form-control"
+                    value="{{ order.payment_mode or '' }}"></div>
+            <div class="col-md-6"><label>Payment Status</label><input type="text" name="payment_status"
+                    class="form-control" value="{{ order.payment_status or '' }}"></div>
+            <div class="col-md-6"><label>Offer/Discount</label><input type="text" name="discount" class="form-control"
+                    value="{{ order.discount or '' }}"></div>
+            <div class="col-md-6"><label>Outsource</label><input type="text" name="outsource" class="form-control"
+                    value="{{ order.outsource or '' }}"></div>
+            <div class="col-md-6"><label>Item Count</label><input type="number" name="item_count" class="form-control"
+                    value="{{ order.item_count or '' }}"></div>
+
+            <!-- Submit -->
+            <div class="col-12">
+                <button type="submit" class="btn btn-success">Update</button>
+                <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+            </div>
+        </form>
+    </div>
+</body>
+
+</html>

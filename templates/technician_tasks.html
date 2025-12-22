@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+/* Custom Styles */
+.task-summary {
+    transition: all 0.3s ease;
+}
+
+.task-summary:hover {
+    transform: translateY(-2px);
+}
+
+.overdue {
+    animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+#loadingOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255,255,255,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.task-notes {
+    white-space: pre-wrap;
+    max-height: 100px;
+    overflow-y: auto;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+<div class="container-fluid">
+    <h2 class="mb-4">My Tasks</h2>
+
+    <!-- Task Summary -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Pending</h5>
+                    <p class="display-4">{{ tasks|selectattr('status', 'equalto', 'pending')|list|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">In Progress</h5>
+                    <p class="display-4">{{ tasks|selectattr('status', 'equalto', 'in_progress')|list|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Completed Today</h5>
+                    <p class="display-4">{{ tasks|selectattr('status', 'equalto', 'done')|selectattr('updated_at', 'ge', today)|list|length }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">Due Today</h5>
+                    <p class="display-4">{{ tasks|selectattr('deadline', 'defined')|selectattr('deadline', 'eq', today)|list|length }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Categories -->
+    <div class="row">
+        <!-- Customer Tasks -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Customer Tasks</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Service</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in tasks if task.task_type == 'order' %}
+                                <tr>
+                                    <td>
+                                        {% if task.order %}
+                                            <a href="{{ url_for('view_order', order_id=task.order.id) }}">
+                                                #{{ task.order.job_id }}
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ task.task_name }}</td>
+                                    <td>
+                                        <span class="badge badge-{{ task.status|status_color }}">
+                                            {{ task.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            {% if task.status == 'pending' %}
+                                            <button class="btn btn-sm btn-success start-task"
+                                                    data-task-id="{{ task.id }}">
+                                                Start
+                                            </button>
+                                            {% elif task.status == 'in_progress' %}
+                                            <button class="btn btn-sm btn-primary complete-task"
+                                                    data-task-id="{{ task.id }}">
+                                                Complete
+                                            </button>
+                                            {% endif %}
+                                            <button class="btn btn-sm btn-info view-notes"
+                                                    data-task-id="{{ task.id }}"
+                                                    data-notes="{{ task.notes or '' }}">
+                                                Notes
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No customer tasks assigned</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual Tasks -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Manual Tasks</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Task</th>
+                                    <th>Deadline</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for task in tasks if task.task_type == 'manual' %}
+                                <tr {% if task.deadline and task.deadline <= today %}class="table-danger"{% endif %}>
+                                    <td>{{ task.task_name }}</td>
+                                    <td>
+                                        {% if task.deadline %}
+                                            <span class="{% if task.deadline <= today %}text-danger font-weight-bold{% endif %}">
+                                                {{ task.deadline|datetime }}
+                                                {% if task.deadline == today %}(Today){% endif %}
+                                            </span>
+                                        {% else %}
+                                            No deadline
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-{{ task.status|status_color }}">
+                                            {{ task.status_display }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group">
+                                            {% if task.status == 'pending' %}
+                                            <button class="btn btn-sm btn-success start-task"
+                                                    data-task-id="{{ task.id }}">
+                                                Start
+                                            </button>
+                                            {% elif task.status == 'in_progress' %}
+                                            <button class="btn btn-sm btn-primary complete-task"
+                                                    data-task-id="{{ task.id }}">
+                                                Complete
+                                            </button>
+                                            {% endif %}
+                                            <button class="btn btn-sm btn-info view-notes"
+                                                    data-task-id="{{ task.id }}"
+                                                    data-notes="{{ task.notes or '' }}">
+                                                Notes
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No manual tasks assigned</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notes Modal -->
+<div class="modal fade" id="notesModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">Task Notes</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="notes-form">
+                    <input type="hidden" name="task_id">
+                    <div class="task-details mb-3">
+                        <strong>Task:</strong> <span id="modal-task-name"></span><br>
+                        <strong>Status:</strong> <span id="modal-task-status"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Notes <small class="text-muted">(max 500 characters)</small></label>
+                        <textarea class="form-control" name="notes" rows="4" maxlength="500"></textarea>
+                        <small class="text-muted">Characters remaining: <span id="char-count">500</span></small>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-dismiss="modal">
+                    <i class="bi bi-x"></i> Cancel
+                </button>
+                <button type="button" class="btn btn-success" id="save-notes">
+                    <i class="bi bi-check"></i> Save Notes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="container mt-4">
+    <a href="{{ url_for('main.admin_panel') }}" class="btn btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left"></i> Back to Admin Panel
+    </a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/tasks/task-management.js') }}"></script>
+{% endblock %}
+</script>
+{% endblock %}

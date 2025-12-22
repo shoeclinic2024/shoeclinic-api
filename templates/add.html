@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Order</h2>
+    <form method="post">
+        <!-- Order Details Section -->
+        <div class="card mb-4">
+            <div class="card-header">Order Details</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="job_id" class="form-label">Job ID *</label>
+                        <input type="text" class="form-control" id="job_id" name="job_id" value="{{ job_id }}" readonly>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="customer_name" class="form-label">Customer Name *</label>
+                        <input type="text" class="form-control" id="customer_name" name="name" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="drop_date" class="form-label">Drop Date *</label>
+                        <input type="date" class="form-control" id="drop_date" name="drop_date" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="place" class="form-label">Place *</label>
+                        <input type="text" class="form-control" id="place" name="place" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="mobile" class="form-label">Mobile Number *</label>
+                        <input type="text" class="form-control" id="mobile" name="mobile" required>
+                        <!-- Hidden pickup_date field -->
+                        <input type="hidden" id="pickup_date" name="pickup_date" value="{{ today }}">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label for="status" class="form-label">Status *</label>
+                        <select class="form-select" id="status" name="status" required>
+                            <option value="yts">yts</option>
+                            <option value="wip">wip</option>
+                            <option value="done">done</option>
+                            <option value="re wash">re wash</option>
+                            <option value="pack pend">pack pend</option>
+                            <option value="ready to deliver">ready to deliver</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="technician" class="form-label">Assign Technician</label>
+                        <select class="form-select" id="technician" name="technician">
+                            <option value="">Unassigned</option>
+                            {% for person in staff %}
+                            <option value="{{ person.username }}">{{ person.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items & Services Section -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="fw-bold">Items & Services</span>
+                        <span class="ms-3 badge bg-info">Items Added: <span id="itemCount">1</span></span>
+                        <span class="ms-2 badge bg-success">Total: ₹<span id="totalAmount">0</span></span>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-info" onclick="toggleBreakdown()"
+                            data-bs-toggle="tooltip" title="View Order Breakdown">
+                            📊 View Breakdown
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" onclick="addNewItem()">+ Add Item</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Breakdown Summary (Collapsible) -->
+            <div class="card-body bg-light" id="breakdownPanel"
+                style="display: none; border-bottom: 1px solid #dee2e6;">
+                <h6 class="mb-3">📋 Order Breakdown Summary</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>#</th>
+                                <th>Product Name</th>
+                                <th>Services</th>
+                                <th>Unit Price</th>
+                                <th>Discount</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="breakdownTable">
+                            <!-- Populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3 text-end">
+                    <h6>Grand Total: <span class="text-success fw-bold">₹<span id="breakdownTotal">0</span></span></h6>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div class="card-body">
+                    <div id="items-container">
+                        <!-- Initial Item -->
+                        <div class="item-block mb-4" data-item-id="1">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <h6 class="mb-0">Item #<span class="item-number">1</span></h6>
+                                        <button type="button" class="btn btn-sm btn-danger"
+                                            onclick="removeItem(this)">Remove Item</button>
+                                    </div>
+                                </div>
+                                <div class="card-body">
+                                    <!-- Item Details -->
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Product Name *</label>
+                                            <input type="text" class="form-control" name="items[1][product_name]"
+                                                placeholder="Enter product name" required>
+                                        </div>
+                                    </div>
+
+                                    <!-- Services -->
+                                    <div class="services-container">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6 class="mb-0">Services</h6>
+                                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                                onclick="addServiceToItem(this)">+ Add Service</button>
+                                        </div>
+                                        <div class="service-row row mb-2">
+                                            <div class="col-md-5">
+                                                <input type="text" class="form-control" name="items[1][services][]"
+                                                    placeholder="Enter service (e.g., wash, repair)" required>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <input type="number" class="form-control service-price"
+                                                    name="items[1][service_prices][]" placeholder="Service Price"
+                                                    required onchange="calculateTotals()">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <input type="number" class="form-control service-discount"
+                                                    name="items[1][service_discounts][]" placeholder="Discount"
+                                                    onchange="calculateTotals()">
+                                            </div>
+                                            <div class="col-md-1">
+                                                <button type="button" class="btn btn-sm btn-danger"
+                                                    onclick="removeService(this)">×</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row mt-3">
+                                        <div class="col-12">
+                                            <label class="form-label small fw-bold text-muted">Defects / Condition
+                                                (Visible to Customer)</label>
+                                            <textarea class="form-control form-control-sm" name="items[1][defects]"
+                                                rows="2" placeholder="Describe any existing damage..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-end">
+                <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-secondary me-2">Cancel</a>
+                <button type="submit" class="btn btn-primary">Save Order</button>
+            </div>
+    </form>
+</div>
+
+<script>
+    let itemCounter = 1;
+
+    function addNewItem() {
+        itemCounter++;
+        const container = document.getElementById('items-container');
+        const newItem = document.createElement('div');
+        newItem.className = 'item-block mb-4';
+        newItem.dataset.itemId = itemCounter;
+
+        newItem.innerHTML = `
+        <div class="card">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Item #<span class="item-number">${itemCounter}</span></h6>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeItem(this)">Remove Item</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Product Name *</label>
+                        <input type="text" class="form-control" 
+                               name="items[${itemCounter}][product_name]" 
+                               placeholder="Enter product name" required>
+                    </div>
+                </div>
+
+                <div class="services-container">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="mb-0">Services</h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" 
+                                onclick="addServiceToItem(this)">+ Add Service</button>
+                    </div>
+                    <div class="service-row row mb-2">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" 
+                                   name="items[${itemCounter}][services][]" 
+                                   placeholder="Enter service (e.g., wash, repair)" required>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control service-price" 
+                                   name="items[${itemCounter}][service_prices][]" 
+                                   placeholder="Service Price" required onchange="calculateTotals()">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control service-discount" 
+                                   name="items[${itemCounter}][service_discounts][]" 
+                                   placeholder="Discount" onchange="calculateTotals()">
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-sm btn-danger" 
+                                    onclick="removeService(this)">×</button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted">Defects / Condition (Visible to Customer)</label>
+                        <textarea class="form-control form-control-sm" name="items[${itemCounter}][defects]" rows="2" placeholder="Describe any existing damage..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+        container.appendChild(newItem);
+        renumberItems();
+        calculateTotals();
+    }
+
+    function addServiceToItem(button) {
+        const itemBlock = button.closest('.item-block');
+        const itemId = itemBlock.dataset.itemId;
+        const servicesContainer = itemBlock.querySelector('.services-container');
+
+        const newService = document.createElement('div');
+        newService.className = 'service-row row mb-2';
+        newService.innerHTML = `
+        <div class="col-md-5">
+            <input type="text" class="form-control" 
+                   name="items[${itemId}][services][]" 
+                   placeholder="Enter service (e.g., wash, repair)" required>
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control service-price" 
+                   name="items[${itemId}][service_prices][]" 
+                   placeholder="Service Price" required onchange="calculateTotals()">
+        </div>
+        <div class="col-md-3">
+            <input type="number" class="form-control service-discount" 
+                   name="items[${itemId}][service_discounts][]" 
+                   placeholder="Discount" onchange="calculateTotals()">
+        </div>
+        <div class="col-md-1">
+            <button type="button" class="btn btn-sm btn-danger" 
+                    onclick="removeService(this)">×</button>
+        </div>
+    `;
+        servicesContainer.appendChild(newService);
+    }
+
+    function removeService(button) {
+        const serviceRow = button.closest('.service-row');
+        const servicesContainer = serviceRow.closest('.services-container');
+        if (servicesContainer.querySelectorAll('.service-row').length > 1) {
+            serviceRow.remove();
+        } else {
+            alert('Each item must have at least one service');
+        }
+    }
+
+    function removeItem(button) {
+        const itemBlock = button.closest('.item-block');
+        const container = document.getElementById('items-container');
+        if (container.children.length > 1) {
+            itemBlock.remove();
+            renumberItems();
+            calculateTotals();
+        } else {
+            alert('Order must have at least one item');
+        }
+    }
+
+    function renumberItems() {
+        const items = document.querySelectorAll('.item-block');
+        items.forEach((item, index) => {
+            item.querySelector('.item-number').textContent = index + 1;
+            item.dataset.itemId = index + 1;
+        });
+        document.getElementById('itemCount').textContent = items.length;
+    }
+
+    function calculateTotals() {
+        let totalAmount = 0;
+        const breakdownRows = [];
+        let itemNumber = 1;
+
+        document.querySelectorAll('.item-block').forEach(item => {
+            const productName = item.querySelector('input[name*="product_name"]').value || `Item ${itemNumber}`;
+            const serviceRows = item.querySelectorAll('.service-row');
+            let itemSubtotal = 0;
+            const services = [];
+            let totalDiscount = 0;
+
+            serviceRows.forEach(row => {
+                const service = row.querySelector('input[name*="services"]').value || 'Service';
+                const price = parseFloat(row.querySelector('.service-price').value) || 0;
+                const discount = parseFloat(row.querySelector('.service-discount').value) || 0;
+
+                services.push(service);
+                itemSubtotal += (price - discount);
+                totalDiscount += discount;
+                totalAmount += (price - discount);
+            });
+
+            if (serviceRows.length > 0) {
+                breakdownRows.push({
+                    number: itemNumber,
+                    product: productName,
+                    services: services.join(', '),
+                    subtotal: itemSubtotal,
+                    discount: totalDiscount
+                });
+                itemNumber++;
+            }
+        });
+
+        document.getElementById('totalAmount').textContent = totalAmount.toFixed(2);
+        document.getElementById('breakdownTotal').textContent = totalAmount.toFixed(2);
+        updateBreakdownTable(breakdownRows);
+    }
+
+    function updateBreakdownTable(breakdownRows) {
+        const tbody = document.getElementById('breakdownTable');
+        tbody.innerHTML = '';
+
+        breakdownRows.forEach(row => {
+            const tr = document.createElement('tr');
+            const subtotalWithDiscount = row.subtotal;
+            tr.innerHTML = `
+            <td class="text-center fw-bold">${row.number}</td>
+            <td>${row.product}</td>
+            <td><small>${row.services}</small></td>
+            <td class="text-end">₹${(row.subtotal + row.discount).toFixed(2)}</td>
+            <td class="text-end text-danger">-₹${row.discount.toFixed(2)}</td>
+            <td class="text-end fw-bold">₹${subtotalWithDiscount.toFixed(2)}</td>
+        `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function toggleBreakdown() {
+        const panel = document.getElementById('breakdownPanel');
+        const isHidden = panel.style.display === 'none';
+        panel.style.display = isHidden ? 'block' : 'none';
+        calculateTotals();
+    }
+</script>
+
+<style>
+    .item-block .card {
+        border: 1px solid rgba(0, 0, 0, .125);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, .05);
+    }
+
+    .service-row {
+        background: #f8f9fa;
+        padding: 8px;
+        border-radius: 6px;
+        margin-left: 0;
+        margin-right: 0;
+    }
+</style>
+{% endblock %}
+</body>
+
+</html>

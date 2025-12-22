@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>The Shoe Clinic</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        :root {
+            --sidebar-bg: #343a40;
+            --sidebar-accent: #495057;
+            --content-bg: #f8f9fb;
+        }
+
+        html,
+        body {
+            margin: 0;
+            height: 100%;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--content-bg);
+            color: #212529;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            width: 250px;
+            background: var(--sidebar-bg);
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
+            transform: translateX(-250px);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+        }
+
+        .sidebar.visible {
+            transform: translateX(0);
+        }
+
+        .sidebar h4 {
+            margin: 0;
+            padding: 18px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 10px;
+        }
+
+        .sidebar a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #e9ecef;
+            padding: 12px 20px;
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+
+        .sidebar a .bi {
+            width: 22px;
+            text-align: center;
+            font-size: 1.05rem;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background-color: var(--sidebar-accent);
+            color: #fff;
+        }
+
+        .sidebar .collapse a {
+            padding-left: 40px;
+        }
+
+        .user-info,
+        .mode-toggle {
+            padding: 14px 20px;
+            font-size: 0.9rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            background: #2d3238;
+        }
+
+        .mode-toggle {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Main content */
+        .main-content {
+            margin-left: 0;
+            padding: 32px;
+            min-height: 100vh;
+            transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .main-content.shifted {
+            margin-left: 250px;
+        }
+
+        /* Alerts */
+        .main-content .alert {
+            margin-bottom: 1rem;
+        }
+
+        /* Cards & Forms */
+        .card.form-card {
+            border-radius: 10px;
+        }
+
+        .card.form-card .card-body {
+            padding: 24px;
+        }
+
+        .form-label {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .form-control,
+        .form-select {
+            border-radius: 6px;
+            height: calc(1.6em + 0.75rem + 2px);
+        }
+
+        .btn-primary {
+            border-radius: 6px;
+            padding: 10px 16px;
+        }
+
+        /* Dark Mode - Professional Theme */
+        body.bg-dark {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .main-content {
+            background-color: #0f172a !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .sidebar {
+            background: #1e293b !important;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        body.bg-dark .sidebar h4 {
+            border-bottom-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        body.bg-dark .sidebar a {
+            color: #cbd5e1 !important;
+        }
+
+        body.bg-dark .sidebar a:hover,
+        body.bg-dark .sidebar a.active {
+            background-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }
+
+        body.bg-dark .card {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .card-header {
+            background-color: #0f172a !important;
+            border-bottom-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }
+
+        body.bg-dark .form-control,
+        body.bg-dark .form-select {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .form-control:focus,
+        body.bg-dark .form-select:focus {
+            background-color: #1e293b !important;
+            border-color: #3b82f6 !important;
+            color: #e2e8f0 !important;
+            box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.25) !important;
+        }
+
+        body.bg-dark .form-label {
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .table {
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .table-dark {
+            background-color: #0f172a !important;
+        }
+
+        body.bg-dark .table th {
+            background-color: #1e293b !important;
+            color: #f1f5f9 !important;
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .table td {
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .btn-outline-secondary {
+            color: #cbd5e1 !important;
+            border-color: #475569 !important;
+        }
+
+        body.bg-dark .btn-outline-secondary:hover {
+            background-color: #334155 !important;
+            border-color: #475569 !important;
+        }
+
+        body.bg-dark .alert {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .badge {
+            background-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }
+
+        body.bg-dark .text-muted {
+            color: #94a3b8 !important;
+        }
+
+        body.bg-dark .user-info,
+        body.bg-dark .mode-toggle {
+            background-color: #0f172a !important;
+            border-top-color: #334155 !important;
+            color: #cbd5e1 !important;
+        }
+
+        body.bg-dark .table-responsive {
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .modal-content {
+            background-color: #1e293b !important;
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .modal-header {
+            border-bottom-color: #334155 !important;
+        }
+
+        /* Professional button styling in dark mode */
+        body.bg-dark .btn-primary {
+            background-color: #3b82f6 !important;
+            border-color: #3b82f6 !important;
+        }
+
+        body.bg-dark .btn-primary:hover {
+            background-color: #2563eb !important;
+            border-color: #2563eb !important;
+        }
+
+        body.bg-dark .btn-danger {
+            background-color: #ef4444 !important;
+            border-color: #ef4444 !important;
+        }
+
+        body.bg-dark .btn-danger:hover {
+            background-color: #dc2626 !important;
+            border-color: #dc2626 !important;
+        }
+
+        body.bg-dark .filters-card {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .compact-filters {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        body.bg-dark .table-container {
+            background-color: transparent !important;
+        }
+
+        body.bg-dark .table {
+            background-color: #1e293b !important;
+        }
+
+        body.bg-dark .table thead {
+            background-color: #0f172a !important;
+        }
+
+        body.bg-dark .table tbody tr {
+            background-color: #1e293b !important;
+            border-bottom-color: #334155 !important;
+        }
+
+        body.bg-dark .table tbody tr:hover {
+            background-color: #334155 !important;
+        }
+
+        body.bg-dark .parent-row {
+            background-color: #1e293b !important;
+        }
+
+        body.bg-dark .child-row {
+            background-color: #0f172a !important;
+        }
+
+        body.bg-dark .expand-button {
+            color: #cbd5e1 !important;
+        }
+
+        body.bg-dark .badge {
+            background-color: #334155 !important;
+            color: #f1f5f9 !important;
+        }
+
+
+        .filters-row .form-control,
+        .filters-row .form-select {
+            height: 38px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 0.92rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 991px) {
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .filters-card {
+                padding: 8px;
+            }
+
+            .filters-right {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+
+        /* Scrollbar */
+        .sidebar-nav::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .sidebar-nav::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <h4><i class="bi bi-shield-shaded"></i> TSC Admin</h4>
+        <div class="sidebar-nav">
+            <a href="{{ url_for('home') }}" class="{% if request.endpoint=='home' %}active{% endif %}">
+                <i class="bi bi-house-door-fill"></i> Dashboard Home
+            </a>
+            {% if current_user.role in ['admin', 'super_admin'] %}
+            <a href="{{ url_for('tsc_dashboard') }}"
+                class="{% if request.endpoint=='tsc_dashboard' %}active{% endif %}">
+                <i class="bi bi-columns-gap"></i> TSC Dashboard
+            </a>
+            <a href="{{ url_for('add_order') }}" class="{% if request.endpoint=='add_order' %}active{% endif %}">
+                <i class="bi bi-plus-circle"></i> Add Order
+            </a>
+            <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint=='admin_panel' %}active{% endif %}">
+                <i class="bi bi-person-gear"></i> Admin Panel
+            </a>
+            {% endif %}
+
+            {% if current_user.role == 'super_admin' %}
+            <a href="{{ url_for('admin.pending_approvals') }}"
+                class="{% if request.endpoint=='admin.pending_approvals' %}active{% endif %} d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shield-check"></i> Pending Approvals</span>
+                {% if pending_approvals_count > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ pending_approvals_count }}</span>
+                {% endif %}
+            </a>
+            {% endif %}
+
+            <a href="{{ url_for('my_works') }}" class="{% if request.endpoint=='my_works' %}active{% endif %}">
+                <i class="bi bi-tools"></i> My Works
+            </a>
+            <a href="{{ url_for('attendance') }}" class="{% if request.endpoint=='attendance'%}active{% endif %}">
+                <i class="bi bi-person-check-fill"></i> Attendance
+            </a>
+
+
+            {% if current_user.role in ['admin', 'super_admin'] %}
+            <!-- Reports Collapse -->
+            <a class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#reportMenu">
+                <span><i class="bi bi-journals"></i> Reports</span>
+                <i class="bi bi-chevron-down"></i>
+            </a>
+            <div class="collapse {% if request.endpoint in ['report_daily','report_weekly','report_monthly','report_yearly'] %}show{% endif %}"
+                id="reportMenu">
+                <a href="{{ url_for('report_daily') }}"
+                    class="{% if request.endpoint=='report_daily'%}active{% endif %}">
+                    <i class="bi bi-calendar-day"></i> Daily Report
+                </a>
+                <a href="{{ url_for('report_weekly') }}"
+                    class="{% if request.endpoint=='report_weekly'%}active{% endif %}">
+                    <i class="bi bi-calendar-week"></i> Weekly Report
+                </a>
+                <a href="{{ url_for('report_monthly') }}"
+                    class="{% if request.endpoint=='report_monthly'%}active{% endif %}">
+                    <i class="bi bi-calendar-range"></i> Monthly Report
+                </a>
+                <a href="{{ url_for('report_yearly') }}"
+                    class="{% if request.endpoint=='report_yearly'%}active{% endif %}">
+                    <i class="bi bi-calendar-check"></i> Yearly Report
+                </a>
+            </div>
+
+            <!-- Expense Collapse -->
+            <a class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#expenseMenu">
+                <span><i class="bi bi-cash-coin"></i> Expense</span>
+                <i class="bi bi-chevron-down"></i>
+            </a>
+            <div class="collapse {% if request.endpoint in ['admin.day_to_day_expense','day_to_day_expense','monthly_expense','expense_dashboard'] %}show{% endif %}"
+                id="expenseMenu">
+                <a href="{{ url_for('admin.day_to_day_expense', filter_type='date') }}"
+                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'date' %}active{% endif %}">
+                    <i class="bi bi-calendar-day"></i> Day to Day Expense
+                </a>
+                <a href="{{ url_for('admin.day_to_day_expense', filter_type='month') }}"
+                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'month' %}active{% endif %}">
+                    <i class="bi bi-calendar-month"></i> Monthly Expense
+                </a>
+                <a href="{{ url_for('admin.day_to_day_expense', filter_type='year') }}"
+                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'year' %}active{% endif %}">
+                    <i class="bi bi-graph-up"></i> Expense Dashboard
+                </a>
+            </div>
+
+            <a href="{{ url_for('admin.payouts') }}"
+                class="{% if request.endpoint == 'admin.payouts' or request.endpoint == 'payouts' %}active{% endif %}">
+                <i class="bi bi-wallet2"></i> Payouts
+            </a>
+            <a href="{{ url_for('todays_delivery') }}"
+                class="{% if request.endpoint=='todays_delivery'%}active{% endif %}">
+                <i class="bi bi-truck"></i> Today’s Delivery
+            </a>
+            <a href="{{ url_for('print_bill') }}" class="{% if request.endpoint=='print_bill'%}active{% endif %}">
+                <i class="bi bi-receipt-cutoff"></i> Print Bill
+                {% if todays_due_count|default(0) > 0 %}
+                <span class="badge bg-danger ms-auto">{{ todays_due_count }}</span>
+                {% endif %}
+            </a>
+            <a href="{{ url_for('announcement') }}" class="{% if request.endpoint=='announcement'%}active{% endif %}">
+                <i class="bi bi-megaphone"></i> Add Announcement
+            </a>
+
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="text-danger">
+                <i class="bi bi-box-arrow-right"></i> Logout
+            </a>
+        </div>
+
+        <!-- Dark Mode Toggle -->
+        <div class="mode-toggle" onclick="toggleTheme()">
+            <i class="bi bi-moon-stars-fill" id="themeIcon"></i> Toggle Theme
+        </div>
+
+        <!-- User Info -->
+        <div class="user-info">
+            <i class="bi bi-person-circle"></i> Logged in as:<br>
+            <strong>{{ current_user.username }}</strong>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'success' if category=='success' else 'warning' }} alert-dismissible fade show"
+            role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        {% block filters %}{% endblock %}
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Sidebar hover functionality
+        const sidebar = document.querySelector('.sidebar');
+        const mainContent = document.querySelector('.main-content');
+        let sidebarTimeout;
+
+        function showSidebar() {
+            sidebar.classList.add('visible');
+            mainContent.classList.add('shifted');
+            clearTimeout(sidebarTimeout);
+        }
+
+        function hideSidebar() {
+            sidebarTimeout = setTimeout(() => {
+                sidebar.classList.remove('visible');
+                mainContent.classList.remove('shifted');
+            }, 300);
+        }
+
+        document.addEventListener('mousemove', function (e) {
+            // Show sidebar when mouse is within 50px of left edge
+            if (e.clientX < 50) {
+                showSidebar();
+            } else if (!sidebar.matches(':hover')) {
+                hideSidebar();
+            }
+        });
+
+        sidebar.addEventListener('mouseenter', function () {
+            showSidebar();
+        });
+
+        sidebar.addEventListener('mouseleave', function () {
+            hideSidebar();
+        });
+
+        // Load theme from localStorage on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                applyDarkTheme();
+            }
+        });
+
+        function applyDarkTheme() {
+            document.body.classList.add('bg-dark');
+            document.body.classList.add('text-light');
+            document.querySelector('.main-content').classList.add('bg-dark');
+            document.querySelector('.main-content').classList.add('text-light');
+            document.querySelector('.sidebar').classList.add('bg-dark');
+            const icon = document.getElementById('themeIcon');
+            icon.classList.remove('bi-moon-stars-fill');
+            icon.classList.add('bi-brightness-high-fill');
+            localStorage.setItem('theme', 'dark');
+        }
+
+        function applyLightTheme() {
+            document.body.classList.remove('bg-dark');
+            document.body.classList.remove('text-light');
+            document.querySelector('.main-content').classList.remove('bg-dark');
+            document.querySelector('.main-content').classList.remove('text-light');
+            document.querySelector('.sidebar').classList.remove('bg-dark');
+            const icon = document.getElementById('themeIcon');
+            icon.classList.add('bi-moon-stars-fill');
+            icon.classList.remove('bi-brightness-high-fill');
+            localStorage.setItem('theme', 'light');
+        }
+
+        function toggleTheme() {
+            const isDarkMode = document.body.classList.contains('bg-dark');
+            if (isDarkMode) {
+                applyLightTheme();
+            } else {
+                applyDarkTheme();
+            }
+        }
+    </script>
+    <script>
+        // ... (existing script functions) ...
+
+        // Anti-Theft Protection for Non-Super Admins
+        {% if current_user.role != 'super_admin' and request.endpoint not in ['view_bill', 'print_bill'] %}
+
+
+
+        // 1. Disable Right Click
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        // 2. Aggressive Keyboard Blocking
+        document.addEventListener('keydown', function (event) {
+            // Print Screen Blocking
+            if (event.key === 'PrintScreen') {
+                event.preventDefault();
+                // Hide page immediately
+                document.body.style.display = 'none';
+
+                // Try to clear clipboard
+                navigator.clipboard.writeText('Screenshots disabled!');
+
+                alert('Screenshots are restricted.');
+
+                // Show page again
+                document.body.style.display = 'block';
+                return;
+            }
+
+            // Ctrl/Meta Combinations
+            if (event.ctrlKey || event.metaKey) {
+                // Block C, X, A, P, S, U
+                if (['c', 'C', 'x', 'X', 'a', 'A', 'p', 'P', 's', 'S', 'u', 'U'].includes(event.key)) {
+                    event.preventDefault();
+                }
+            }
+            // Block Shift+F10
+            if (event.shiftKey && event.key === 'F10') event.preventDefault();
+        });
+
+        // 3. Clear Clipboard on KeyUp (Double Check)
+        document.addEventListener('keyup', function (event) {
+            if (event.key === 'PrintScreen') {
+                navigator.clipboard.writeText('Screenshots disabled!');
+                // Re-verify visibility
+                document.body.style.display = 'block';
+            }
+        });
+
+        // 4. Focus/Blur Hiding (Anti-Snipping Tool)
+        window.addEventListener('blur', function () {
+            document.body.style.opacity = '0';
+            document.title = 'Protected';
+        });
+
+        window.addEventListener('focus', function () {
+            document.body.style.opacity = '1';
+            document.title = 'The Shoe Clinic';
+        });
+
+        // 5. Disable Drag/Copy
+        document.addEventListener('dragstart', event => event.preventDefault());
+        document.addEventListener('copy', function (e) {
+            e.preventDefault();
+            if (e.clipboardData) {
+                e.clipboardData.setData('text/plain', 'Access Restricted');
+            }
+        });
+
+
+
+        // 5. CSS Injection to disable selection (applied dynamically to avoid affecting print bill if needed, though print is also disabled)
+        const style = document.createElement('style');
+        style.innerHTML = `
+            body {
+                -webkit-user-select: none; /* Safari */
+                -ms-user-select: none; /* IE 10 and IE 11 */
+                user-select: none; /* Standard syntax */
+            }
+            /* Allow selection in input fields and textareas so user can still work */
+            input, textarea {
+                -webkit-user-select: text;
+                user-select: text;
+            }
+            /* Restrict printing */
+            @media print {
+                body {
+                    display: none;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+
+        {% endif %}
+    </script>
+    {% if request.path in ['/', '/home'] %}
+    {% include 'tsc_assist.html' %}
+    {% endif %}
+</body>
+
+</html>

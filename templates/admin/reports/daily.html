@@ -1,0 +1,157 @@
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📦 Total Orders</h6>
+                <h3 class="text-primary">{{ daily.total_orders }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">✅ Completed</h6>
+                <h3 class="text-success">{{ daily.completed }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">⏳ Pending</h6>
+                <h3 class="text-warning">{{ daily.pending }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">💰 Revenue</h6>
+                <h3 class="text-info">₹{{ "%.2f"|format(daily.total_revenue) }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h6 class="card-title text-muted">📅 Select Date</h6>
+                <div class="d-flex gap-2 align-items-center">
+                    <input type="date" class="form-control form-control-sm" style="max-width: 180px;" 
+                           value="{{ selected_date.strftime('%Y-%m-%d') if selected_date else '' }}"
+                           onchange="changeDate(this.value)">
+                    <span class="badge bg-primary">{{ selected_date.strftime('%d %B %Y') if selected_date else '-' }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">📊 Order Status Distribution</h6>
+                <canvas id="dailyStatusChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">💰 Revenue Breakdown</h6>
+                <canvas id="dailyRevenueChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mb-3">📋 Order Details</h5>
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Job ID</th>
+                <th>Customer</th>
+                <th>Phone</th>
+                <th>Status</th>
+                <th>Amount</th>
+                <th>Discount</th>
+                <th>Net</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if daily.orders %}
+                {% for order in daily.orders %}
+                <tr>
+                    <td><strong>{{ order.job_id }}</strong></td>
+                    <td>{{ order.customer_name }}</td>
+                    <td>{{ order.mobile }}</td>
+                    <td><span class="badge bg-{{ order.status|status_color }}">{{ order.status }}</span></td>
+                    <td>₹{{ "%.2f"|format(order.price or 0) }}</td>
+                    <td>-₹{{ "%.2f"|format(order.discount|float(0)) }}</td>
+                    <td><strong>₹{{ "%.2f"|format((order.price or 0) - (order.discount|float(0))) }}</strong></td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox"></i> No orders for this date
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // Daily Status Chart
+    const dailyStatusCtx = document.getElementById('dailyStatusChart').getContext('2d');
+    new Chart(dailyStatusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Completed', 'Pending'],
+            datasets: [{
+                data: [{{ daily.completed }}, {{ daily.pending }}],
+                backgroundColor: ['#10b981', '#f59e0b'],
+                borderColor: ['#059669', '#d97706'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+    
+    // Daily Revenue Chart
+    const dailyRevenueCtx = document.getElementById('dailyRevenueChart').getContext('2d');
+    new Chart(dailyRevenueCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Revenue', 'Discount'],
+            datasets: [{
+                label: 'Amount (₹)',
+                data: [{{ daily.total_revenue }}, {{ daily.total_discount }}],
+                backgroundColor: ['#3b82f6', '#ef4444'],
+                borderColor: ['#1d4ed8', '#dc2626'],
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+</script>
