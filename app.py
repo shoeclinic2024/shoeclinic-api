@@ -20,7 +20,7 @@ import calendar as py_calendar
 
 # --- Flask App ---
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 # --- Version Information ---
 APP_VERSION = "v02"
 VERSION_DATE = "2025-12-22"
@@ -3194,9 +3194,48 @@ def request_report_export():
     return jsonify({"status": "error", "message": "Super Admin not found."})
 
 # Razorpay Client
-RAZORPAY_KEY_ID = "rzp_test_YourKeyID" # Replace with user provided key
-RAZORPAY_KEY_SECRET = "YourKeySecret" # Replace with user provided secret
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_YourKeyID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "YourKeySecret")
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+
+# --- Diagnostics & Health ---
+@app.route("/health")
+def health():
+    """Check application and database health"""
+    status = {"status": "healthy", "database": "connected", "version": APP_VERSION}
+    try:
+        # Try a simple query
+        from models import User
+        User.query.first()
+    except Exception as e:
+        status["status"] = "unhealthy"
+        status["database"] = f"error: {str(e)}"
+    
+    return jsonify(status), 200 if status["status"] == "healthy" else 500
+
+@app.route("/debug-env")
+def debug_env():
+    """Verify presence of key environment variables (sensitive values masked)"""
+    if not os.getenv("FLASK_DEBUG"):
+        return "Access denied: Debug Mode is OFF", 403
+        
+    keys = ["DATABASE_URL", "SECRET_KEY", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "PORT"]
+    env_info = {}
+    for k in keys:
+        val = os.getenv(k)
+        if val:
+            env_info[k] = f"Present (length: {len(val)})"
+            if k == "DATABASE_URL":
+                # Show protocol and host for DB URL but hide password
+                try: 
+                    protocol = val.split("://")[0]
+                    host = val.split("@")[1].split("/")[0]
+                    env_info[k] = f"{protocol}://****@{host}"
+                except: pass
+        else:
+            env_info[k] = "Missing"
+            
+    return jsonify(env_info)
 
 # --- Utils ---
 if __name__ == "__main__":
