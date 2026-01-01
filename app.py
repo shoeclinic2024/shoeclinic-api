@@ -10,6 +10,11 @@ from admin import admin_bp
 from flask_migrate import Migrate
 
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file locally
+load_dotenv()
+
 import io
 import pandas as pd
 from reportlab.lib.pagesizes import A4, landscape

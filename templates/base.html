@@ -721,16 +721,94 @@
         }
 
         /* Responsive */
+        /* Mobile Responsive Navigation (v03) */
+        .mobile-header {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background-color: var(--sidebar-bg);
+            z-index: 1001;
+            align-items: center;
+            padding: 0 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            justify-content: space-between;
+        }
+
+        .mobile-header h5 {
+            color: #fff;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .mobile-toggle-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .mobile-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
         @media (max-width: 991px) {
+            .mobile-header {
+                display: flex;
+                /* Show header on mobile */
+            }
+
             .sidebar {
-                position: relative;
-                width: 100%;
-                height: auto;
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                width: 280px;
+                transform: translateX(-100%);
+                /* Hide by default */
+                transition: transform 0.3s ease-in-out;
+                z-index: 1002;
+                box-shadow: 4px 0 15px rgba(0, 0, 0, 0.3);
+            }
+
+            .sidebar.show {
+                transform: translateX(0);
+                /* Slide in */
             }
 
             .main-content {
-                margin-left: 0;
-                padding: 16px;
+                margin-left: 0 !important;
+                padding-top: 80px;
+                /* Space for mobile header */
+                width: 100% !important;
+            }
+
+            .mobile-overlay.show {
+                display: block;
+                opacity: 1;
+            }
+
+            /* Touch Friendly Inputs & Buttons */
+            .form-control,
+            .form-select,
+            .btn {
+                min-height: 48px;
+                /* Apple Touch Target Guideline */
+                font-size: 16px !important;
+                /* Prevents auto-zoom on iOS */
             }
         }
 
@@ -777,10 +855,30 @@
         } else if (savedTheme === 'gray') {
             document.body.classList.add('bg-gray');
         }
+
+        // Mobile Sidebar Toggle (v03)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('appSidebar');
+            const overlay = document.getElementById('mobileOverlay');
+            sidebar.classList.toggle('show');
+            overlay.classList.toggle('show');
+        }
     </script>
 
+    <!-- Mobile Header (v03) -->
+    <div class="mobile-header">
+        <button class="mobile-toggle-btn" onclick="toggleSidebar()">
+            <i class="bi bi-list"></i>
+        </button>
+        <h5>TSC Admin</h5>
+        <div style="width: 24px;"></div> <!-- Spacer for center alignment if needed -->
+    </div>
+
+    <!-- Backdrop Overlay -->
+    <div class="mobile-overlay" onclick="toggleSidebar()" id="mobileOverlay"></div>
+
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" id="appSidebar">
         <h4><i class="bi bi-shield-shaded"></i> TSC Admin</h4>
         <div class="sidebar-nav">
             <a href="{{ url_for('home') }}" class="{% if request.endpoint=='home' %}active{% endif %}">

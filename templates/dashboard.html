@@ -209,47 +209,111 @@
   </form>
 </div>
 
+<style>
+  /* Mobile Card View Styles (v03) */
+  @media (max-width: 991px) {
+    .table-container table {
+      border: 0;
+    }
+
+    .table-container thead {
+      display: none;
+    }
+
+    .table-container tr.parent-row {
+      display: block;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      /* box-shadow: 0 2px 5px rgba(0,0,0,0.05); */
+      background: #fff;
+    }
+
+    .table-container td {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #eee;
+      padding: 10px 15px !important;
+      font-size: 0.95rem;
+      text-align: right !important;
+    }
+
+    .table-container td:last-child {
+      border-bottom: 0;
+    }
+
+    .table-container td::before {
+      content: attr(data-label);
+      font-weight: 600;
+      color: #6c757d;
+      /* Muted label color */
+      text-align: left;
+      margin-right: 20px;
+    }
+
+    /* Adjust Expand Button placement */
+    .table-container td[data-label="Details"] {
+      justify-content: center;
+      background: #f8f9fa;
+      padding: 5px !important;
+    }
+
+    /* Child row adjustments */
+    .child-row.show {
+      display: block;
+      /* Make child row block to flow properly */
+    }
+
+    .child-content {
+      border-top: none;
+    }
+  }
+</style>
+
 <!-- Orders Table -->
 <form id="bulkDeleteForm" method="POST" action="{{ url_for('bulk_delete_orders') }}">
   <div class="table-container">
     <table class="table table-bordered table-hover table-striped text-center">
       <thead class="table-dark">
         <tr>
-          <th><i class="bi bi-list-ul"></i></th>
+          <th>Details</th>
           {% if current_user.role == 'super_admin' %}
-          <th><input type="checkbox" id="selectAll" onclick="toggleAllCheckboxes(this)"></th>
+          <th>Select</th>
           {% endif %}
-          <th><i class="bi bi-hash me-1"></i>Sl. No</th>
-          <th><i class="bi bi-tag me-1"></i>Job ID</th>
-          <th><i class="bi bi-ticket-perforated me-1"></i>Token</th>
-          <th><i class="bi bi-person me-1"></i>Name</th>
-          <th><i class="bi bi-calendar-check me-1"></i>Pickup</th>
-          <th><i class="bi bi-tools me-1"></i>Service</th>
-          <th><i class="bi bi-calendar-plus me-1"></i>Service Date</th>
-          <th><i class="bi bi-calendar-x me-1"></i>Drop</th>
-          <th><i class="bi bi-geo-alt me-1"></i>Place</th>
-          <th><i class="bi bi-activity me-1"></i>Status</th>
-          <th><i class="bi bi-phone me-1"></i>Mobile</th>
-          <th><i class="bi bi-box me-1"></i>Product</th>
-          <th><i class="bi bi-currency-rupee me-1"></i>Price</th>
-          <th><i class="bi bi-credit-card me-1"></i>Payment</th>
-          <th><i class="bi bi-credit-card-2-front me-1"></i>Payment Status</th>
-          <th><i class="bi bi-percent me-1"></i>Discount</th>
-          <th><i class="bi bi-truck me-1"></i>Outsource</th>
-          <th><i class="bi bi-123 me-1"></i>Count</th>
+          <th>Sl. No</th>
+          <th>Job ID</th>
+          <th>Token</th>
+          <th>Name</th>
+          <th>Pickup</th>
+          <th>Service</th>
+          <th>Service Date</th>
+          <th>Drop</th>
+          <th>Place</th>
+          <th>Status</th>
+          <th>Mobile</th>
+          <th>Product</th>
+          <th>Price</th>
+          <th>Payment</th>
+          <th>Payment Status</th>
+          <th>Discount</th>
+          <th>Outsource</th>
+          <th>Count</th>
           {% if current_user.role in ['admin', 'super_admin'] %}
-          <th><i class="bi bi-gear me-1"></i>Actions</th>
+          <th>Actions</th>
           {% endif %}
         </tr>
       </thead>
       <tbody>
         {% for order in orders %}
         <tr class="parent-row" data-order-id="{{ order.id }}">
-          <td><i class="bi bi-chevron-right expand-button" onclick="toggleChildRow(this, '{{ order.id }}')"></i></td>
+          <td data-label="Details"><i class="bi bi-chevron-right expand-button"
+              onclick="toggleChildRow(this, '{{ order.id }}')"></i></td>
           {% if current_user.role == 'super_admin' %}
-          <td><input type="checkbox" name="order_ids" value="{{ order.id }}" onclick="updateBulkDeleteButton()"></td>
+          <td data-label="Select"><input type="checkbox" name="order_ids" value="{{ order.id }}"
+              onclick="updateBulkDeleteButton()"></td>
           {% endif %}
-          <td>{{ loop.index }}</td>
+          <td data-label="Sl. No">{{ loop.index }}</td>
           {% set tech_names = [] %}
 
           {# Check order-level technician #}
@@ -274,9 +338,9 @@
           {% endif %}
           {% endfor %}
 
-          <td>{{ order.job_id }}</td>
-          <td>{{ order.token }}</td>
-          <td class="{{ 'text-danger fw-bold' if tech_names else '' }}">
+          <td data-label="Job ID">{{ order.job_id }}</td>
+          <td data-label="Token">{{ order.token }}</td>
+          <td data-label="Name" class="{{ 'text-danger fw-bold' if tech_names else '' }}">
             {{ order.customer_name }}
             {% if tech_names %}
             <div class="fw-bold mt-1" style="font-size: 0.75rem; color: #ff4d4d; letter-spacing: 0.3px;">
@@ -284,8 +348,8 @@
             </div>
             {% endif %}
           </td>
-          <td>{{ order.pickup_date | format_date }}</td>
-          <td class="text-start">
+          <td data-label="Pickup">{{ order.pickup_date | format_date }}</td>
+          <td data-label="Service" class="text-start">
             {% set services = [] %}
             {% for item in order.items %}
             {% if item.services %}
@@ -299,9 +363,9 @@
             {% endfor %}
             <span class="small">{{ services|join(', ') }}</span>
           </td>
-          <td>
+          <td data-label="Service Date">
             {% if order.service_date %}
-            <div class="d-flex align-items-center gap-1">
+            <div class="d-flex align-items-center gap-1 justify-content-end">
               <span
                 class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill small">
                 {{ order.service_date | format_date }}
@@ -318,19 +382,20 @@
             <span class="text-muted">-</span>
             {% endif %}
           </td>
-          <td>{{ order.drop_date | format_date }}</td>
-          <td>{{ order.place }}</td>
-          <td><span class="badge bg-{{ order.status | status_color }}">{{ order.status }}</span></td>
-          <td>{{ order.mobile }}</td>
-          <td>{{ order.product_name }}</td>
-          <td>{{ order.price }}</td>
-          <td>{{ order.payment_mode or '' }}</td>
-          <td>{{ order.payment_status or '' }}</td>
-          <td>{{ order.discount }}</td>
-          <td>{{ order.outsource }}</td>
-          <td>{{ order.item_count }}</td>
+          <td data-label="Drop">{{ order.drop_date | format_date }}</td>
+          <td data-label="Place">{{ order.place }}</td>
+          <td data-label="Status"><span class="badge bg-{{ order.status | status_color }}">{{ order.status }}</span>
+          </td>
+          <td data-label="Mobile">{{ order.mobile }}</td>
+          <td data-label="Product">{{ order.product_name }}</td>
+          <td data-label="Price">{{ order.price }}</td>
+          <td data-label="Payment">{{ order.payment_mode or '' }}</td>
+          <td data-label="Payment Status">{{ order.payment_status or '' }}</td>
+          <td data-label="Discount">{{ order.discount }}</td>
+          <td data-label="Outsource">{{ order.outsource }}</td>
+          <td data-label="Count">{{ order.item_count }}</td>
           {% if current_user.role in ['admin', 'super_admin'] %}
-          <td>
+          <td data-label="Actions">
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
                 aria-expanded="false">
@@ -371,10 +436,10 @@
 
         <!-- Child row -->
         <tr class="child-row" id="child-{{ order.id }}">
-          <td colspan="{{ '27' if current_user.role == 'super_admin' else '26' }}">
+          <td colspan="{{ '27' if current_user.role == 'super_admin' else '26' }}" style="padding: 0; border: none;">
             <div class="child-content">
               {% if order.items %}
-              <h6 class="mb-3">📦 Order Items Breakdown</h6>
+              <h6 class="mb-3 px-2 pt-2">📦 Order Items Breakdown</h6>
               <div class="table-responsive">
                 <table class="table table-sm table-bordered mb-0">
                   <thead class="table-light">
@@ -469,7 +534,7 @@
                 </table>
               </div>
               {% else %}
-              <p class="text-muted">No items added to this order</p>
+              <p class="text-muted px-2">No items added to this order</p>
               {% endif %}
             </div>
           </td>
