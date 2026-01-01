@@ -9,11 +9,15 @@
             <div class="card-header">Order Details</div>
             <div class="card-body">
                 <div class="row mb-3">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <label for="job_id" class="form-label">Job ID *</label>
                         <input type="text" class="form-control" id="job_id" name="job_id" value="{{ job_id }}" readonly>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <label for="token" class="form-label">Token</label>
+                        <input type="text" class="form-control" id="token" name="token" placeholder="Enter Token">
+                    </div>
+                    <div class="col-md-4">
                         <label for="customer_name" class="form-label">Customer Name *</label>
                         <input type="text" class="form-control" id="customer_name" name="name" required>
                     </div>

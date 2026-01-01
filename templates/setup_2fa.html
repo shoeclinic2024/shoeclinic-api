@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white text-center py-3">
+                    <h4 class="mb-0"><i class="bi bi-qr-code-scan me-2"></i>Setup Google Authenticator</h4>
+                </div>
+                <div class="card-body p-4 text-center">
+
+                    <p class="text-muted mb-4">
+                        1. Install <strong>Google Authenticator</strong> (or any TOTP app) on your phone.<br>
+                        2. Scan the QR code below.<br>
+                        3. Enter the 6-digit code to verify.
+                    </p>
+
+                    <div class="mb-4 p-3 bg-light rounded d-inline-block border">
+                        <img src="{{ qr_code }}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
+                    </div>
+
+                    <div class="mb-4">
+                        <small class="text-muted">Can't scan? Enter this code manually:</small><br>
+                        <span class="font-monospace user-select-all fw-bold fs-5">{{ secret }}</span>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('verify_2fa_setup') }}">
+                        <input type="hidden" name="secret" value="{{ secret }}">
+
+                        <div class="form-floating mb-3">
+                            <input type="text" class="form-control text-center fs-4 letter-spacing-2" id="otp"
+                                name="otp" placeholder="000000" maxlength="6" required autocomplete="off">
+                            <label for="otp">Enter 6-digit Code</label>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-check-circle-fill me-2"></i> Verify & Enable
+                            </button>
+                            <a href="{{ url_for('security_settings') }}" class="btn btn-outline-secondary">
+                                Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .letter-spacing-2 {
+        letter-spacing: 0.5rem;
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,606 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Report Tabs -->
+    <div class="report-nav-container mb-3">
+        <ul class="nav nav-pills report-nav-pills">
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_daily' %}active{% endif %}"
+                    href="{{ url_for('report_daily') }}">Daily Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_weekly' %}active{% endif %}"
+                    href="{{ url_for('report_weekly') }}">Weekly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_monthly' %}active{% endif %}"
+                    href="{{ url_for('report_monthly') }}">Monthly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_yearly' %}active{% endif %}"
+                    href="{{ url_for('report_yearly') }}">Yearly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'admin.financial_report' %}active{% endif %}"
+                    href="{{ url_for('admin.financial_report') }}">Financial Report</a>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Existing Financial Report Content -->
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-transparent border-bottom-0 pb-0 mb-3">
+            <ul class="nav nav-pills report-nav-pills" id="financialSubTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="fin-monthly-tab" data-bs-toggle="tab"
+                        data-bs-target="#fin-monthly" type="button" role="tab" aria-controls="fin-monthly"
+                        aria-selected="true">
+                        <i class="bi bi-calendar3 me-1"></i> Monthly Report
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="fin-yearly-tab" data-bs-toggle="tab" data-bs-target="#fin-yearly"
+                        type="button" role="tab" aria-controls="fin-yearly" aria-selected="false">
+                        <i class="bi bi-calendar-event me-1"></i> Yearly Report
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body bg-light border-top">
+            <div class="tab-content" id="financialSubTabContent">
+                <!-- Monthly Financial Tab -->
+                <div class="tab-pane fade show active" id="fin-monthly" role="tabpanel"
+                    aria-labelledby="fin-monthly-tab">
+                    <!-- Monthly Filter -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-12">
+                            <div class="card shadow-sm">
+                                <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                                    <div class="d-flex gap-2 align-items-center">
+                                        <span class="fw-bold small"><i class="bi bi-funnel me-1"></i> Monthly
+                                            Period:</span>
+                                        <select class="form-select form-select-sm py-0" id="finYearSelect"
+                                            style="max-width: 80px;" onchange="changeFinancialMonthYear()">
+                                            {% for y in years %}
+                                            <option value="{{ y }}" {% if y==selected_year %}selected{% endif %}>{{ y }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <select class="form-select form-select-sm py-0"
+                                            onchange="changeFinancialMonthYear()" id="finMonthSelect"
+                                            style="max-width: 120px;">
+                                            <option value="1" {% if selected_month==1 %}selected{% endif %}>January
+                                            </option>
+                                            <option value="2" {% if selected_month==2 %}selected{% endif %}>February
+                                            </option>
+                                            <option value="3" {% if selected_month==3 %}selected{% endif %}>March
+                                            </option>
+                                            <option value="4" {% if selected_month==4 %}selected{% endif %}>April
+                                            </option>
+                                            <option value="5" {% if selected_month==5 %}selected{% endif %}>May</option>
+                                            <option value="6" {% if selected_month==6 %}selected{% endif %}>June
+                                            </option>
+                                            <option value="7" {% if selected_month==7 %}selected{% endif %}>July
+                                            </option>
+                                            <option value="8" {% if selected_month==8 %}selected{% endif %}>August
+                                            </option>
+                                            <option value="9" {% if selected_month==9 %}selected{% endif %}>September
+                                            </option>
+                                            <option value="10" {% if selected_month==10 %}selected{% endif %}>October
+                                            </option>
+                                            <option value="11" {% if selected_month==11 %}selected{% endif %}>November
+                                            </option>
+                                            <option value="12" {% if selected_month==12 %}selected{% endif %}>December
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="btn-group me-2">
+                                            {% if current_user.role == 'super_admin' %}
+                                            <a href="{{ url_for('export_report', report_type='financial_monthly', report_format='excel', month=selected_month, year=selected_year) }}"
+                                                class="btn btn-outline-success btn-sm py-0" title="Export Excel">
+                                                <i class="bi bi-file-earmark-spreadsheet"></i>
+                                            </a>
+                                            <a href="{{ url_for('export_report', report_type='financial_monthly', report_format='pdf', month=selected_month, year=selected_year) }}"
+                                                class="btn btn-outline-danger btn-sm py-0" title="Export PDF">
+                                                <i class="bi bi-file-earmark-pdf"></i>
+                                            </a>
+                                            {% else %}
+                                            <button class="btn btn-outline-secondary btn-sm py-0"
+                                                onclick="requestExport('Financial Monthly Report ({{ selected_month }}-{{ selected_year }})', 'Excel')"
+                                                title="Request Excel">
+                                                <i class="bi bi-lock-fill small"></i> <i
+                                                    class="bi bi-file-earmark-spreadsheet"></i>
+                                            </button>
+                                            <button class="btn btn-outline-secondary btn-sm py-0"
+                                                onclick="requestExport('Financial Monthly Report ({{ selected_month }}-{{ selected_year }})', 'PDF')"
+                                                title="Request PDF">
+                                                <i class="bi bi-lock-fill small"></i> <i
+                                                    class="bi bi-file-earmark-pdf"></i>
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                        <span class="badge bg-primary">{{ monthly.title }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Monthly Title -->
+                        <div class="col-12 text-center mt-2">
+                            <h5
+                                class="text-primary fw-bold text-uppercase border-bottom border-primary pb-1 d-inline-block">
+                                Financial Report - {{ monthly.title }}
+                            </h5>
+                        </div>
+
+                        <!-- Monthly Income -->
+                        <div class="col-md-6">
+                            <div class="card shadow-sm h-100">
+                                <div class="card-header bg-success bg-opacity-10 py-2">
+                                    <h6 class="mb-0 text-success fw-bold"><i class="bi bi-arrow-up-circle me-1"></i>
+                                        Income
+                                    </h6>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.9rem;">
+                                        <tbody>
+                                            <tr>
+                                                <td class="ps-3">Total Orders</td>
+                                                <td class="text-center fw-bold">{{ monthly.total_orders }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="ps-3">Billed Orders</td>
+                                                <td class="text-center fw-bold">{{ monthly.billed_count }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="ps-3">Paid Orders</td>
+                                                <td class="text-center fw-bold">{{ monthly.paid_count }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="ps-3">Total Discount</td>
+                                                <td class="text-center text-danger">-₹{{
+                                                    "%.2f"|format(monthly.total_discount) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="ps-3">Gross Billed</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(monthly.billed_amount) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="ps-3">Paid Collection</td>
+                                                <td class="text-center fw-bold text-success">₹{{
+                                                    "%.2f"|format(monthly.paid_amount) }}</td>
+                                            </tr>
+                                            <tr class="table-success fw-bold">
+                                                <td class="ps-3">Net Income</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(monthly.income) }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Monthly Expenses -->
+                        <div class="col-md-6">
+                            <div class="card shadow-sm h-100">
+                                <div class="card-header bg-danger bg-opacity-10 py-2">
+                                    <h6 class="mb-0 text-danger fw-bold"><i class="bi bi-arrow-down-circle me-1"></i>
+                                        Expenses</h6>
+                                </div>
+                                <div class="card-body p-0">
+                                    <table class="table table-sm table-bordered mb-0" style="font-size: 0.9rem;">
+                                        <thead class="bg-light">
+                                            <tr class="text-center text-muted" style="font-size: 0.8rem;">
+                                                <th>Category</th>
+                                                <th>Actual</th>
+                                                <th>Real/Approved</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for cat, values in monthly.cat_expenses.items() %}
+                                            {% if cat == 'Salary' %}
+                                            <tr class="clickable table-warning bg-opacity-10" data-bs-toggle="collapse"
+                                                data-bs-target="#salaryMonthlyFin" aria-expanded="false"
+                                                style="cursor: pointer;">
+                                                <td class="ps-3 fw-bold text-dark"><i class="bi bi-chevron-right me-1"
+                                                        style="font-size: 0.8rem;"></i> Salary</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(values.actual) }}</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(values.real) }}</td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan="3" class="p-0 border-0">
+                                                    <div class="collapse" id="salaryMonthlyFin">
+                                                        <div class="bg-light p-2 border-bottom">
+                                                            <table class="table table-sm table-borderless mb-0"
+                                                                style="font-size: 0.75rem;">
+                                                                <thead class="text-muted">
+                                                                    <tr>
+                                                                        <th>Staff</th>
+                                                                        <th class="text-end">Paid</th>
+                                                                        <th class="text-end">Balance</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {% for emp, emp_vals in
+                                                                    monthly.salary_breakdown.items()
+                                                                    %}
+                                                                    {% set net_due = emp_vals.opening_balance +
+                                                                    emp_vals.base_salary -
+                                                                    emp_vals.real %}
+                                                                    <tr>
+                                                                        <td>{{ emp }}</td>
+                                                                        <td class="text-end text-success">₹{{
+                                                                            "%.0f"|format(emp_vals.real)
+                                                                            }}</td>
+                                                                        <td class="text-end">
+                                                                            {% if net_due > 1 %}<span
+                                                                                class="text-danger">Due: {{
+                                                                                "%.0f"|format(net_due) }}</span>
+                                                                            {% elif net_due < -1 %}<span
+                                                                                class="text-success">Adv: {{
+                                                                                "%.0f"|format(net_due|abs) }}</span>
+                                                                                {% else %}<span
+                                                                                    class="text-muted">-</span>{% endif
+                                                                                %}
+                                                                        </td>
+                                                                    </tr>
+                                                                    {% endfor %}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {% else %}
+                                            <tr>
+                                                <td class="ps-3">{{ cat }}</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(values.actual) }}</td>
+                                                <td class="text-center">₹{{ "%.2f"|format(values.real) }}</td>
+                                            </tr>
+                                            {% endif %}
+                                            {% endfor %}
+                                            <tr class="table-secondary fw-bold">
+                                                <td class="ps-3">Total Exp</td>
+                                                <td class="text-center">₹{{ "%.0f"|format(monthly.total_expenses_actual)
+                                                    }}
+                                                </td>
+                                                <td class="text-center">₹{{ "%.0f"|format(monthly.total_expenses_real)
+                                                    }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Monthly Footer -->
+                        <div class="col-12">
+                            <div class="card shadow-sm border-primary border-0 border-top border-4">
+                                <div
+                                    class="card-body py-2 d-flex justify-content-around align-items-center bg-primary bg-opacity-10">
+                                    <div class="text-center">
+                                        <small class="text-muted d-block fw-bold" style="font-size: 0.8rem;">NET PROFIT
+                                            (Actual)</small>
+                                        <span
+                                            class="fs-5 fw-bold {% if monthly.profit_loss_actual >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ₹{{ "%.2f"|format(monthly.profit_loss_actual) }}
+                                        </span>
+                                    </div>
+                                    <div class="vr"></div>
+                                    <div class="text-center">
+                                        <small class="text-muted d-block fw-bold" style="font-size: 0.8rem;">NET PROFIT
+                                            (Real/Appr)</small>
+                                        <span
+                                            class="fs-5 fw-bold {% if monthly.profit_loss_real >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                            ₹{{ "%.2f"|format(monthly.profit_loss_real) }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Payment Mode Breakdown (Monthly) -->
+                        <div class="col-12 mt-3">
+                            <div class="card shadow-sm border-0 border-start border-4 border-primary">
+                                <div
+                                    class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-wallet2 me-1"></i> Billed
+                                        Income by Payment Mode</h6>
+                                    <span class="badge bg-primary rounded-pill">Net: ₹{{ "%.2f"|format(monthly.income)
+                                        }}</span>
+                                </div>
+                                <div class="card-body p-2">
+                                    <div class="row row-cols-2 row-cols-md-4 g-2 text-center">
+                                        {% for mode, amount in monthly.payment_breakdown.items() %}
+                                        <div class="col">
+                                            <div class="p-2 border rounded bg-white shadow-xs">
+                                                <small class="text-muted d-block text-uppercase fw-bold"
+                                                    style="font-size: 0.65rem;">{{ mode }}</small>
+                                                <span class="fw-bold text-dark">₹{{ "%.0f"|format(amount) }}</span>
+                                            </div>
+                                        </div>
+                                        {% else %}
+                                        <div class="col-12 text-muted small py-2">No billed orders found for this month.
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Yearly Financial Tab -->
+        <div class="tab-pane fade" id="fin-yearly" role="tabpanel" aria-labelledby="fin-yearly-tab">
+            <!-- Yearly Filter -->
+            <div class="row g-3 mb-3">
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-body py-2 px-3 d-flex justify-content-between align-items-center">
+                            <div class="d-flex gap-2 align-items-center">
+                                <span class="fw-bold small"><i class="bi bi-calendar-event me-1"></i> Yearly
+                                    Period:</span>
+                                <select class="form-select form-select-sm py-0"
+                                    onchange="changeFinancialYear(this.value)" style="max-width: 100px;">
+                                    {% for y in years %}
+                                    <option value="{{ y }}" {% if y==selected_year %}selected{% endif %}>{{ y }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="btn-group me-2">
+                                    {% if current_user.role == 'super_admin' %}
+                                    <a href="{{ url_for('export_report', report_type='financial_yearly', report_format='excel', year=selected_year) }}"
+                                        class="btn btn-outline-success btn-sm py-0" title="Export Excel">
+                                        <i class="bi bi-file-earmark-spreadsheet"></i>
+                                    </a>
+                                    <a href="{{ url_for('export_report', report_type='financial_yearly', report_format='pdf', year=selected_year) }}"
+                                        class="btn btn-outline-danger btn-sm py-0" title="Export PDF">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </a>
+                                    {% else %}
+                                    <button class="btn btn-outline-secondary btn-sm py-0"
+                                        onclick="requestExport('Financial Yearly Report ({{ selected_year }})', 'Excel')"
+                                        title="Request Excel">
+                                        <i class="bi bi-lock-fill small"></i> <i
+                                            class="bi bi-file-earmark-spreadsheet"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary btn-sm py-0"
+                                        onclick="requestExport('Financial Yearly Report ({{ selected_year }})', 'PDF')"
+                                        title="Request PDF">
+                                        <i class="bi bi-lock-fill small"></i> <i class="bi bi-file-earmark-pdf"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                                <span class="badge bg-primary">Year: {{ selected_year }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Yearly Title -->
+                <div class="col-12 text-center mt-2">
+                    <h5 class="text-primary fw-bold text-uppercase border-bottom border-primary pb-1 d-inline-block">
+                        Financial Report - {{ yearly.title }}
+                    </h5>
+                </div>
+
+                <!-- Yearly Income -->
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-success bg-opacity-10 py-2">
+                            <h6 class="mb-0 text-success fw-bold"><i class="bi bi-arrow-up-circle me-1"></i>
+                                Annual
+                                Income</h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-bordered mb-0" style="font-size: 0.9rem;">
+                                <tbody>
+                                    <tr>
+                                        <td class="ps-3">Total Orders</td>
+                                        <td class="text-center fw-bold">{{ yearly.total_orders }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ps-3">Billed Orders</td>
+                                        <td class="text-center fw-bold">{{ yearly.billed_count }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ps-3">Paid Orders</td>
+                                        <td class="text-center fw-bold">{{ yearly.paid_count }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ps-3">Total Discount</td>
+                                        <td class="text-center text-danger">-₹{{
+                                            "%.2f"|format(yearly.total_discount) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ps-3">Gross Billed</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(yearly.billed_amount) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="ps-3">Paid Collection</td>
+                                        <td class="text-center fw-bold text-success">₹{{
+                                            "%.2f"|format(yearly.paid_amount) }}</td>
+                                    </tr>
+                                    <tr class="table-success fw-bold">
+                                        <td class="ps-3">Net Annual Income</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(yearly.income) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Yearly Expenses -->
+                <div class="col-md-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-danger bg-opacity-10 py-2">
+                            <h6 class="mb-0 text-danger fw-bold"><i class="bi bi-arrow-down-circle me-1"></i>
+                                Annual
+                                Expenses</h6>
+                        </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm table-bordered mb-0" style="font-size: 0.9rem;">
+                                <thead class="bg-light">
+                                    <tr class="text-center text-muted" style="font-size: 0.8rem;">
+                                        <th>Category</th>
+                                        <th>Actual</th>
+                                        <th>Real/Approved</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cat, values in yearly.cat_expenses.items() %}
+                                    {% if cat == 'Salary' %}
+                                    <tr class="clickable table-warning bg-opacity-10" data-bs-toggle="collapse"
+                                        data-bs-target="#salaryYearlyFin" aria-expanded="false"
+                                        style="cursor: pointer;">
+                                        <td class="ps-3 fw-bold text-dark"><i class="bi bi-chevron-right me-1"
+                                                style="font-size: 0.8rem;"></i> Salary</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(values.actual) }}</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(values.real) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td colspan="3" class="p-0 border-0">
+                                            <div class="collapse" id="salaryYearlyFin">
+                                                <div class="bg-light p-2 border-bottom">
+                                                    <table class="table table-sm table-borderless mb-0"
+                                                        style="font-size: 0.75rem;">
+                                                        <thead class="text-muted">
+                                                            <tr>
+                                                                <th>Staff</th>
+                                                                <th class="text-end">Paid (Cum.)</th>
+                                                                <th class="text-end">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {% for emp, emp_vals in
+                                                            yearly.salary_breakdown.items()
+                                                            %}
+                                                            {% set balance = emp_vals.base_salary -
+                                                            emp_vals.real %}
+                                                            <tr>
+                                                                <td>{{ emp }}</td>
+                                                                <td class="text-end text-success">₹{{
+                                                                    "%.0f"|format(emp_vals.real) }}</td>
+                                                                <td class="text-end">
+                                                                    {% if balance < -1 %}<span class="text-danger">
+                                                                        Over: {{
+                                                                        "%.0f"|format(balance|abs) }}</span>
+                                                                        {% elif balance > 1 %}<span
+                                                                            class="text-warning text-dark">Rem:
+                                                                            {{
+                                                                            "%.0f"|format(balance) }}</span>
+                                                                        {% else %}<span
+                                                                            class="text-muted">Settled</span>{%
+                                                                        endif %}
+                                                                </td>
+                                                            </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td class="ps-3">{{ cat }}</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(values.actual) }}</td>
+                                        <td class="text-center">₹{{ "%.2f"|format(values.real) }}</td>
+                                    </tr>
+                                    {% endif %}
+                                    {% endfor %}
+                                    <tr class="table-secondary fw-bold">
+                                        <td class="ps-3">Total Annual Exp</td>
+                                        <td class="text-center">₹{{ "%.0f"|format(yearly.total_expenses_actual)
+                                            }}
+                                        </td>
+                                        <td class="text-center">₹{{ "%.0f"|format(yearly.total_expenses_real) }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Yearly Footer -->
+                <div class="col-12">
+                    <div class="card shadow-sm border-primary border-0 border-top border-4">
+                        <div
+                            class="card-body py-2 d-flex justify-content-around align-items-center bg-primary bg-opacity-10">
+                            <div class="text-center">
+                                <small class="text-muted d-block fw-bold" style="font-size: 0.8rem;">ANNUAL NET PROFIT
+                                    (Actual)</small>
+                                <span
+                                    class="fs-5 fw-bold {% if yearly.profit_loss_actual >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    ₹{{ "%.2f"|format(yearly.profit_loss_actual) }}
+                                </span>
+                            </div>
+                            <div class="vr"></div>
+                            <div class="text-center">
+                                <small class="text-muted d-block fw-bold" style="font-size: 0.8rem;">ANNUAL NET PROFIT
+                                    (Real/Appr)</small>
+                                <span
+                                    class="fs-5 fw-bold {% if yearly.profit_loss_real >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    ₹{{ "%.2f"|format(yearly.profit_loss_real) }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Payment Mode Breakdown (Yearly) -->
+                <div class="col-12 mt-3">
+                    <div class="card shadow-sm border-0 border-start border-4 border-primary">
+                        <div
+                            class="card-header bg-primary bg-opacity-10 py-2 d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0 text-primary fw-bold"><i class="bi bi-wallet2 me-1"></i> Billed Income by
+                                Payment Mode (Yearly)</h6>
+                            <span class="badge bg-primary rounded-pill">Net: ₹{{ "%.2f"|format(yearly.income if
+                                yearly.income is defined else 0) }}</span>
+                        </div>
+                        <div class="card-body p-2">
+                            <div class="row row-cols-2 row-cols-md-4 g-2 text-center">
+                                {% for mode, amount in yearly.payment_breakdown.items() %}
+                                <div class="col">
+                                    <div class="p-2 border rounded bg-white shadow-xs">
+                                        <small class="text-muted d-block text-uppercase fw-bold"
+                                            style="font-size: 0.65rem;">{{ mode }}</small>
+                                        <span class="fw-bold text-dark">₹{{ "%.0f"|format(amount) }}</span>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="col-12 text-muted small py-2">No billed orders found for this year.</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+    function changeFinancialMonthYear() {
+        const year = document.getElementById('finYearSelect').value;
+        const month = document.getElementById('finMonthSelect').value;
+        window.location.href = "{{ url_for('admin.financial_report') }}?year=" + year + "&month=" + month;
+    }
+
+    function changeFinancialYear(year) {
+        const month = document.getElementById('finMonthSelect').value; // Keep current month selected
+        window.location.href = "{{ url_for('admin.financial_report') }}?year=" + year + "&month=" + month + "#fin-yearly";
+    }
+</script>
+</div>
+{% endblock %}

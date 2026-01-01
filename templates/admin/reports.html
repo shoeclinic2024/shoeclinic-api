@@ -16,23 +16,39 @@
         <div class="card-header">
             <ul class="nav nav-tabs card-header-tabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="daily-tab" data-bs-toggle="tab" data-bs-target="#daily" type="button" role="tab" aria-controls="daily" aria-selected="true">
+                    <button class="nav-link {% if active_tab == 'daily' %}active{% endif %}" id="daily-tab"
+                        data-bs-toggle="tab" data-bs-target="#daily" type="button" role="tab" aria-controls="daily"
+                        aria-selected="{% if active_tab == 'daily' %}true{% else %}false{% endif %}">
                         <i class="bi bi-calendar-day"></i> Daily
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="weekly-tab" data-bs-toggle="tab" data-bs-target="#weekly" type="button" role="tab" aria-controls="weekly" aria-selected="false">
+                    <button class="nav-link {% if active_tab == 'weekly' %}active{% endif %}" id="weekly-tab"
+                        data-bs-toggle="tab" data-bs-target="#weekly" type="button" role="tab" aria-controls="weekly"
+                        aria-selected="{% if active_tab == 'weekly' %}true{% else %}false{% endif %}">
                         <i class="bi bi-calendar-week"></i> Weekly
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="monthly-tab" data-bs-toggle="tab" data-bs-target="#monthly" type="button" role="tab" aria-controls="monthly" aria-selected="false">
+                    <button class="nav-link {% if active_tab == 'monthly' %}active{% endif %}" id="monthly-tab"
+                        data-bs-toggle="tab" data-bs-target="#monthly" type="button" role="tab" aria-controls="monthly"
+                        aria-selected="{% if active_tab == 'monthly' %}true{% else %}false{% endif %}">
                         <i class="bi bi-calendar3"></i> Monthly
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="yearly-tab" data-bs-toggle="tab" data-bs-target="#yearly" type="button" role="tab" aria-controls="yearly" aria-selected="false">
+                    <button class="nav-link {% if active_tab == 'yearly' %}active{% endif %}" id="yearly-tab"
+                        data-bs-toggle="tab" data-bs-target="#yearly" type="button" role="tab" aria-controls="yearly"
+                        aria-selected="{% if active_tab == 'yearly' %}true{% else %}false{% endif %}">
                         <i class="bi bi-calendar2"></i> Yearly
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if active_tab == 'financial' %}active{% endif %}" id="financial-tab"
+                        data-bs-toggle="tab" data-bs-target="#financial" type="button" role="tab"
+                        aria-controls="financial"
+                        aria-selected="{% if active_tab == 'financial' %}true{% else %}false{% endif %}">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Financial Report
                     </button>
                 </li>
             </ul>
@@ -41,23 +57,33 @@
         <div class="card-body">
             <div class="tab-content">
                 <!-- Daily Report -->
-                <div class="tab-pane fade show active" id="daily" role="tabpanel" aria-labelledby="daily-tab">
+                <div class="tab-pane fade {% if active_tab == 'daily' %}show active{% endif %}" id="daily"
+                    role="tabpanel" aria-labelledby="daily-tab">
                     {% include 'admin/reports/daily.html' %}
                 </div>
 
                 <!-- Weekly Report -->
-                <div class="tab-pane fade" id="weekly" role="tabpanel" aria-labelledby="weekly-tab">
+                <div class="tab-pane fade {% if active_tab == 'weekly' %}show active{% endif %}" id="weekly"
+                    role="tabpanel" aria-labelledby="weekly-tab">
                     {% include 'admin/reports/weekly.html' %}
                 </div>
 
                 <!-- Monthly Report -->
-                <div class="tab-pane fade" id="monthly" role="tabpanel" aria-labelledby="monthly-tab">
+                <div class="tab-pane fade {% if active_tab == 'monthly' %}show active{% endif %}" id="monthly"
+                    role="tabpanel" aria-labelledby="monthly-tab">
                     {% include 'admin/reports/monthly.html' %}
                 </div>
 
                 <!-- Yearly Report -->
-                <div class="tab-pane fade" id="yearly" role="tabpanel" aria-labelledby="yearly-tab">
+                <div class="tab-pane fade {% if active_tab == 'yearly' %}show active{% endif %}" id="yearly"
+                    role="tabpanel" aria-labelledby="yearly-tab">
                     {% include 'admin/reports/yearly.html' %}
+                </div>
+
+                <!-- Financial Report -->
+                <div class="tab-pane fade {% if active_tab == 'financial' %}show active{% endif %}" id="financial"
+                    role="tabpanel" aria-labelledby="financial-tab">
+                    {% include 'admin/reports/financial.html' %}
                 </div>
             </div>
         </div>
@@ -65,28 +91,57 @@
 </div>
 
 <script>
-function changeDate(dateStr) {
-    window.location.href = `{{ url_for('admin.reports') }}?date=${dateStr}`;
-}
+    // Auto-switch to correct tab if specified in URL
+    document.addEventListener('DOMContentLoaded', function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        const activeTab = urlParams.get('tab');
+        if (activeTab) {
+            const tabEl = document.getElementById(activeTab + '-tab');
+            if (tabEl) {
+                const tab = new bootstrap.Tab(tabEl);
+                tab.show();
+            }
+        }
+    });
 
-function changeWeek(dateStr) {
-    window.location.href = `{{ url_for('admin.reports') }}?week_start=${dateStr}`;
-}
-
-function changeYear(year) {
-    window.location.href = `{{ url_for('admin.reports') }}?year=${year}`;
-}
-
-function changeMonthYear() {
-    const yearSelect = document.querySelector('select[style*="max-width: 120px"]');
-    const monthSelect = document.getElementById('monthSelect');
-    
-    const year = yearSelect.value;
-    const month = monthSelect.value;
-    
-    if (year && month) {
-        window.location.href = `{{ url_for('admin.reports') }}?year=${year}&month=${month}`;
+    function changeDate(dateStr) {
+        window.location.href = `{{ url_for('admin.reports') }}?date=${dateStr}&tab=daily`;
     }
-}
+
+    function changeWeek(dateStr) {
+        window.location.href = `{{ url_for('admin.reports') }}?week_start=${dateStr}&tab=weekly`;
+    }
+
+    function changeYear(year) {
+        window.location.href = `{{ url_for('admin.reports') }}?year=${year}&tab=yearly`;
+    }
+
+    function changeMonthYear() {
+        const yearSelect = document.getElementById('yearSelect');
+        const monthSelect = document.getElementById('monthSelect');
+
+        const year = yearSelect.value;
+        const month = monthSelect.value;
+
+        if (year && month) {
+            window.location.href = `{{ url_for('admin.reports') }}?year=${year}&month=${month}&tab=monthly`;
+        }
+    }
+
+    function changeFinancialMonthYear() {
+        const yearSelect = document.getElementById('finYearSelect');
+        const monthSelect = document.getElementById('finMonthSelect');
+
+        const year = yearSelect.value;
+        const month = monthSelect.value;
+
+        if (year && month) {
+            window.location.href = `{{ url_for('admin.reports') }}?year=${year}&month=${month}&tab=financial`;
+        }
+    }
+
+    function changeFinancialYear(year) {
+        window.location.href = `{{ url_for('admin.reports') }}?year=${year}&tab=financial`;
+    }
 </script>
 {% endblock %}

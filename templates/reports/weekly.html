@@ -77,10 +77,10 @@
         </div>
     </div>
 
-    <!-- Top Employees -->
+    <!-- Top Technicians -->
     <div class="card mt-4">
         <div class="card-body">
-            <h4 class="card-title"><i class="bi bi-trophy"></i> Top Employees This Week</h4>
+            <h4 class="card-title"><i class="bi bi-trophy"></i> Top Technicians This Week</h4>
             {% if top_employees %}
             <ul class="list-group list-group-flush">
                 {% for emp in top_employees %}
@@ -91,7 +91,7 @@
                 {% endfor %}
             </ul>
             {% else %}
-            <p class="text-muted">No employee data available for this week.</p>
+            <p class="text-muted">No technician data available for this week.</p>
             {% endif %}
         </div>
     </div>

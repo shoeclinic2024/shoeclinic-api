@@ -1,47 +1,59 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container-fluid px-4 py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="display-6 fw-bold mb-0">🛠️ My Work Station</h2>
             <p class="text-muted">Personal workspace for {{ current_user.username }}. Manage your active tasks below.
             </p>
         </div>
-        <div class="text-end">
-            <span class="badge bg-primary px-3 py-2 rounded-pill fs-6">
-                Active Tasks: {{ items|length }}
-            </span>
-        </div>
     </div>
 
     <!-- Stats Row -->
-    <div class="row g-4 mb-5">
-        <div class="col-md-4">
-            <div class="work-stat-card bg-white shadow-sm rounded-4 p-4 border-start border-primary border-5">
-                <h6 class="text-muted text-uppercase small fw-bold">Items to Process</h6>
-                <div class="d-flex align-items-center">
-                    <h2 class="mb-0 fw-bold me-2">{{ items|length }}</h2>
-                    <i class="bi bi-box-seam text-primary fs-3"></i>
+    <div class="row g-3 mb-5 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-5">
+        <div class="col">
+            <div class="work-stat-card bg-white shadow-sm rounded-4 p-3 border-start border-primary border-5 h-100">
+                <h6 class="text-muted text-uppercase small fw-bold text-truncate">Yet to Start</h6>
+                <div class="d-flex align-items-center mt-2">
+                    <h2 class="mb-0 fw-bold me-2">{{ task_stats.yts }}</h2>
+                    <i class="bi bi-box-seam text-primary fs-4 ms-auto"></i>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            {% set done_count = items|selectattr('status', 'equalto', 'done')|list|length %}
-            <div class="work-stat-card bg-white shadow-sm rounded-4 p-4 border-start border-success border-5">
-                <h6 class="text-muted text-uppercase small fw-bold">Completed Today</h6>
-                <div class="d-flex align-items-center">
-                    <h2 class="mb-0 fw-bold me-2">{{ done_count }}</h2>
-                    <i class="bi bi-check2-circle text-success fs-3"></i>
+        <div class="col">
+            <div class="work-stat-card bg-white shadow-sm rounded-4 p-3 border-start border-warning border-5 h-100">
+                <h6 class="text-muted text-uppercase small fw-bold text-truncate">In Progress</h6>
+                <div class="d-flex align-items-center mt-2">
+                    <h2 class="mb-0 fw-bold me-2">{{ task_stats.wip }}</h2>
+                    <i class="bi bi-tools text-warning fs-4 ms-auto"></i>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="work-stat-card bg-white shadow-sm rounded-4 p-4 border-start border-warning border-5">
-                <h6 class="text-muted text-uppercase small fw-bold">Orders Lead</h6>
-                <div class="d-flex align-items-center">
-                    <h2 class="mb-0 fw-bold me-2">{{ orders|length }}</h2>
-                    <i class="bi bi-award text-warning fs-3"></i>
+        <div class="col">
+            <div class="work-stat-card bg-white shadow-sm rounded-4 p-3 border-start border-info border-5 h-100">
+                <h6 class="text-muted text-uppercase small fw-bold text-truncate">Work Done</h6>
+                <div class="d-flex align-items-center mt-2">
+                    <h2 class="mb-0 fw-bold me-2">{{ task_stats.done }}</h2>
+                    <i class="bi bi-check-circle text-info fs-4 ms-auto"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="work-stat-card bg-white shadow-sm rounded-4 p-3 border-start border-success border-5 h-100">
+                <h6 class="text-muted text-uppercase small fw-bold text-truncate">Ready for Out</h6>
+                <div class="d-flex align-items-center mt-2">
+                    <h2 class="mb-0 fw-bold me-2">{{ task_stats.ready }}</h2>
+                    <i class="bi bi-check2-all text-success fs-4 ms-auto"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="work-stat-card bg-white shadow-sm rounded-4 p-3 border-start border-dark border-5 h-100">
+                <h6 class="text-muted text-uppercase small fw-bold text-truncate">Total Assignments</h6>
+                <div class="d-flex align-items-center mt-2">
+                    <h2 class="mb-0 fw-bold me-2">{{ task_stats.total }}</h2>
+                    <i class="bi bi-list-task text-dark fs-4 ms-auto"></i>
                 </div>
             </div>
         </div>
@@ -75,7 +87,8 @@
                     {% if item.services %}
                     {% for s in item.services.split(',') %}
                     {% set s_name = s|trim %}
-                    {% if assignments.get(s_name) == current_user.username or item.technician == current_user.username
+                    {% if assignments.get(s_name) == current_user.username or item.technician ==
+                    current_user.username
                     %}
                     {% set _ = my_services.append(s_name) %}
                     {% endif %}
@@ -83,9 +96,11 @@
                     {% endif %}
 
                     {% for s_name in my_services %}
+                    {% if statuses.get(s_name) != 'ready to deliver' %}
                     <tr class="{% if statuses.get(s_name) == 'done' %}opacity-75 bg-light{% endif %}">
                         <td class="ps-4">
-                            <span class="badge bg-light text-dark border mb-1">{{ item.order.job_id }}</span><br>
+                            <span class="badge bg-light text-dark border mb-1">{{ item.order.job_id
+                                }}</span><br>
                             <small class="text-muted">Cust: {{ item.order.customer_name }}</small>
                         </td>
                         <td>
@@ -124,9 +139,15 @@
                                     title="DONE">
                                     DONE
                                 </button>
+                                <button type="submit" name="new_status" value="ready to deliver"
+                                    class="btn btn-sm btn-outline-info rounded-pill {% if statuses.get(s_name) == 'ready to deliver' %}active{% endif %}"
+                                    title="READY">
+                                    READY
+                                </button>
                             </form>
                         </td>
                     </tr>
+                    {% endif %}
                     {% endfor %}
                     {% endfor %}
                     {% else %}
@@ -142,49 +163,73 @@
         </div>
     </div>
 
-    <!-- Assigned Full Projects -->
-    <h5 class="fw-bold mb-4 d-flex align-items-center">
-        <i class="bi bi-briefcase text-warning me-2"></i> Projects I'm Leading
-    </h5>
-    {% if orders %}
-    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th class="ps-4">Job ID</th>
-                        <th>Customer</th>
-                        <th>Scheduled Delivery</th>
-                        <th>Overall Status</th>
-                        <th class="text-end pe-4">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in orders %}
-                    <tr>
-                        <td class="ps-4"><span class="fw-bold text-primary">{{ order.job_id }}</span></td>
-                        <td>{{ order.customer_name }}</td>
-                        <td>{{ order.drop_date.strftime('%d %b %Y') if order.drop_date else '-' }}</td>
-                        <td>
-                            <span class="badge bg-{{ order.status|status_color }}">{{ order.status|upper }}</span>
-                        </td>
-                        <td class="text-end pe-4">
-                            <a href="{{ url_for('view_bill', order_id=order.id) }}"
-                                class="btn btn-sm btn-dark px-3 rounded-pill">
-                                Details
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <!-- Recently Completed Work (Dropdown) -->
+    <div class="accordion" id="completedWorkAccordion">
+        <div class="accordion-item shadow-sm border-0 rounded-4 overflow-hidden mb-5">
+            <h2 class="accordion-header" id="headingCompleted">
+                <button class="accordion-button collapsed bg-white fw-bold py-3" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#collapseCompleted" aria-expanded="false" aria-controls="collapseCompleted">
+                    <i class="bi bi-check2-all text-success me-2"></i> Recently Completed Work (Ready/Billed Today)
+                    <span class="badge bg-success ms-2 rounded-pill">{{ completed_items|length }}</span>
+                </button>
+            </h2>
+            <div id="collapseCompleted" class="accordion-collapse collapse" aria-labelledby="headingCompleted"
+                data-bs-parent="#completedWorkAccordion">
+                <div class="accordion-body p-0">
+                    {% if completed_items %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light text-secondary text-uppercase small">
+                                <tr>
+                                    <th class="border-0 ps-4">Job Details</th>
+                                    <th class="border-0">Customer</th>
+                                    <th class="border-0">Service</th>
+                                    <th class="border-0">Finished Date/Time</th>
+                                    <th class="border-0">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="border-top-0">
+                                {% for item in completed_items %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-primary">{{ item.order.job_id or item.order_id }}</div>
+                                        <div class="small text-muted">{{ item.item_name }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold">{{ item.order.customer_name }}</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-light text-dark fw-normal border">
+                                            {{ item.services or 'Full Item' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="small text-muted">
+                                            {{ item.order.work_finish_date.strftime('%d %b %Y, %I:%M %p') if
+                                            item.order.work_finish_date else 'Today' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                                            {{ (item.status or 'Completed')|upper }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="p-5 text-center text-muted">
+                        <i class="bi bi-check-circle fs-1 mb-3 d-block text-secondary opacity-25"></i>
+                        No completed tasks found for today.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
-    {% else %}
-    <div class="alert alert-light border text-center py-4 rounded-4">
-        <p class="mb-0 text-muted">You are not leading any full projects currently.</p>
-    </div>
-    {% endif %}
 </div>
 
 <style>

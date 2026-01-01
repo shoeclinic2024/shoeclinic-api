@@ -1,6 +1,24 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    /* Fix for dropdowns being clipped by table-responsive */
+    .table-responsive {
+        overflow: visible !important;
+    }
+
+    @media (max-width: 992px) {
+        .table-responsive {
+            overflow-x: auto !important;
+            padding-bottom: 100px;
+            /* Space for dropdown on mobile */
+        }
+    }
+
+    .btn-premium {
+        white-space: nowrap;
+    }
+</style>
 <div class="container py-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -45,8 +63,10 @@
                                     class="btn btn-success btn-sm rounded-pill px-4">
                                     Approve Access
                                 </a>
-                                class="btn btn-success btn-premium shadow-sm">
-                                Authorize Access
+                                <a href="{{ url_for('admin.reject_user', user_id=user.id) }}"
+                                    class="btn btn-outline-danger btn-sm rounded-pill px-4 ms-2"
+                                    onclick="return confirm('Immediately reject and delete this registration?')">
+                                    Reject
                                 </a>
                             </td>
                         </tr>
@@ -91,52 +111,51 @@
                             <td><span class="text-muted small">{{ req.role|upper }}</span></td>
                             <td class="text-end">
                                 <div class="dropdown d-inline-block">
-                                    <button class="btn btn-outline-primary btn-premium dropdown-toggle" type="button"
-                                        data-bs-toggle="dropdown">
-                                        Grant View Only
-                                    </button>
-                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-2">
-                                        <li>
-                                            <h6 class="dropdown-header small text-muted">Temporary (No Export)</h6>
-                                        </li>
-                                        <li><a class="dropdown-item rounded-3"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=1) }}"><i
-                                                    class="bi bi-clock me-2"></i>1 Hour</a></li>
-                                        <li><a class="dropdown-item rounded-3"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=4) }}"><i
-                                                    class="bi bi-clock-history me-2"></i>4 Hours</a></li>
-                                        <li>
-                                            <hr class="dropdown-divider">
-                                        </li>
-                                        <li><a class="dropdown-item rounded-3 fw-bold text-primary"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false') }}"><i
-                                                    class="bi bi-infinity me-2"></i>Permanent View Only</a></li>
-                                    </ul>
-                                </div>
-                                <div class="dropdown d-inline-block ms-2">
                                     <button class="btn btn-primary btn-premium dropdown-toggle" type="button"
-                                        data-bs-toggle="dropdown">
-                                        Grant Full Access
+                                        data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="bi bi-shield-lock-fill me-1"></i> Authorize Access
                                     </button>
-                                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-2 bg-dark">
+                                    <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2"
+                                        style="min-width: 250px;">
                                         <li>
-                                            <h6 class="dropdown-header small text-secondary">Export Capabilities Enabled
-                                            </h6>
+                                            <h6 class="dropdown-header fw-bold text-primary"><i
+                                                    class="bi bi-eye me-2"></i>VIEW ONLY (NO EXPORT)</h6>
                                         </li>
-                                        <li><a class="dropdown-item text-white rounded-3"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=1) }}"><i
-                                                    class="bi bi-clock me-2"></i>1 Hour Full</a></li>
-                                        <li><a class="dropdown-item text-white rounded-3"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=4) }}"><i
-                                                    class="bi bi-clock-history me-2"></i>4 Hours Full</a></li>
+                                        <li><a class="dropdown-item rounded-2 py-2"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=1) }}">
+                                                <i class="bi bi-clock me-2"></i>1 Hour Access</a></li>
+                                        <li><a class="dropdown-item rounded-2 py-2"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=4) }}">
+                                                <i class="bi bi-clock-history me-2"></i>4 Hours Access</a></li>
+                                        <li><a class="dropdown-item rounded-2 py-2 fw-bold"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false') }}">
+                                                <i class="bi bi-infinity me-2"></i>Permanent View Only</a></li>
+
                                         <li>
-                                            <hr class="dropdown-divider border-secondary">
+                                            <hr class="dropdown-divider my-2">
                                         </li>
-                                        <li><a class="dropdown-item text-primary rounded-3 fw-bold"
-                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true') }}"><i
-                                                    class="bi bi-infinity me-2"></i>Permanent Full Access</a></li>
+
+                                        <li>
+                                            <h6 class="dropdown-header fw-bold text-danger"><i
+                                                    class="bi bi-download me-2"></i>FULL ACCESS (WITH EXPORT)</h6>
+                                        </li>
+                                        <li><a class="dropdown-item rounded-2 py-2"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=1) }}">
+                                                <i class="bi bi-clock me-2 text-danger"></i>1 Hour Full</a></li>
+                                        <li><a class="dropdown-item rounded-2 py-2"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=4) }}">
+                                                <i class="bi bi-clock-history me-2 text-danger"></i>4 Hours Full</a>
+                                        </li>
+                                        <li><a class="dropdown-item rounded-2 py-2 fw-bold text-danger"
+                                                href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true') }}">
+                                                <i class="bi bi-infinity me-2"></i>Permanent Full Access</a></li>
                                     </ul>
                                 </div>
+                                <a href="{{ url_for('admin.reject_customer_access', user_id=req.id) }}"
+                                    class="btn btn-outline-danger btn-premium ms-2"
+                                    onclick="return confirm('Reject this access request?')">
+                                    Reject
+                                </a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -266,6 +285,103 @@
                 <i class="bi bi-clipboard2-check empty-state-icon mb-3"></i>
                 <h5 class="fw-bold">Financials Verified</h5>
                 <p class="text-muted mb-0">All expense reports have been audited.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- EXPENSE MODIFICATION REQUESTS -->
+    <div class="approval-card delay-5 mt-4">
+        <div class="card-header-premium">
+            <h5 class="text-info"><i class="bi bi-pencil-square"></i> Expense Modification Requests</h5>
+            {% if expense_requests %}
+            <span class="badge bg-info text-white badge-premium">{{ expense_requests|length }} Requests</span>
+            {% endif %}
+        </div>
+        <div class="card-body p-0">
+            {% if expense_requests %}
+            <div class="table-responsive">
+                <table class="table table-premium mb-0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Original Details</th>
+                            <th>Proposed Changes</th>
+                            <th>Reason</th>
+                            <th>Requested By</th>
+                            <th class="text-end">Command</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in expense_requests %}
+                        <tr>
+                            <td>
+                                {% if req.request_type == 'delete' %}
+                                <span class="badge bg-danger">DELETE</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">EDIT</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="fw-bold">{{ req.title }}</div>
+                                <div class="text-muted small">₹{{ "{:,.2f}".format(req.amount) }}</div>
+                                <div class="text-muted small">{{ req.expense_date.strftime('%d-%b-%Y') }}</div>
+                                <div class="text-muted x-small italic text-truncate" style="max-width: 150px;">{{
+                                    req.description or '' }}</div>
+                            </td>
+                            <td>
+                                {% if req.request_type == 'edit' %}
+                                {% set data = req.get_request_data %}
+                                {% if data %}
+                                <div class="proposed-changes small">
+                                    {% if data.title != req.title %}
+                                    <div class="text-warning"><strong>Title:</strong> {{ data.title }}</div>
+                                    {% endif %}
+                                    {% if data.amount|float != req.amount|float %}
+                                    <div class="text-warning"><strong>Amount:</strong> ₹{{
+                                        "{:,.2f}".format(data.amount|float) }}</div>
+                                    {% endif %}
+                                    {% if data.expense_date != req.expense_date.strftime('%Y-%m-%d') %}
+                                    <div class="text-warning"><strong>Date:</strong> {{ data.expense_date }}</div>
+                                    {% endif %}
+                                    {% if data.category != req.category %}
+                                    <div class="text-warning"><strong>Category:</strong> {{ data.category }}</div>
+                                    {% endif %}
+                                    {% if data.description != req.description %}
+                                    <div class="text-warning"><strong>Desc:</strong> {{ data.description }}</div>
+                                    {% endif %}
+                                </div>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-danger small">Full Deletion</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="text-muted small">{{ req.request_reason or '-' }}</div>
+                            </td>
+                            <td><span class="small">{{ req.creator.username if req.creator else 'System' }}</span></td>
+                            <td class="text-end">
+                                <div class="btn-group">
+                                    <a href="{{ url_for('admin.process_expense_request', expense_id=req.id, action='approve') }}"
+                                        class="btn btn-success btn-premium shadow-sm">
+                                        Approve
+                                    </a>
+                                    <a href="{{ url_for('admin.process_expense_request', expense_id=req.id, action='reject') }}"
+                                        class="btn btn-outline-danger btn-premium ms-2">
+                                        Reject
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-check-all empty-state-icon mb-3"></i>
+                <h5 class="fw-bold">No Modification Requests</h5>
+                <p class="text-muted mb-0">No edit or delete requests pending.</p>
             </div>
             {% endif %}
         </div>

@@ -5,7 +5,7 @@
     <!-- Header -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mb-4 gap-3">
         <div>
-            <h4 class="mb-1 text-primary fw-bold"><i class="bi bi-wallet2 me-2"></i>Employee Payouts & Salaries</h4>
+            <h4 class="mb-1 text-primary fw-bold"><i class="bi bi-wallet2 me-2"></i>Technician Payouts & Salaries</h4>
             <p class="text-muted mb-0">Manage and track salary disbursements from the expense records.</p>
         </div>
 
@@ -97,7 +97,7 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="fw-bold text-dark">₹ {{ "%.2f"|format(e.amount) }}</span>
+                                <span class="fw-bold text-dark">₹ {{ "%.2f"|format(e.real_amount or e.amount) }}</span>
                             </td>
                             <td>
                                 <i class="bi bi-calendar-event me-2 text-muted"></i>{{ e.expense_date.strftime('%d %B

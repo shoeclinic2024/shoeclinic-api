@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+        <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-currency-rupee me-2"></i>Financial Report</h5>
+
+        <form class="d-flex align-items-center gap-2" method="get">
+            <select name="month" class="form-select form-select-sm" style="width: 120px;" onchange="this.form.submit()">
+                {% for m in months %}
+                <option value="{{ m }}" {% if m==selected_month %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+            <select name="year" class="form-select form-select-sm" style="width: 100px;" onchange="this.form.submit()">
+                {% for y in years %}
+                <option value="{{ y }}" {% if y==selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="window.print()">
+                <i class="bi bi-printer"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- Financial KPIs -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small fw-bold">Total Revenue</h6>
+                    <h3 class="fw-bold text-primary mb-0">₹{{ "%.2f"|format(total_revenue) }}</h3>
+                    <small class="text-muted">Expected from all orders</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small fw-bold">Billed Revenue</h6>
+                    <h3 class="fw-bold text-success mb-0">₹{{ "%.2f"|format(billed_revenue) }}</h3>
+                    <div class="d-flex align-items-center mt-1">
+                        {% if growth >= 0 %}
+                        <span class="badge bg-success-subtle text-success me-2">
+                            <i class="bi bi-arrow-up"></i> {{ "%.1f"|format(growth) }}%
+                        </span>
+                        {% else %}
+                        <span class="badge bg-danger-subtle text-danger me-2">
+                            <i class="bi bi-arrow-down"></i> {{ "%.1f"|format(growth) }}%
+                        </span>
+                        {% endif %}
+                        <small class="text-muted">vs last month</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small fw-bold">Total Expenses</h6>
+                    <h3 class="fw-bold text-danger mb-0">₹{{ "%.2f"|format(total_expenses) }}</h3>
+                    <small class="text-muted">Approved expenses only</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <h6 class="text-uppercase text-muted small fw-bold">Net Profit</h6>
+                    <h3 class="fw-bold {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %} mb-0">
+                        ₹{{ "%.2f"|format(net_profit) }}
+                    </h3>
+                    <div class="mt-1">
+                        <span class="badge bg-secondary">{{ "%.1f"|format(profit_margin) }}% Margin</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Expense Breakdown Chart/Table -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold">Expense Breakdown</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-4">Category</th>
+                                <th class="text-end pe-4">Amount</th>
+                                <th class="text-end pe-4">% of Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for category, amount in expense_breakdown.items() %}
+                            <tr>
+                                <td class="ps-4 fw-medium">{{ category }}</td>
+                                <td class="text-end pe-4">₹{{ "%.2f"|format(amount) }}</td>
+                                <td class="text-end pe-4 text-muted">
+                                    {{ "%.1f"|format((amount / total_expenses * 100) if total_expenses > 0 else 0) }}%
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center py-4 text-muted">No expenses recorded for this period
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profitability Summary -->
+        <div class="col-md-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h6 class="mb-0 fw-bold">Profitability Analysis</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Total Sales (Billed)</span>
+                        <span class="fw-bold">₹{{ "%.2f"|format(billed_revenue) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Operational Expenses</span>
+                        <span class="fw-bold text-danger">- ₹{{ "%.2f"|format(total_expenses) }}</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between mb-4">
+                        <span class="fw-bold fs-5">Net Profit</span>
+                        <span class="fw-bold fs-5 {% if net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            ₹{{ "%.2f"|format(net_profit) }}
+                        </span>
+                    </div>
+
+                    <div class="p-3 bg-light rounded">
+                        <h6 class="fw-bold small text-uppercase text-muted mb-3">Analysis</h6>
+                        <p class="mb-2 small">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Profit Margin is <strong>{{ "%.1f"|format(profit_margin) }}%</strong> for {{ title }}.
+                        </p>
+                        <p class="mb-0 small">
+                            <i class="bi bi-graph-up-arrow me-1"></i>
+                            {% if growth > 0 %}
+                            Revenue grew by <strong>{{ "%.1f"|format(growth) }}%</strong> compared to last month.
+                            {% else %}
+                            Revenue declined by <strong>{{ "%.1f"|format(growth|abs) }}%</strong> compared to last
+                            month.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

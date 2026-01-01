@@ -30,8 +30,17 @@
         'icon': 'bi-people-fill',
         'color': 'primary',
         'title': 'Manage Users',
-        'desc': 'Approve or deactivate employee accounts.',
+        'desc': 'Approve or deactivate technician accounts.',
         'url': 'admin.manage_users'
+        },
+        {
+        'icon': 'bi-shield-lock',
+        'color': 'danger',
+        'title': 'Security Settings' if current_user.role == 'super_admin' else 'Manage Password',
+        'desc': 'System security, 2FA & Login Logs.' if current_user.role == 'super_admin' else 'Update your password &
+        2FA.',
+        'url': 'security_settings',
+        'super_admin_only': False
         },
         {
         'icon': 'bi-bar-chart-line-fill',
@@ -59,15 +68,17 @@
         'icon': 'bi-wallet2',
         'color': 'secondary',
         'title': 'Payouts',
-        'desc': 'View and manage employee payouts.',
+        'desc': 'View and manage technician payouts.',
         'url': 'admin.payouts'
         },
         {
-        'icon': 'bi-clipboard2-check-fill',
-        'color': 'dark',
-        'title': 'Technician Status',
-        'desc': 'Live work status of technicians.',
-        'url': 'admin.technician_status'
+        'icon': 'bi-speedometer2',
+        'color': 'info',
+        'title': 'Performance Monitor',
+        'desc': 'Track technician productivity & incentives.',
+        'url': 'admin.performance_monitor',
+        'restricted': 'performance',
+        'pending': True
         },
         {
         'icon': 'bi-person-lines-fill',
@@ -75,7 +86,7 @@
         'title': 'Customer Database',
         'desc': 'View registered customers.',
         'url': 'admin.customer_database',
-        'restricted': True
+        'restricted': 'customers'
         },
         {
         'icon': 'bi-calendar3',
@@ -84,37 +95,42 @@
         'desc': 'Mark holidays and special office dates.',
         'url': 'calendar',
         'super_admin_only': True
-        }
+        },
+        {
+        'icon': 'bi-bell',
+        'color': 'warning',
+        'title': 'Notifications',
+        'desc': 'View approval status and system alerts.',
+        'url': 'admin.notifications'
+        },
+
         ] %}
 
-        {% if current_user.role == 'super_admin' %}
-        <div class="col-md-4">
-            <a href="{{ url_for('admin.pending_approvals') }}" class="text-decoration-none"
-                aria-label="Superior Control">
-                <div class="card shadow-sm h-100 border-primary hover-shadow text-center p-3 position-relative">
-                    {% if total_pending and total_pending > 0 %}
-                    <span
-                        class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger shadow">
-                        {{ total_pending }}
-                        <span class="visually-hidden">pending approvals</span>
-                    </span>
-                    {% endif %}
 
-                    <i class="bi bi-shield-check fs-1 text-primary"></i>
-                    <h5 class="card-title mt-2">Superior Control</h5>
-                    <p class="card-text text-muted">Review users, expenses & access requests.</p>
-                </div>
-            </a>
-        </div>
-        {% endif %}
 
         {% for p in panels %}
         {% if not p.get('super_admin_only') or current_user.role == 'super_admin' %}
         <div class="col-md-4">
 
-            {% set is_expired = current_user.customer_access_expiry and now > current_user.customer_access_expiry %}
-            {% set is_locked = p.get('restricted') and current_user.role != 'super_admin' and (not
-            current_user.can_view_customers or is_expired) %}
+            {% set is_locked = False %}
+            {% set request_sent = False %}
+            {% set request_url = '#' %}
+
+            {% if p.restricted == 'customers' and current_user.role != 'super_admin' %}
+            {% set expiry = current_user.customer_access_expiry %}
+            {% if not current_user.can_view_customers or (expiry and now > expiry) %}
+            {% set is_locked = True %}
+            {% set request_sent = current_user.customer_view_requested %}
+            {% set request_url = url_for('admin.request_customer_access') %}
+            {% endif %}
+            {% elif p.restricted == 'performance' and current_user.role != 'super_admin' %}
+            {% set expiry = current_user.performance_access_expiry %}
+            {% if not current_user.can_view_performance or (expiry and now > expiry) %}
+            {% set is_locked = True %}
+            {% set request_sent = current_user.performance_view_requested %}
+            {% set request_url = url_for('admin.request_performance_access') %}
+            {% endif %}
+            {% endif %}
 
             {% if is_locked %}
             <div class="card shadow-sm h-100 text-center p-3 bg-light" style="position: relative;">
@@ -128,8 +144,8 @@
                 </div>
 
                 <!-- Request Access Overlay -->
-                {% if not current_user.customer_view_requested %}
-                <a href="{{ url_for('admin.request_customer_access') }}"
+                {% if not request_sent %}
+                <a href="{{ request_url }}"
                     class="btn btn-sm btn-outline-primary position-absolute start-50 top-50 translate-middle"
                     style="width: 80%;">
                     Request Access
@@ -141,14 +157,45 @@
                 </button>
                 {% endif %}
             </div>
+            {% elif p.pending %}
+            <div class="card shadow-sm h-100 text-center p-4 border-dashed"
+                style="border: 2px dashed #ddd; background-color: #fafafa;">
+                <div class="position-absolute top-0 end-0 p-2">
+                    <span class="badge bg-dark rounded-pill" style="font-size: 0.65rem; letter-spacing: 0.5px;">NEXT
+                        UPDATE</span>
+                </div>
+                <div class="opacity-75 py-2">
+                    <i class="bi {{ p.icon }} fs-1 text-muted"></i>
+                    <h5 class="card-title mt-2 text-dark">{{ p.title }}</h5>
+                    <p class="card-text text-muted small mb-0">{{ p.desc }}</p>
+                </div>
+                <div class="mt-3">
+                    <span class="badge bg-light text-primary border border-primary-subtle" style="font-size: 0.7rem;">
+                        <i class="bi bi-clock-history me-1"></i> Under Development
+                    </span>
+                </div>
+            </div>
             {% else %}
             <a href="{{ url_for(p.url) }}" class="text-decoration-none" aria-label="{{ p.title }}">
-                <div class="card shadow-sm h-100 hover-shadow text-center p-3">
+                <div class="card shadow-sm h-100 hover-shadow text-center p-3 position-relative">
+                    {% if p.url == 'admin.notifications' and unread_count and unread_count > 0 %}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger shadow"
+                        style="z-index: 10;">
+                        {{ unread_count }}
+                    </span>
+                    {% endif %}
                     <i class="bi {{ p.icon }} fs-1 text-{{ p.color }}"></i>
                     <h5 class="card-title mt-2">{{ p.title }}</h5>
                     <p class="card-text text-muted">{{ p.desc }}</p>
 
-                    {% if p.restricted and current_user.customer_access_expiry and current_user.role != 'super_admin' %}
+                    {% set restricted_expiry = None %}
+                    {% if p.restricted == 'customers' %}
+                    {% set restricted_expiry = current_user.customer_access_expiry %}
+                    {% elif p.restricted == 'performance' %}
+                    {% set restricted_expiry = current_user.performance_access_expiry %}
+                    {% endif %}
+
+                    {% if p.restricted and restricted_expiry and current_user.role != 'super_admin' %}
                     <div class="mt-n2 mb-1">
                         <span class="badge bg-warning text-dark" style="font-size: 0.7rem;">
                             <i class="bi bi-clock me-1"></i> Temporary Access

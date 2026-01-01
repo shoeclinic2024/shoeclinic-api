@@ -2,7 +2,7 @@
 from flask import Blueprint, render_template, flash, request, redirect, url_for, jsonify, send_file
 from flask_login import login_required, current_user
 from database import db
-from models import User, Expense
+from models import User, Expense, Notification, Staff, Attendance
 import io
 import pandas as pd
 from datetime import datetime, timedelta
@@ -12,6 +12,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from functools import wraps
+import json
 
 def admin_required(f):
     @wraps(f)
@@ -26,7 +27,7 @@ def super_admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or current_user.role != 'super_admin':
-            flash("Access denied. Owner privileges required.", "danger")
+            flash("Access denied. Super Admin privileges required.", "danger")
             return redirect(request.referrer or url_for('home'))
         return f(*args, **kwargs)
     return decorated_function
@@ -47,7 +48,8 @@ def panel():
         data['pending_users'] = User.query.filter_by(is_active=False).count()
         data['pending_expenses'] = Expense.query.filter_by(status='pending').count()
         data['pending_access'] = User.query.filter_by(customer_view_requested=True).count()
-        data['total_pending'] = data['pending_users'] + data['pending_expenses'] + data['pending_access']
+        data['modification_requests'] = Expense.query.filter(Expense.request_type != 'none').count()
+        data['total_pending'] = data['pending_users'] + data['pending_expenses'] + data['pending_access'] + data['modification_requests']
     
     # Detect Database Engine
     from flask import current_app
@@ -66,16 +68,181 @@ def panel():
 def manage_users():
     try:
         users = User.query.order_by(User.username).all()
-        print(f"DEBUG: Found {len(users)} users")
-        for user in users:
-            print(f"  - {user.username} (role: {user.role}, active: {user.is_active})")
         return render_template("admin/manage_users.html", users=users)
     except Exception as e:
         print(f"ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
         flash(f"Error loading users: {str(e)}", "danger")
         return render_template("admin/manage_users.html", users=[])
+
+@admin_bp.route("/add_user", methods=["GET", "POST"])
+@login_required
+@admin_required
+def add_user():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        role = request.form.get("role")
+        is_active = request.form.get("is_active") == "on"
+
+        # Check existing
+        if User.query.filter_by(username=username).first():
+            flash("Username already exists.", "danger")
+            return redirect(url_for("admin.add_user"))
+        
+        # Validate Password
+        from security_service import security_service
+        is_valid, msg = security_service.validate_password_strength(password)
+        if not is_valid:
+            flash(f"Password Error: {msg}", "danger")
+            return redirect(url_for("admin.add_user"))
+
+        # Hash
+        from flask_bcrypt import Bcrypt
+        bcrypt = Bcrypt()
+        hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
+        
+        new_user = User(
+            username=username, 
+            password=hashed_pw, 
+            role=role, 
+            is_active=is_active
+        )
+        
+        db.session.add(new_user)
+        db.session.commit() # Commit first to generate ID
+        
+        # Add to history
+        security_service.save_password_history(new_user, hashed_pw)
+        db.session.commit()
+        
+        flash(f"User {username} created successfully!", "success")
+        return redirect(url_for("admin.manage_users"))
+        
+    return render_template("admin/add_user.html")
+
+
+@admin_bp.route("/reset_user_password/<int:user_id>", methods=["POST"])
+@login_required
+@admin_required
+def reset_user_password(user_id):
+    """Admin resets a user's password"""
+    if current_user.role != 'super_admin':
+        flash("Only Super Admin can reset passwords.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
+    user = User.query.get_or_404(user_id)
+    new_password = request.form.get("new_password")
+    
+    if not new_password or len(new_password) < 6:
+        flash("Password must be at least 6 characters.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
+    from security_service import security_service
+    is_valid, msg = security_service.validate_password_strength(new_password, user)
+    if not is_valid:
+        flash(f"Error: {msg}", "danger")
+        return redirect(url_for('admin.manage_users'))
+
+    from flask_bcrypt import Bcrypt
+    bcrypt = Bcrypt()
+    pw_hash = bcrypt.generate_password_hash(new_password).decode("utf-8")
+    user.password = pw_hash
+    
+    # Save to history
+    security_service.save_password_history(user, pw_hash)
+    
+    # Reset lockouts
+    user.failed_login_attempts = 0
+    user.account_locked_until = None
+    
+    db.session.commit()
+    flash(f"Password for {user.username} has been reset.", "success")
+    return redirect(url_for('admin.manage_users'))
+
+@admin_bp.route("/reset_user_2fa/<int:user_id>", methods=["POST"])
+@login_required
+@admin_required
+def reset_user_2fa(user_id):
+    """Admin resets a user's 2FA (disables it)"""
+    if current_user.role != 'super_admin':
+        flash("Only Super Admin can reset 2FA.", "danger")
+        return redirect(url_for('admin.manage_users'))
+
+    user = User.query.get_or_404(user_id)
+    user.two_factor_enabled = False
+    user.two_factor_secret = None
+    db.session.commit()
+    
+    flash(f"2FA has been disabled for {user.username}. They must set it up again.", "warning")
+    return redirect(url_for('admin.manage_users'))
+
+# --- Staff Management ---
+@admin_bp.route("/manage_staff")
+@login_required
+@admin_required
+def manage_staff():
+    staff_list = Staff.query.order_by(Staff.name).all()
+    # Fetch active users for linking
+    users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    return render_template("admin/manage_staff.html", staff_list=staff_list, users=users)
+
+@admin_bp.route("/add_staff", methods=["POST"])
+@login_required
+@admin_required
+def add_staff():
+    name = request.form.get("name")
+    mobile = request.form.get("mobile")
+    place = request.form.get("place")
+    salary_type = request.form.get("salary_type", "monthly")
+    base_salary = float(request.form.get("base_salary", 0))
+    user_id = request.form.get("user_id")
+
+    if not name:
+        flash("Name is required.", "danger")
+        return redirect(url_for("admin.manage_staff"))
+
+    if Staff.query.filter_by(name=name).first():
+        flash("Staff member already exists.", "danger")
+    else:
+        new_staff = Staff(
+            name=name, 
+            mobile=mobile, 
+            place=place, 
+            salary_type=salary_type, 
+            base_salary=base_salary,
+            user_id=int(user_id) if user_id and user_id != "" else None
+        )
+        db.session.add(new_staff)
+        db.session.commit()
+        flash(f"Staff {name} added successfully.", "success")
+    
+    return redirect(url_for("admin.manage_staff"))
+
+@admin_bp.route("/edit_staff/<int:id>", methods=["POST"])
+@login_required
+@admin_required
+def edit_staff(id):
+    staff = Staff.query.get_or_404(id)
+    staff.mobile = request.form.get("mobile")
+    staff.place = request.form.get("place")
+    staff.salary_type = request.form.get("salary_type")
+    staff.base_salary = float(request.form.get("base_salary", 0))
+    user_id = request.form.get("user_id")
+    staff.user_id = int(user_id) if user_id and user_id != "" else None
+    
+    db.session.commit()
+    flash(f"Updated record for {staff.name}.", "success")
+    return redirect(url_for("admin.manage_staff"))
+
+@admin_bp.route("/delete_staff/<int:id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_staff(id):
+    staff = Staff.query.get_or_404(id)
+    db.session.delete(staff)
+    db.session.commit()
+    flash(f"Staff {staff.name} removed.", "warning")
+    return redirect(url_for("admin.manage_staff"))
 
 # Analytics Dashboard
 @admin_bp.route("/analytics")
@@ -88,6 +255,7 @@ def analytics():
         
         # Get all orders
         all_orders = Order.query.all()
+        all_expenses = Expense.query.filter_by(status="approved").all()
         today = datetime.utcnow().date()
         
         # Generate list of available months and years for dropdowns if needed
@@ -107,6 +275,29 @@ def analytics():
         last_week_start = this_week_start - timedelta(days=7)
         last_week_end = this_week_start - timedelta(days=1)
         
+        
+        
+        def filter_expenses(exp_list, start, end):
+            return [e for e in exp_list if start <= e.expense_date <= end]
+
+        def get_place_analysis(orders):
+            stats = {}
+            for order in orders:
+                p = order.place or "Unknown"
+                if p not in stats: stats[p] = {'name': p, 'count': 0, 'revenue': 0}
+                stats[p]['count'] += 1
+                stats[p]['revenue'] += float(order.price or 0)
+            return sorted(stats.values(), key=lambda x: x['revenue'], reverse=True)
+
+        def get_customer_analysis(orders):
+            stats = {}
+            for order in orders:
+                c = order.mobile or "N/A"
+                if c not in stats: stats[c] = {'mobile': c, 'name': order.customer_name or "Unknown", 'count': 0, 'revenue': 0}
+                stats[c]['count'] += 1
+                stats[c]['revenue'] += float(order.price or 0)
+            return sorted(stats.values(), key=lambda x: x['revenue'], reverse=True)
+
         def get_service_analysis(orders):
             stats = {}
             for order in orders:
@@ -124,12 +315,12 @@ def analytics():
             top_svc = sorted_stats[0]['name'] if sorted_stats else "N/A"
             return sorted_stats, total_svcs, top_svc
 
-        def get_metrics(orders):
+        def get_metrics(orders, expenses=[]):
             total_rev = sum([float(o.price or 0) for o in orders])
             total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in orders])
             
-            # Billed Revenue: Sum of price for orders with specific payment status
-            billed_rev = sum([float(o.price or 0) for o in orders if o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']])
+            # Billed Revenue: Sum of price for orders with specific payment status or tracked status
+            billed_rev = sum([float(o.price or 0) for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
             
             # Status Analysis
             total = len(orders)
@@ -138,12 +329,17 @@ def analytics():
             yts = len([o for o in orders if o.status and ('yts' in o.status.lower() or 'yet' in o.status.lower())])
             
             # Billing Logic
-            billed_count = len([o for o in orders if o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']])
+            billed_count = len([o for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
             unbilled_count = total - billed_count
             
             # Service sub-analysis
             _, total_svcs, top_svc = get_service_analysis(orders)
             
+
+            total_exp = sum([float(e.amount or 0) for e in expenses])
+            margin = total_rev - total_exp
+            margin_p = (margin / total_rev * 100) if total_rev > 0 else 0
+            exp_p = (total_exp / total_rev * 100) if total_rev > 0 else 0
             return {
                 'revenue': total_rev,
                 'billed_revenue': billed_rev,
@@ -161,14 +357,18 @@ def analytics():
                 'avg_order_value': (total_rev / total) if total > 0 else 0,
                 'total_services': total_svcs,
                 'top_service': top_svc,
-                'svcs_per_order': (total_svcs / total) if total > 0 else 0
+                'svcs_per_order': (total_svcs / total) if total > 0 else 0,
+                'total_expense': total_exp,
+                'profit_margin': margin,
+                'margin_percentage': margin_p,
+                'expense_percentage': exp_p
             }
         
         this_week_orders = [o for o in all_orders if o.pickup_date and this_week_start <= o.pickup_date.date() <= today]
         last_week_orders = [o for o in all_orders if o.pickup_date and last_week_start <= o.pickup_date.date() <= last_week_end]
         
-        this_week = get_metrics(this_week_orders)
-        last_week = get_metrics(last_week_orders)
+        this_week = get_metrics(this_week_orders, filter_expenses(all_expenses, this_week_start, today))
+        last_week = get_metrics(last_week_orders, filter_expenses(all_expenses, last_week_start, last_week_end))
         
         def calc_growth(current, previous):
             if previous == 0:
@@ -231,12 +431,14 @@ def analytics():
         month1_orders = [o for o in all_orders if o.pickup_date and d1_start <= o.pickup_date.date() <= d1_end]
         month2_orders = [o for o in all_orders if o.pickup_date and d2_start <= o.pickup_date.date() <= d2_end]
         
-        month1 = get_metrics(month1_orders)
-        month2 = get_metrics(month2_orders)
+        month1 = get_metrics(month1_orders, filter_expenses(all_expenses, d1_start, d1_end))
+        month2 = get_metrics(month2_orders, filter_expenses(all_expenses, d2_start, d2_end))
         month_growth = calc_growth(month1['revenue'], month2['revenue'])
         
         # Service Analysis for filtered period
         service_list, _, _ = get_service_analysis(month1_orders)
+        place_list = get_place_analysis(month1_orders)
+        customer_list = get_customer_analysis(month1_orders)
         
         # Yearly defaults (for template backwards compatibility if needed)
         year1 = month1 if filter_type == 'year' else get_metrics([o for o in all_orders if o.pickup_date and o.pickup_date.year == today.year])
@@ -282,13 +484,15 @@ def analytics():
                 month_end = month_date.replace(month=month_date.month + 1, day=1) - timedelta(days=1)
             
             month_orders = [o for o in all_orders if o.pickup_date and month_start <= o.pickup_date.date() <= month_end]
-            m_metrics = get_metrics(month_orders)
+            m_metrics = get_metrics(month_orders, filter_expenses(all_expenses, month_start, month_end))
 
             monthly_trend[month_key] = {
                 'revenue': m_metrics['revenue'],
                 'billed_revenue': m_metrics['billed_revenue'],
                 'orders': m_metrics['orders'],
-                'services': m_metrics['total_services']
+                'services': m_metrics['total_services'],
+                'expense': m_metrics['total_expense'],
+                'profit': m_metrics['profit_margin']
             }
         
         return render_template("admin/analytics.html",
@@ -309,6 +513,8 @@ def analytics():
                              year_growth=year_growth,
                              technician_list=technician_list,
                              service_list=service_list,
+                             place_list=place_list,
+                             customer_list=customer_list,
                              monthly_trend=monthly_trend)
     
     except Exception as e:
@@ -322,52 +528,93 @@ def analytics():
 @login_required
 @super_admin_required
 def export_analytics_excel():
-    from models import Order
-    compare_month1 = request.args.get('compare_month1')
+    from models import Order, Expense
+    import pandas as pd
+    import io
+
+    filter_type = request.args.get('filter_type', 'month')
+    filter_date = request.args.get('filter_date', datetime.utcnow().strftime('%Y-%m-%d'))
+    filter_month = request.args.get('filter_month', datetime.utcnow().strftime('%Y-%m'))
+    filter_year = request.args.get('filter_year', str(datetime.utcnow().year))
     
-    all_orders = Order.query.all()
     today = datetime.utcnow().date()
+    all_orders = Order.query.all()
+    all_expenses = Expense.query.filter_by(status="approved").all()
     
-    if compare_month1:
-        date1 = datetime.strptime(compare_month1, '%Y-%m').date()
+    # Replicate filter logic
+    if filter_type == 'daily':
+        try: d1_start = datetime.strptime(filter_date, '%Y-%m-%d').date()
+        except: d1_start = today
+        d1_end = d1_start
+        label = d1_start.strftime('%d_%b_%Y')
+    elif filter_type == 'year':
+        try: y_val = int(filter_year)
+        except: y_val = today.year
+        d1_start = datetime(year=y_val, month=1, day=1).date()
+        d1_end = datetime(year=y_val, month=12, day=31).date()
+        label = f"Year_{y_val}"
     else:
-        date1 = today.replace(day=1)
-        compare_month1 = date1.strftime('%Y-%m')
+        try: d1_start = datetime.strptime(filter_month, '%Y-%m').date()
+        except: d1_start = today.replace(day=1)
+        if d1_start.month == 12: d1_end = d1_start.replace(year=d1_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else: d1_end = d1_start.replace(month=d1_start.month + 1, day=1) - timedelta(days=1)
+        label = d1_start.strftime('%b_%Y')
 
-    if date1.month == 12:
-        month_end = date1.replace(year=date1.year + 1, month=1, day=1) - timedelta(days=1)
-    else:
-        month_end = date1.replace(month=date1.month + 1, day=1) - timedelta(days=1)
+    orders = [o for o in all_orders if o.pickup_date and d1_start <= o.pickup_date.date() <= d1_end]
+    expenses = [e for e in all_expenses if d1_start <= e.expense_date <= d1_end]
 
-    orders = [o for o in all_orders if o.pickup_date and date1 <= o.pickup_date.date() <= month_end]
+    # Calculate summaries
+    total_rev = sum([float(o.price or 0) for o in orders])
+    total_exp = sum([float(e.amount or 0) for e in expenses])
+    billed_rev = sum([float(o.price or 0) for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
     
-    data = []
+    # 1. Summary Data
+    summary_data = [
+        {'Metric': 'Total Revenue (Gross)', 'Value': total_rev},
+        {'Metric': 'Billed Revenue (Actual)', 'Value': billed_rev},
+        {'Metric': 'Total Expenses', 'Value': total_exp},
+        {'Metric': 'Net Profit', 'Value': total_rev - total_exp},
+        {'Metric': 'Profit Margin (%)', 'Value': ((total_rev-total_exp)/total_rev*100) if total_rev > 0 else 0},
+        {'Metric': 'Total Orders', 'Value': len(orders)}
+    ]
+    
+    # 2. Detailed Orders Data
+    orders_data = []
     for o in orders:
-        services = []
-        for item in o.items:
-            if item.services:
-                services.extend([s.strip() for s in item.services.split(',') if s.strip()])
-        
-        data.append({
-            'Order ID': o.id,
-            'Customer': o.customer_name,
-            'Pickup Date': o.pickup_date.strftime('%d-%b-%Y') if o.pickup_date else '-',
-            'Status': o.status,
-            'Technician': o.technician or 'None',
-            'Services': ', '.join(services),
-            'Total Amount': float(o.price or 0),
-            'Discount': float(o.discount or 0)
+        svcs = []
+        for it in o.items:
+            if it.services: svcs.extend([s.strip() for s in it.services.split(',') if s.strip()])
+        orders_data.append({
+            'ID': o.id, 'Customer': o.customer_name, 'Mobile': o.mobile, 'Place': o.place,
+            'Date': o.pickup_date.strftime('%d-%b-%Y') if o.pickup_date else '-',
+            'Status': o.status, 'Technician': o.technician or 'None',
+            'Services': ', '.join(svcs), 'Amount': float(o.price or 0)
         })
+
+    # 3. Geo & Service Ranking Data
+    places = {}
+    svcs_stats = {}
+    for o in orders:
+        p = o.place or "Unknown"
+        places[p] = places.get(p, 0) + float(o.price or 0)
+        for it in o.items:
+            if it.services:
+                for s in it.services.split(','):
+                    s = s.strip()
+                    if s: svcs_stats[s] = svcs_stats.get(s, 0) + float(it.price or 0)
     
-    df = pd.DataFrame(data)
+    places_data = [{'Location': k, 'Revenue': v} for k, v in sorted(places.items(), key=lambda x: x[1], reverse=True)]
+    svcs_data = [{'Service': k, 'Revenue': v} for k, v in sorted(svcs_stats.items(), key=lambda x: x[1], reverse=True)]
+
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Orders')
-    output.seek(0)
+        pd.DataFrame(summary_data).to_excel(writer, index=False, sheet_name='Executive Summary')
+        pd.DataFrame(orders_data).to_excel(writer, index=False, sheet_name='Detailed Orders')
+        pd.DataFrame(places_data).to_excel(writer, index=False, sheet_name='Geography Analysis')
+        pd.DataFrame(svcs_data).to_excel(writer, index=False, sheet_name='Service Rankings')
     
-    filename = f"Analytics_Report_{compare_month1}.xlsx"
-    return send_file(output, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
+    output.seek(0)
+    return send_file(output, as_attachment=True, download_name=f"Advanced_Analytics_{label}.xlsx", mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 def add_watermark(canvas, doc):
     """Add watermark to PDF pages"""
@@ -380,169 +627,274 @@ def add_watermark(canvas, doc):
     canvas.restoreState()
 
 @admin_bp.route("/export_analytics_pdf")
-
 @login_required
 @super_admin_required
 def export_analytics_pdf():
-    from models import Order
-    compare_month1 = request.args.get('compare_month1')
+    from models import Order, Expense
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
     
-    all_orders = Order.query.all()
+    filter_type = request.args.get('filter_type', 'month')
+    filter_date = request.args.get('filter_date', datetime.utcnow().strftime('%Y-%m-%d'))
+    filter_month = request.args.get('filter_month', datetime.utcnow().strftime('%Y-%m'))
+    filter_year = request.args.get('filter_year', str(datetime.utcnow().year))
+    
     today = datetime.utcnow().date()
+    all_orders = Order.query.all()
+    all_expenses = Expense.query.filter_by(status="approved").all()
     
-    if compare_month1:
-        date1 = datetime.strptime(compare_month1, '%Y-%m').date()
-    else:
-        date1 = today.replace(day=1)
-        compare_month1 = date1.strftime('%Y-%m')
+    def filter_expenses(exp_list, start, end):
+        return [e for e in exp_list if start <= e.expense_date <= end]
 
-    if date1.month == 12:
-        month_end = date1.replace(year=date1.year + 1, month=1, day=1) - timedelta(days=1)
+    # Replicate filter logic from analytics()
+    if filter_type == 'daily':
+        try: d1_start = datetime.strptime(filter_date, '%Y-%m-%d').date()
+        except: d1_start = today
+        d1_end = d1_start
+        label = d1_start.strftime('%d %B %Y')
+        d2_start = d2_end = d1_start - timedelta(days=1)
+    elif filter_type == 'year':
+        try: y_val = int(filter_year)
+        except: y_val = today.year
+        d1_start = datetime(year=y_val, month=1, day=1).date()
+        d1_end = datetime(year=y_val, month=12, day=31).date()
+        label = f"Year {y_val}"
+        d2_start = d1_start.replace(year=d1_start.year - 1)
+        d2_end = d1_end.replace(year=d1_end.year - 1)
     else:
-        month_end = date1.replace(month=date1.month + 1, day=1) - timedelta(days=1)
+        try: d1_start = datetime.strptime(filter_month, '%Y-%m').date()
+        except: d1_start = today.replace(day=1)
+        if d1_start.month == 12: d1_end = d1_start.replace(year=d1_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else: d1_end = d1_start.replace(month=d1_start.month + 1, day=1) - timedelta(days=1)
+        label = d1_start.strftime('%B %Y')
+        d2_start = (d1_start - timedelta(days=1)).replace(day=1)
+        if d2_start.month == 12: d2_end = d2_start.replace(year=d2_start.year + 1, month=1, day=1) - timedelta(days=1)
+        else: d2_end = d2_start.replace(month=d2_start.month + 1, day=1) - timedelta(days=1)
 
-    orders = [o for o in all_orders if o.pickup_date and date1 <= o.pickup_date.date() <= month_end]
-    
+    period_orders = [o for o in all_orders if o.pickup_date and d1_start <= o.pickup_date.date() <= d1_end]
+    prev_orders = [o for o in all_orders if o.pickup_date and d2_start <= o.pickup_date.date() <= d2_end]
+    period_expenses = filter_expenses(all_expenses, d1_start, d1_end)
+    prev_expenses = filter_expenses(all_expenses, d2_start, d2_end)
+
+    def get_metrics(orders, expenses):
+        rev = sum([float(o.price or 0) for o in orders])
+        exp = sum([float(e.amount or 0) for e in expenses])
+        billed = sum([float(o.price or 0) for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
+        return {'rev': rev, 'exp': exp, 'billed': billed, 'profit': rev - exp, 'margin': ((rev-exp)/rev*100) if rev > 0 else 0, 'orders': len(orders)}
+
+    m1 = get_metrics(period_orders, period_expenses)
+    m2 = get_metrics(prev_orders, prev_expenses)
+    growth = ((m1['rev'] - m2['rev']) / m2['rev'] * 100) if m2['rev'] > 0 else (100 if m1['rev'] > 0 else 0)
+
+    # ReportLab Generation
     output = io.BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=A4)
+    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
+    
+    # Custom Styles
+    header_style = ParagraphStyle('HeaderStyle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor("#4f46e5"), alignment=1, spaceAfter=20)
+    section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontSize=14, textColor=colors.black, spaceBefore=15, spaceAfter=10)
+    kpi_val_style = ParagraphStyle('KPIVal', parent=styles['Normal'], fontSize=14, fontName='Helvetica-Bold', alignment=1)
+    kpi_lab_style = ParagraphStyle('KPILab', parent=styles['Normal'], fontSize=9, textColor=colors.grey, alignment=1)
+    
     elements = []
     
-    elements.append(Paragraph(f"Analytics Order Report - {compare_month1}", styles['Title']))
-    elements.append(Spacer(1, 12))
-    
-    data = [['ID', 'Customer', 'Date', 'Technician', 'Amount']]
-    total = 0
-    for o in orders:
-        price = float(o.price or 0)
-        data.append([
-            o.id,
-            o.customer_name[:15],
-            o.pickup_date.strftime('%d-%b') if o.pickup_date else '-',
-            o.technician or 'None',
-            f"INR {price:.2f}"
-        ])
-        total += price
-    
-    data.append(['', '', '', 'TOTAL', f"INR {total:.2f}"])
-    
-    t = Table(data, colWidths=[40, 150, 80, 100, 80])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey)
+    # Title
+    elements.append(Paragraph(f"The Shoe Clinic - Executive Analytics", header_style))
+    elements.append(Paragraph(f"Period: {label} ({filter_type.capitalize()} Analysis)", styles['Normal']))
+    elements.append(Spacer(1, 15))
+
+    # KPI Summary Table
+    kpi_data = [
+        [Paragraph("Gross Revenue", kpi_lab_style), Paragraph("Billed Revenue", kpi_lab_style), Paragraph("Total Expenses", kpi_lab_style), Paragraph("Net Profit", kpi_lab_style)],
+        [Paragraph(f"INR {m1['rev']:,.2f}", kpi_val_style), Paragraph(f"INR {m1['billed']:,.2f}", kpi_val_style), Paragraph(f"INR {m1['exp']:,.2f}", kpi_val_style), Paragraph(f"INR {m1['profit']:,.2f}", kpi_val_style)]
+    ]
+    kpi_table = Table(kpi_data, colWidths=[1.3*inch, 1.3*inch, 1.3*inch, 1.3*inch])
+    kpi_table.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 1, colors.lightgrey),
+        ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 10),
     ]))
+    elements.append(kpi_table)
+    elements.append(Spacer(1, 20))
+
+    # Growth & Health Section
+    elements.append(Paragraph("Business Growth & Financial Health", section_style))
     
-    elements.append(t)
+    # Growth Bar "Visual"
+    growth_color = colors.green if growth >= 0 else colors.red
+    health_data = [
+        ["Revenue Velocity:", f"{growth:+.1f}% vs Previous Period"],
+        ["Profit Margin:", f"{m1['margin']:.1f}% Efficiency"],
+        ["Total Orders:", f"{m1['orders']} Jobs Processed"]
+    ]
+    health_table = Table(health_data, colWidths=[200, 300])
+    health_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (0,-1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (1,0), (1,0), growth_color),
+        ('BACKGROUND', (1,0), (1,0), colors.HexColor('#dcfce7') if growth >= 0 else colors.HexColor('#fee2e2')),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+    ]))
+    elements.append(health_table)
+    elements.append(Spacer(1, 15))
+
+    # --- Trend Chart for PDF ---
+    elements.append(Paragraph("Revenue vs Expense Trend (Last 6 Months)", section_style))
+    
+    # Calculate Trend
+    rev_vals = []
+    exp_vals = []
+    trend_lbls = []
+    for i in range(5, -1, -1):
+        t_date = today - timedelta(days=30*i)
+        t_start = t_date.replace(day=1)
+        if t_start.month == 12: t_end = t_start.replace(year=t_start.year+1, month=1, day=1) - timedelta(days=1)
+        else: t_end = t_start.replace(month=t_start.month+1, day=1) - timedelta(days=1)
+        
+        t_orders = [o for o in all_orders if o.pickup_date and t_start <= o.pickup_date.date() <= t_end]
+        t_rev = sum([float(o.price or 0) for o in t_orders])
+        
+        t_exps = [e for e in all_expenses if t_start <= e.expense_date <= t_end]
+        t_exp_total = sum([float(e.amount or 0) for e in t_exps])
+        
+        rev_vals.append(t_rev)
+        exp_vals.append(t_exp_total)
+        trend_lbls.append(t_start.strftime('%b'))
+
+    # Build Chart
+    drawing = Drawing(450, 180)
+    bc = VerticalBarChart()
+    bc.x = 50
+    bc.y = 40
+    bc.height = 110
+    bc.width = 350
+    bc.data = [rev_vals, exp_vals]
+    bc.strokeColor = colors.grey
+    bc.valueAxis.valueMin = 0
+    max_val = max(rev_vals + exp_vals + [1000])
+    bc.valueAxis.valueMax = max_val * 1.2
+    bc.valueAxis.valueStep = bc.valueAxis.valueMax / 4
+    bc.categoryAxis.labels.boxAnchor = 'ne'
+    bc.categoryAxis.labels.dx = 8
+    bc.categoryAxis.labels.dy = -2
+    bc.categoryAxis.categoryNames = trend_lbls
+    bc.bars[0].fillColor = colors.HexColor("#4f46e5") # Revenue
+    bc.bars[1].fillColor = colors.HexColor("#ef4444") # Expense
+    bc.barWidth = 10
+    bc.groupSpacing = 10
+    
+    # Add simple legend-like text manually to Drawing Since Legend class is complex
+    from reportlab.graphics.shapes import String, Rect
+    drawing.add(Rect(50, 10, 8, 8, fillColor=colors.HexColor("#4f46e5")))
+    drawing.add(String(65, 10, "Gross Revenue", fontSize=8))
+    drawing.add(Rect(140, 10, 8, 8, fillColor=colors.HexColor("#ef4444")))
+    drawing.add(String(155, 10, "Total Expenses", fontSize=8))
+    
+    drawing.add(bc)
+    elements.append(drawing)
+    elements.append(Spacer(1, 15))
+
+    # Ranking Sections
+    def get_rankings():
+        places = {}
+        services = {}
+        customers = {}
+        techs = {}
+        for o in period_orders:
+            p = o.place or "Unknown"
+            places[p] = places.get(p, 0) + float(o.price or 0)
+            c = o.mobile or "N/A"
+            if c not in customers: customers[c] = {'name': o.customer_name or "Unknown", 'rev': 0}
+            customers[c]['rev'] += float(o.price or 0)
+            t = o.technician or "None"
+            techs[t] = techs.get(t, 0) + float(o.price or 0)
+            for item in o.items:
+                if item.services:
+                    for s in item.services.split(','):
+                        s = s.strip()
+                        if s: services[s] = services.get(s, 0) + float(item.price or 0)
+        return (sorted(places.items(), key=lambda x:x[1], reverse=True), 
+                sorted(services.items(), key=lambda x:x[1], reverse=True),
+                sorted(customers.values(), key=lambda x:x['rev'], reverse=True),
+                sorted(techs.items(), key=lambda x:x[1], reverse=True))
+
+    # Shared style for mini tables
+    mini_style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#4f46e5")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('FONTSIZE', (0,0), (-1,-1), 8),
+    ])
+
+    r_places, r_svcs, r_custs, r_techs = get_rankings()
+
+    # Two columns for Rank tables
+    col1_table = Table([["Top Services", "Revenue"]] + [[s[:20], f"INR {v:,.0f}"] for s,v in r_svcs[:5]], colWidths=[1.8*inch, 0.9*inch])
+    col1_table.setStyle(mini_style)
+    
+    col2_table = Table([["Top Locations", "Revenue"]] + [[p[:20], f"INR {v:,.0f}"] for p,v in r_places[:5]], colWidths=[1.8*inch, 0.9*inch])
+    col2_table.setStyle(mini_style)
+    
+    t_rank = Table([[col1_table, Spacer(0.2*inch, 0), col2_table]])
+    t_rank.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+    
+    elements.append(t_rank)
+    elements.append(Spacer(1, 20))
+
+    # Engagement Section
+    elements.append(Paragraph("Frequent Customer & Technician Standings", section_style))
+    
+    col3_table = Table([["Top Customers", "Visits/Spend"]] + [[c['name'][:20], f"INR {c['rev']:,.0f}"] for c in r_custs[:5]], colWidths=[1.8*inch, 0.9*inch])
+    col3_table.setStyle(mini_style)
+    
+    col4_table = Table([["Technician Rankings", "Revenue Share"]] + [[t[:20], f"INR {v:,.0f}"] for t,v in r_techs[:5]], colWidths=[1.8*inch, 0.9*inch])
+    col4_table.setStyle(mini_style)
+
+    t_rank2 = Table([[col3_table, Spacer(0.2*inch, 0), col4_table]])
+    t_rank2.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+    elements.append(t_rank2)
+
+    # Order details on next page
+    elements.append(PageBreak())
+    elements.append(Paragraph("Detailed Order List", section_style))
+    detailed_data = [['ID', 'Customer', 'Date', 'Amount', 'Status']]
+    for o in period_orders[:50]: # Cap to 50 for performance and clarity
+        detailed_data.append([o.id, o.customer_name[:15], o.pickup_date.strftime('%d-%b') if o.pickup_date else '-', f"{float(o.price or 0):,.2f}", o.status])
+    
+    t_det = Table(detailed_data, colWidths=[0.6*inch, 1.8*inch, 1*inch, 1.2*inch, 1*inch])
+    t_det.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
+        ('BOX', (0,0), (-1,-1), 0.25, colors.black),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+    ]))
+    elements.append(t_det)
+    if len(period_orders) > 50:
+        elements.append(Paragraph(f"... and {len(period_orders) - 50} more orders", styles['Italic']))
+
     doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
     output.seek(0)
-    
-    filename = f"Analytics_Report_{compare_month1}.pdf"
-    return send_file(output, as_attachment=True, download_name=filename, mimetype='application/pdf')
+    return send_file(output, as_attachment=True, download_name=f"Advanced_Analytics_{label.replace(' ', '_')}.pdf", mimetype='application/pdf')
 
-# Reports
+
 @admin_bp.route("/reports")
 @login_required
 @admin_required
 def reports():
-    try:
-        from datetime import datetime, timedelta
-        
-        # Get parameters from query string
-        report_date = request.args.get('date', None)
-        week_start = request.args.get('week_start', None)
-        year = request.args.get('year', None)
-        month = request.args.get('month', None)
-        
-        # Convert to proper types
-        today = datetime.utcnow().date()
-        current_year = today.year
-        current_month = today.month
-        
-        if report_date:
-            try:
-                report_date = datetime.strptime(report_date, '%Y-%m-%d').date()
-            except:
-                report_date = today
-        else:
-            report_date = today
-        
-        if year:
-            year = int(year)
-        else:
-            year = current_year
-            
-        if month:
-            month = int(month)
-        else:
-            month = current_month
-        
-        # Calculate week start for weekly report
-        if week_start:
-            try:
-                week_start = datetime.strptime(week_start, '%Y-%m-%d').date()
-            except:
-                week_start = today - timedelta(days=today.weekday())
-        else:
-            week_start = today - timedelta(days=today.weekday())
-        
-        from app import get_daily_report, get_weekly_report, get_monthly_report, get_yearly_report
-        
-        daily = get_daily_report(report_date)
-        weekly = get_weekly_report(week_start)
-        monthly = get_monthly_report(year, month)
-        yearly = get_yearly_report(year)
-        
-        # Get list of years and months available
-        from models import Order
-        all_orders = Order.query.all()
-        years = sorted(set([o.pickup_date.year for o in all_orders if o.pickup_date]), reverse=True)
-        selected_year = year or current_year
-        months_in_year = sorted(set([o.pickup_date.month for o in all_orders if o.pickup_date and o.pickup_date.year == selected_year]))
-        
-        return render_template("admin/reports.html", 
-                             daily=daily, 
-                             weekly=weekly, 
-                             monthly=monthly, 
-                             yearly=yearly,
-                             years=years,
-                             months_in_year=months_in_year,
-                             selected_year=selected_year,
-                             selected_month=month or current_month,
-                             selected_date=report_date,
-                             selected_week_start=week_start)
-    except Exception as e:
-        print(f"ERROR in reports: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        flash(f"Error loading reports: {str(e)}", "danger")
-        
-        # Return empty dicts with all required keys
-        empty_report = {
-            'date': None,
-            'month': None,
-            'year': None,
-            'total_orders': 0,
-            'completed': 0,
-            'pending': 0,
-            'total_revenue': 0,
-            'total_discount': 0,
-            'orders': [],
-            'week_start': None,
-            'week_end': None,
-            'month_start': None,
-            'month_end': None,
-            'year_start': None,
-            'year_end': None
-        }
-        
-        return render_template("admin/reports.html", 
-                             daily=empty_report, 
-                             weekly=empty_report, 
-                             monthly=empty_report, 
-                             yearly=empty_report)
+    return redirect(url_for('report_daily'))
 
 
 
@@ -553,12 +905,74 @@ def reports():
 @login_required
 @super_admin_required
 def work_assign():
-    from models import Order, User
-    # Fetch orders that are not fully completed
-    active_orders = Order.query.filter(Order.status != 'done').order_by(Order.created_at.desc()).all()
-    # Fetch active staff (admins and employees)
+    from models import Order, OrderItem, User
+    from sqlalchemy import func
+    from datetime import datetime
+    
+    from sqlalchemy import or_
+    # Fetch all items and filter in Python to ensure maximum reliability across DB types
+    all_items = OrderItem.query.all()
+    
+    # Clean up orphaned items (items whose order was deleted previously)
+    orphans = [item for item in all_items if item.order is None]
+    if orphans:
+        for o in orphans:
+            db.session.delete(o)
+        db.session.commit()
+        all_items = OrderItem.query.all() # Refresh list
+
+    active_items = [
+        item for item in all_items 
+        if item.order and (item.status is None or str(item.status).lower() not in ['done', 'completed', 'delivered', 'cancelled', 'ready to deliver', 'ready', 'billed'])
+        and (item.order.status is None or str(item.order.status).lower() not in ['cancelled', 'delivered', 'billed', 'ready to deliver', 'ready', 'completed'])
+    ]
+    
+    # Sort by drop date
+    active_items.sort(key=lambda x: (x.order.drop_date if x.order and x.order.drop_date else datetime.max))
+    
+    # Fetch active staff for the availability sidebar and assignment options
     staff = User.query.filter_by(is_active=True).all()
-    return render_template("admin/work_assign.html", orders=active_orders, staff=staff)
+    
+    # Detailed Workload
+    today = datetime.now().date()
+    # Detailed Workload calculation counting individual services (tasks)
+    workload = {p.username: {'items': 0, 'tasks': 0} for p in staff}
+    
+    for item in all_items:
+        # Check if item is active (Consistency with active_items filter)
+        if not item.order \
+           or str(item.status).lower() in ['done', 'completed', 'delivered', 'cancelled', 'ready to deliver', 'ready', 'billed'] \
+           or str(item.order.status).lower() in ['cancelled', 'delivered', 'billed', 'ready to deliver', 'ready', 'completed']:
+            continue
+            
+        import json
+        try:
+            assignments = json.loads(item.service_assignments) if item.service_assignments else {}
+            item_techs = set()
+            
+            # Count individual tasks assigned to staff
+            for s_name, tech_name in assignments.items():
+                if tech_name and tech_name in workload:
+                    workload[tech_name]['tasks'] += 1
+                    item_techs.add(tech_name)
+            
+            # If a Main Lead is assigned, they are involved with the item
+            if item.technician and item.technician in workload:
+                item_techs.add(item.technician)
+                # If they are Main Lead but have no specific tasks assigned yet, 
+                # we still count the item involvement.
+            
+            # Increment item count for everyone involved in this specific item
+            for tech_name in item_techs:
+                workload[tech_name]['items'] += 1
+        except:
+            pass
+
+    return render_template("admin/work_assign.html", 
+                           items=active_items, 
+                           staff=staff, 
+                           workload=workload,
+                           today_date=today)
 
 @admin_bp.route("/assign_task", methods=["POST"])
 @login_required
@@ -587,6 +1001,12 @@ def assign_task():
                         
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
+                    
+                    # Set service_date on the order if not already set
+                    if item.order and not item.order.service_date:
+                        from datetime import datetime
+                        item.order.service_date = datetime.now()
+                    
                     flash(f"Service '{service_name}' assigned to {technician_name} ✅", "success")
                 else:
                     # Assign whole item
@@ -602,11 +1022,23 @@ def assign_task():
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
                     flash(f"Item assigned to {technician_name} ✅", "success")
+                
+                # Set service_date on the order if not already set
+                if item.order and not item.order.service_date:
+                    from datetime import datetime
+                    item.order.service_date = datetime.now()
+                    
                 db.session.commit()
         elif order_id:
             order = Order.query.get(order_id)
             if order:
                 order.technician = technician_name
+                
+                # Set service_date if not already set
+                if not order.service_date:
+                    from datetime import datetime
+                    order.service_date = datetime.now()
+                
                 # Also auto-assign to all items
                 for item in order.items:
                     item.technician = technician_name
@@ -626,6 +1058,48 @@ def assign_task():
         db.session.rollback()
         flash(f"Error assigning task: {str(e)}", "danger")
             
+    return redirect(url_for("admin.work_assign"))
+
+@admin_bp.route("/set_assignment_date", methods=["POST"])
+@login_required
+@super_admin_required
+def set_assignment_date():
+    from models import Order
+    from datetime import datetime
+    
+    order_id = request.form.get("order_id")
+    assignment_start_date_str = request.form.get("assignment_start_date")
+    
+    try:
+        order = Order.query.get(order_id)
+        if order:
+            if assignment_start_date_str:
+                # Parse the date string to datetime
+                assignment_start_date = datetime.strptime(assignment_start_date_str, "%Y-%m-%d")
+                order.assignment_start_date = assignment_start_date
+                
+                # Calculate days until start
+                from datetime import date
+                today = date.today()
+                start_date = assignment_start_date.date()
+                days_diff = (start_date - today).days
+                
+                if days_diff > 0:
+                    flash(f"Assignment scheduled to start in {days_diff} day{'s' if days_diff != 1 else ''} ✓", "info")
+                elif days_diff == 0:
+                    flash(f"Assignment set to start today ✓", "success")
+                else:
+                    flash(f"Assignment is now active ✓", "success")
+            else:
+                # Clear the assignment start date
+                order.assignment_start_date = None
+                flash("Assignment start date cleared - task is now immediately visible ✓", "info")
+            
+            db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error setting assignment date: {str(e)}", "danger")
+    
     return redirect(url_for("admin.work_assign"))
 
 
@@ -693,6 +1167,8 @@ def customer_database():
     customers = _get_customer_data()
     return render_template("admin/customer_database.html", customers=customers)
 
+    return redirect(url_for("admin.admin_panel"))
+
 @admin_bp.route("/request_customer_access")
 @login_required
 def request_customer_access():
@@ -714,6 +1190,31 @@ def request_customer_access():
         current_user.customer_view_requested = True
         db.session.commit()
         flash("Access request sent to Super Admin.", "success")
+        
+    return redirect(url_for("admin.admin_panel"))
+
+@admin_bp.route("/request_performance_access")
+@login_required
+def request_performance_access():
+    if current_user.role == 'super_admin':
+        flash("You are Super Admin, you already have access!", "info")
+        return redirect(url_for("admin.admin_panel"))
+        
+    # Check if access is currently active and not expired
+    is_active = current_user.can_view_performance
+    is_expired = current_user.performance_access_expiry and datetime.utcnow() > current_user.performance_access_expiry
+    
+    if is_active and not is_expired:
+        flash("You already have access to the Performance Monitor.", "info")
+    else:
+        # Reset everything and set request flag
+        current_user.can_view_performance = False
+        current_user.performance_access_expiry = None
+        current_user.performance_view_requested = True
+        db.session.commit()
+        
+        # Notify Super Admin? (Automated via pending counts)
+        flash("Performance Monitor access request sent to Super Admin.", "success")
         
     return redirect(url_for("admin.admin_panel"))
 
@@ -815,7 +1316,9 @@ def toggle_customer_view(user_id):
         status = "enabled" if user.can_view_customers else "disabled"
         flash(f"Customer View {status} for {user.username}.", "success")
         
-    return redirect(url_for('admin.manage_users'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
 
 # Add Expense Form (Action)
 
@@ -828,7 +1331,8 @@ def add_expense():
     if request.method == "POST":
         try:
             title = request.form.get("title")
-            amount = float(request.form.get("amount"))
+            amount = float(request.form.get("amount") or 0)
+            real_amount = float(request.form.get("real_amount") or amount)
             category = request.form.get("category")
             description = request.form.get("description")
             date_str = request.form.get("expense_date")
@@ -839,6 +1343,7 @@ def add_expense():
             new_expense = Expense(
                 title=title,
                 amount=amount,
+                real_amount=real_amount,
                 category=category,
                 description=description,
                 expense_date=expense_date,
@@ -852,7 +1357,7 @@ def add_expense():
             if status == 'approved':
                 flash("Expense added and approved! ✅", "success")
             else:
-                flash("Expense submitted for Owner approval. ⏳", "info")
+                flash("Expense submitted for Super Admin approval. ⏳", "info")
             
             return redirect(url_for('home')) 
         except Exception as e:
@@ -860,7 +1365,53 @@ def add_expense():
             flash(f"Error adding expense: {str(e)}", "danger")
     
     today_date = datetime.utcnow().strftime("%Y-%m-%d")
-    return render_template("admin/add_expense.html", today_date=today_date)
+    staff_members = Staff.query.all()
+    return render_template("admin/add_expense.html", today_date=today_date, staff_members=staff_members)
+
+@admin_bp.route("/get_staff_balance/<string:name>")
+@login_required
+@admin_required
+def get_staff_balance(name):
+    staff = Staff.query.filter_by(name=name).first()
+    if not staff:
+        return jsonify({'error': 'Staff not found'}), 404
+        
+    # Calculate Total Earned (Lifetime)
+    total_earned = 0.0
+    
+    # 1. Attendance-based earnings
+    if staff.user_id:
+        atts = Attendance.query.filter_by(user_id=staff.user_id).all()
+        for a in atts:
+            if staff.salary_type == 'per_day':
+                if a.status == 'Present': total_earned += float(staff.base_salary or 0)
+                elif a.status == 'Half-Day': total_earned += float(staff.base_salary or 0) * 0.5
+            elif staff.salary_type == 'per_hour':
+                if a.check_in and a.check_out:
+                    h = min((a.check_out - a.check_in).total_seconds() / 3600, 12.0)
+                    total_earned += int(h) * float(staff.base_salary or 0)
+    
+    # 2. Fixed monthly earnings (Count months since created)
+    if staff.salary_type == 'monthly':
+        now = datetime.now().date()
+        months = (now.year - staff.created_at.year) * 12 + now.month - staff.created_at.month + 1
+        total_earned = months * float(staff.base_salary or 0)
+
+    # 3. Total Paid
+    total_paid = db.session.query(func.sum(Expense.real_amount)).filter(
+        Expense.category.in_(['Salary', 'Salary Advance']),
+        Expense.title.ilike(f"%{staff.name.strip()}%"),
+        Expense.status == 'approved'
+    ).scalar() or 0.0
+    
+    balance = max(0, total_earned - float(total_paid))
+    return jsonify({
+        'balance': balance,
+        'earned': total_earned,
+        'paid': total_paid,
+        'salary_type': staff.salary_type,
+        'rate': staff.base_salary
+    })
 
 # Day to Day Expense (View)
 def _get_filtered_expenses(args):
@@ -948,7 +1499,7 @@ def _get_filtered_expenses(args):
 def day_to_day_expense():
     expenses, filter_type, display_date, selected_date, selected_category = _get_filtered_expenses(request.args)
     
-    total_amount = sum(e.amount for e in expenses)
+    total_amount = sum(float(e.real_amount or e.amount or 0) for e in expenses)
     transaction_count = len(expenses)
     
     categories = ["Rent", "Utilities", "Salaries", "Salary Advance", "Supplies", "Marketing", "Petrol", "Maintenance", "Other"]
@@ -958,6 +1509,8 @@ def day_to_day_expense():
                          total_amount=total_amount,
                          transaction_count=transaction_count,
                          timedelta=timedelta,
+                         datetime=datetime,
+                         now=datetime.utcnow(),
                          filter_type=filter_type,
                          display_date=display_date,
                          selected_date=selected_date,
@@ -1166,6 +1719,40 @@ def expense_chart_data():
         }
     })
 
+@admin_bp.route("/financial_report")
+@login_required
+@admin_required
+def financial_report():
+    try:
+        from app import get_monthly_report_legacy, get_yearly_report_legacy
+        from datetime import datetime
+
+        # Get timeframe arguments
+        selected_year = request.args.get('year', datetime.now().year, type=int)
+        selected_month = request.args.get('month', datetime.now().month, type=int)
+        
+        monthly_report = get_monthly_report_legacy(selected_year, selected_month)
+        yearly_report = get_yearly_report_legacy(selected_year)
+        
+        if 'error' in monthly_report:
+            flash(f"Error generating monthly report: {monthly_report['error']}", "danger")
+        if 'error' in yearly_report:
+            flash(f"Error generating yearly report: {yearly_report['error']}", "danger")
+
+        return render_template(
+            "admin/reports/financial.html", 
+            monthly=monthly_report, 
+            yearly=yearly_report,
+            years=range(2023, datetime.now().year + 2),
+            selected_year=selected_year,
+            selected_month=selected_month
+        )
+        
+    except Exception as e:
+        print(f"Error generating financial report: {e}")
+        flash(f"Error: {e}", "danger")
+        return redirect(url_for('report_daily'))
+
 # Payouts
 @admin_bp.route("/payouts")
 @login_required
@@ -1215,7 +1802,7 @@ def payouts():
                 display_date = str(year)
 
         expenses = query.order_by(Expense.expense_date.desc()).all()
-        total_payout = sum(e.amount for e in expenses)
+        total_payout = sum(float(e.real_amount or e.amount or 0) for e in expenses)
         
         return render_template("admin/payouts.html", 
                              expenses=expenses, 
@@ -1228,11 +1815,106 @@ def payouts():
         return redirect(url_for('admin.admin_panel'))
 
 # Technician Status
-@admin_bp.route("/technician_status")
+@admin_bp.route("/performance_monitor")
 @login_required
 @admin_required
-def technician_status():
-    return "<h3>Technician Status (to be implemented)</h3>"
+def performance_monitor():
+    from models import User, OrderItem, db
+    # Permission Check
+    if current_user.role != 'super_admin':
+        if not current_user.can_view_performance:
+            flash("Access to Performance Monitor is restricted.", "danger")
+            return redirect(url_for('admin.admin_panel'))
+        
+        # Check Expiry
+        if current_user.performance_access_expiry:
+            if datetime.utcnow() > current_user.performance_access_expiry:
+                current_user.can_view_performance = False
+                current_user.performance_access_expiry = None
+                current_user.performance_view_requested = False
+                db.session.commit()
+                flash("Your temporary access to the Performance Monitor has expired.", "warning")
+                return redirect(url_for('admin.admin_panel'))
+    
+    # Logic to calculate performance
+    # 1. Total tasks completed by each technician
+    # 2. Revenue generated
+    # 3. Efficiency (if we have timestamps)
+    
+    # Get all users with roles that can do work (technician/employee)
+    technicians = User.query.filter(User.role.in_(['employee', 'admin', 'super_admin'])).all()
+    
+    # Filter by date range (default to current month)
+    # TODO: Add date picker
+    
+    perf_data = []
+    for tech in technicians:
+        # Completed items
+        items = OrderItem.query.filter_by(technician=tech.username, status='done').all()
+        # Revenue: We might need to handle per-service price if granular
+        # For now, let's use the item price
+        revenue = sum(item.price or 0 for item in items)
+        
+        perf_data.append({
+            'username': tech.username,
+            'role': tech.role,
+            'completed_count': len(items),
+            'revenue': revenue
+        })
+        
+    return render_template("admin/performance_monitor.html", perf_data=perf_data)
+
+@admin_bp.route("/approve_performance_access/<int:user_id>")
+@login_required
+@super_admin_required
+def approve_performance_access(user_id):
+    user = User.query.get_or_404(user_id)
+    duration_hours = request.args.get('duration', type=int) 
+    
+    user.can_view_performance = True
+    user.performance_view_requested = False
+    
+    if duration_hours:
+        user.performance_access_expiry = datetime.utcnow() + timedelta(hours=duration_hours)
+    else:
+        user.performance_access_expiry = None
+        
+    db.session.commit()
+    
+    expiry_msg = f"Expires in {duration_hours}h" if duration_hours else "Permanent"
+    
+    # Create notification
+    notif = Notification(
+        user_id=user.id,
+        title="Performance Monitor Access Granted 📊",
+        message=f"Admin has granted you {expiry_msg} access to the Performance Monitor.",
+        link=url_for('admin.performance_monitor')
+    )
+    db.session.add(notif)
+    db.session.commit()
+    
+    flash(f"Access granted to {user.username} ({expiry_msg}).", "success")
+    return redirect(url_for('admin.notifications'))
+
+@admin_bp.route("/reject_performance_access/<int:user_id>")
+@login_required
+@super_admin_required
+def reject_performance_access(user_id):
+    user = User.query.get_or_404(user_id)
+    user.performance_view_requested = False
+    
+    # Create notification
+    notif = Notification(
+        user_id=user.id,
+        title="Performance Access Rejected ❌",
+        message="Your request for Performance Monitor access was rejected by Super Admin.",
+        link=url_for('admin_panel')
+    )
+    db.session.add(notif)
+    db.session.commit()
+    
+    flash(f"Performance access request for {user.username} rejected.", "info")
+    return redirect(url_for('admin.notifications'))
 
 # --- SUPER ADMIN (OWNER) ACTIONS ---
 
@@ -1240,18 +1922,7 @@ def technician_status():
 @login_required
 @super_admin_required
 def pending_approvals():
-    pending_users = User.query.filter_by(is_active=False).all()
-    pending_expenses = Expense.query.filter_by(status='pending').all()
-    access_requests = User.query.filter_by(customer_view_requested=True).all()
-    
-    # Also fetch currently authorized users for manual control
-    authorized_users = User.query.filter(User.can_view_customers == True, User.role != 'super_admin').all()
-    
-    return render_template("admin/pending_approvals.html", 
-                         users=pending_users, 
-                         expenses=pending_expenses,
-                         access_requests=access_requests,
-                         authorized_users=authorized_users)
+    return redirect(url_for('admin.notifications'))
 
 @admin_bp.route("/approve_customer_access/<int:user_id>")
 @login_required
@@ -1274,8 +1945,43 @@ def approve_customer_access(user_id):
     
     expiry_msg = f"Expires in {duration_hours}h" if duration_hours else "Permanent"
     msg = f"Access granted to {user.username} (Export: {'Yes' if export_perm else 'No'}, {expiry_msg})."
+    
+    # Create notification
+    notif = Notification(
+        user_id=user.id,
+        title="Database Access Granted 🗝️",
+        message=f"Admin has granted you {expiry_msg} access to the Customer Database (Export: {'Enabled' if export_perm else 'Disabled'}).",
+        link=url_for('admin.customer_database')
+    )
+    db.session.add(notif)
+    db.session.commit()
+    
     flash(msg, "success")
-    return redirect(url_for('admin.pending_approvals'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
+
+@admin_bp.route("/reject_customer_access/<int:user_id>")
+@login_required
+@super_admin_required
+def reject_customer_access(user_id):
+    user = User.query.get_or_404(user_id)
+    user.customer_view_requested = False
+    
+    # Create notification
+    notif = Notification(
+        user_id=user.id,
+        title="Database Access Rejected ❌",
+        message="Your request for Customer Database access was rejected by Super Admin.",
+        link=url_for('admin_panel')
+    )
+    db.session.add(notif)
+    db.session.commit()
+    
+    flash(f"Access request for {user.username} rejected.", "info")
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
 
 @admin_bp.route("/toggle_customer_export/<int:user_id>")
 @login_required
@@ -1289,7 +1995,9 @@ def toggle_customer_export(user_id):
         db.session.commit()
         status = "enabled" if user.can_export_customers else "disabled"
         flash(f"Customer Export {status} for {user.username}.", "success")
-    return redirect(url_for('admin.manage_users'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
 
 @admin_bp.route("/approve_user/<int:user_id>")
 @login_required
@@ -1297,9 +2005,37 @@ def toggle_customer_export(user_id):
 def approve_user(user_id):
     user = User.query.get_or_404(user_id)
     user.is_active = True
+    
+    # Create notification
+    notif = Notification(
+        user_id=user.id,
+        title="Account Approved ✅",
+        message="Your account has been approved by Super Admin. You can now use all features.",
+        link=url_for('home')
+    )
+    db.session.add(notif)
     db.session.commit()
+    
     flash(f"User {user.username} approved successfully! ✅", "success")
-    return redirect(url_for('admin.pending_approvals'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
+
+@admin_bp.route("/reject_user/<int:user_id>")
+@login_required
+@super_admin_required
+def reject_user(user_id):
+    user = User.query.get_or_404(user_id)
+    username = user.username
+    # We delete rejected users as they don't have active accounts anyway
+    # But if we want them to see a notification, we can't delete yet.
+    # For now, let's just delete to keep DB clean, or just keep them inactive.
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"User {username} registration rejected and removed.", "warning")
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
 
 @admin_bp.route("/approve_expense/<int:expense_id>")
 @login_required
@@ -1307,16 +2043,287 @@ def approve_user(user_id):
 def approve_expense(expense_id):
     expense = Expense.query.get_or_404(expense_id)
     expense.status = 'approved'
+    
+    # Create notification
+    if expense.added_by:
+        notif = Notification(
+            user_id=expense.added_by,
+            title="Expense Approved ✅",
+            message=f"Your expense '{expense.title}' for ₹{expense.amount:,.2f} has been approved.",
+            link=url_for('admin.day_to_day_expense')
+        )
+        db.session.add(notif)
+        
     db.session.commit()
     flash(f"Expense '{expense.title}' approved and reflected in reports! ✅", "success")
-    return redirect(url_for('admin.pending_approvals'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
 
 @admin_bp.route("/reject_expense/<int:expense_id>")
 @login_required
 @super_admin_required
 def reject_expense(expense_id):
     expense = Expense.query.get_or_404(expense_id)
+    title = expense.title
+    amount = expense.amount
+    recipient_id = expense.added_by
+    
     db.session.delete(expense)
+    
+    # Create notification
+    if recipient_id:
+        notif = Notification(
+            user_id=recipient_id,
+            title="Expense Rejected ❌",
+            message=f"Your expense '{title}' for ₹{amount:,.2f} has been rejected and removed.",
+            link=url_for('admin.day_to_day_expense')
+        )
+        db.session.add(notif)
+        
     db.session.commit()
     flash(f"Expense rejected and deleted. ❌", "warning")
-    return redirect(url_for('admin.pending_approvals'))
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
+
+@admin_bp.route("/request_delete_expense/<int:expense_id>", methods=["POST"])
+@login_required
+def request_delete_expense(expense_id):
+    expense = Expense.query.get_or_404(expense_id)
+    reason = request.form.get('reason')
+    
+    if current_user.role == 'super_admin':
+        # Direct Delete
+        db.session.delete(expense)
+        db.session.commit()
+        flash("Expense deleted successfully.", "success")
+    else:
+        # Check 24 hour limit
+        if expense.created_at and (datetime.utcnow() - expense.created_at) > timedelta(hours=24):
+            flash("Modification request failed: Original entry is more than 24 hours old.", "danger")
+            return redirect(url_for('admin.day_to_day_expense'))
+            
+        # Request Delete
+        expense.request_type = 'delete'
+        expense.request_reason = reason
+        db.session.commit()
+        flash("Deletion request submitted to Super Admin.", "info")
+    
+    return redirect(url_for('admin.day_to_day_expense'))
+
+@admin_bp.route("/request_edit_expense/<int:expense_id>", methods=["POST"])
+@login_required
+def request_edit_expense(expense_id):
+    import json
+    from datetime import datetime
+    expense = Expense.query.get_or_404(expense_id)
+    
+    # Get form data
+    title = request.form.get("title")
+    amount = request.form.get("amount")
+    category = request.form.get("category")
+    expense_date_str = request.form.get("expense_date")
+    description = request.form.get("description")
+    reason = request.form.get("reason")
+    
+    if current_user.role == 'super_admin':
+        # Direct Edit
+        expense.title = title
+        expense.amount = float(amount)
+        expense.real_amount = float(amount) # Keep synced for super admin quick edits
+        expense.category = category
+        expense.expense_date = datetime.strptime(expense_date_str, "%Y-%m-%d").date()
+        expense.description = description
+        db.session.commit()
+        flash("Expense updated successfully.", "success")
+    else:
+        # Check 24 hour limit
+        if expense.created_at and (datetime.utcnow() - expense.created_at) > timedelta(hours=24):
+            flash("Modification request failed: Original entry is more than 24 hours old.", "danger")
+            return redirect(url_for('admin.day_to_day_expense'))
+            
+        # Request Edit
+        proposed_changes = {
+            'title': title,
+            'amount': amount,
+            'category': category,
+            'expense_date': expense_date_str,
+            'description': description
+        }
+        expense.request_type = 'edit'
+        expense.request_reason = reason
+        expense.request_data = json.dumps(proposed_changes)
+        db.session.commit()
+        flash("Edit request submitted for approval.", "info")
+        
+    return redirect(url_for('admin.day_to_day_expense'))
+
+@admin_bp.route("/process_expense_request/<int:expense_id>/<action>")
+@login_required
+@super_admin_required
+def process_expense_request(expense_id, action):
+    # action: approve or reject
+    import json
+    from datetime import datetime
+    expense = Expense.query.get_or_404(expense_id)
+    recipient_id = expense.added_by
+    req_type = expense.request_type
+    
+    if action == 'reject':
+        # Store title before clearing record if necessary, but here we keep the record
+        expense.request_type = 'none'
+        expense.request_reason = None
+        expense.request_data = None
+        flash("Request rejected.", "info")
+        
+        # Create notification
+        if recipient_id:
+            notif = Notification(
+                user_id=recipient_id,
+                title="Expense Request Rejected ❌",
+                message=f"Your request to {req_type} expense '{expense.title}' was rejected by Super Admin.",
+                link=url_for('admin.day_to_day_expense')
+            )
+            db.session.add(notif)
+        
+    elif action == 'approve':
+        if req_type == 'delete':
+            title_deleted = expense.title
+            db.session.delete(expense)
+            flash("Expense deletion approved.", "success")
+            # Create notification
+            if recipient_id:
+                notif = Notification(
+                    user_id=recipient_id,
+                    title="Expense Deletion Approved ✅",
+                    message=f"Your request to delete expense '{title_deleted}' was approved.",
+                    link=url_for('admin.day_to_day_expense')
+                )
+                db.session.add(notif)
+        elif req_type == 'edit':
+            if expense.request_data:
+                data = json.loads(expense.request_data)
+                expense.title = data['title']
+                expense.amount = float(data['amount'])
+                expense.category = data['category']
+                expense.expense_date = datetime.strptime(data['expense_date'], "%Y-%m-%d").date()
+                expense.description = data['description']
+                
+                # Clear request
+                expense.request_type = 'none'
+                expense.request_reason = None
+                expense.request_data = None
+                flash("Expense edit approved and applied.", "success")
+                
+                # Create notification
+                if recipient_id:
+                    notif = Notification(
+                        user_id=recipient_id,
+                        title="Expense Edit Approved ✅",
+                        message=f"Your request to edit expense '{expense.title}' was approved.",
+                        link=url_for('admin.day_to_day_expense')
+                    )
+                    db.session.add(notif)
+    
+    db.session.commit()
+    if 'manage_users' in (request.referrer or ''):
+        return redirect(url_for('admin.manage_users'))
+    return redirect(url_for('admin.notifications'))
+
+@admin_bp.route("/notifications")
+@login_required
+def notifications():
+    notifs = Notification.query.filter_by(user_id=current_user.id).order_by(Notification.created_at.desc()).limit(50).all()
+    pending_leaves = []
+    pending_users = []
+    pending_expenses = []
+    access_requests = []
+    performance_requests = []
+    expense_requests = []
+    active_access_users = []
+    active_performance_users = []
+
+    if current_user.role == 'super_admin':
+        pending_leaves = Attendance.query.filter_by(status='Leave Pending').all()
+        pending_users = User.query.filter_by(is_active=False).all()
+        pending_expenses = Expense.query.filter_by(status='pending').all()
+        access_requests = User.query.filter_by(customer_view_requested=True).all()
+        performance_requests = User.query.filter_by(performance_view_requested=True).all()
+        expense_requests = Expense.query.filter(Expense.request_type != 'none').all()
+        # Fetch users with active access (excluding super admin)
+        active_access_users = User.query.filter(User.can_view_customers == True, User.role != 'super_admin').all()
+        active_performance_users = User.query.filter(User.can_view_performance == True, User.role != 'super_admin').all()
+        
+    return render_template("admin/notifications.html", 
+                         notifications=notifs, 
+                         pending_leaves=pending_leaves,
+                         pending_users=pending_users,
+                         pending_expenses=pending_expenses,
+                         access_requests=access_requests,
+                         performance_requests=performance_requests,
+                         expense_requests=expense_requests,
+                         active_access_users=active_access_users,
+                         active_performance_users=active_performance_users)
+
+@admin_bp.route("/mark_notification_read/<int:notif_id>")
+@login_required
+def mark_notification_read(notif_id):
+    notif = Notification.query.get_or_404(notif_id)
+    if notif.user_id == current_user.id:
+        notif.is_read = True
+        db.session.commit()
+    return redirect(request.referrer or url_for('admin.notifications'))
+
+@admin_bp.route("/clear_all_notifications")
+@login_required
+def clear_all_notifications():
+    Notification.query.filter_by(user_id=current_user.id, is_read=False).update({Notification.is_read: True})
+    db.session.commit()
+    flash("All notifications marked as read.", "success")
+    return redirect(url_for('admin.notifications'))
+
+
+@admin_bp.route("/staff_ledger/<int:id>")
+@login_required
+@admin_required
+def staff_ledger(id):
+    staff = Staff.query.get_or_404(id)
+    
+    # Get all attendance records
+    atts = []
+    if staff.user_id:
+        atts = Attendance.query.filter_by(user_id=staff.user_id).order_by(Attendance.date.desc()).all()
+    
+    # Get all salary payments/advances
+    payments = Expense.query.filter(
+        Expense.category.in_(['Salary', 'Salary Advance']),
+        Expense.title.ilike(f"%{staff.name.strip()}%"),
+        Expense.status == 'approved'
+    ).order_by(Expense.expense_date.desc()).all()
+
+    # Calculate Total Earned (Total Lifetime)
+    total_earned = 0.0
+    for a in atts:
+        if staff.salary_type == 'per_day':
+            if a.status == 'Present': total_earned += float(staff.base_salary or 0)
+            elif a.status == 'Half-Day': total_earned += float(staff.base_salary or 0) * 0.5
+        elif staff.salary_type == 'per_hour':
+            if a.check_in and a.check_out:
+                h = min((a.check_out - a.check_in).total_seconds() / 3600, 12.0)
+                total_earned += int(h) * float(staff.base_salary or 0)
+    
+    if staff.salary_type == 'monthly':
+        now = datetime.now().date()
+        months = (now.year - staff.created_at.year) * 12 + now.month - staff.created_at.month + 1
+        total_earned = months * float(staff.base_salary or 0)
+
+    total_paid = sum([float(p.real_amount or p.amount or 0) for p in payments])
+    
+    return render_template("admin/staff_ledger.html", 
+                           staff=staff, 
+                           atts=atts, 
+                           payments=payments,
+                           total_earned=total_earned,
+                           total_paid=total_paid,
+                           balance=total_earned - total_paid)

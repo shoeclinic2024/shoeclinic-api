@@ -8,8 +8,9 @@ import pyotp
 import qrcode
 import io
 import base64
-from models import LoginAttempt, User
+from models import LoginAttempt, User, PasswordHistory
 from database import db
+from flask_bcrypt import Bcrypt
 
 # In-memory rate limiting storage (simple implementation)
 # For production, consider using Redis
@@ -232,8 +233,9 @@ class SecurityService:
     
     # --- Password Strength Validation ---
     
+    
     @staticmethod
-    def validate_password_strength(password):
+    def validate_password_strength(password, user=None):
         """
         Validate password strength
         Returns (is_valid, error_message)
@@ -250,8 +252,15 @@ class SecurityService:
         if not any(c.isdigit() for c in password):
             return False, "Password must contain at least one number"
         
+        # Check for username in password
+        if user:
+            if password.lower() == user.username.lower():
+                return False, "Password cannot be the same as your username"
+            if user.username.lower() in password.lower():
+                return False, "Password matches your username too closely"
+
         # Check for common weak passwords
-        weak_passwords = ['password', 'password123', '12345678', 'qwerty123']
+        weak_passwords = ['password', 'password123', 'admin123', 'shoeclinic', '12345678', 'qwerty123']
         if password.lower() in weak_passwords:
             return False, "Password is too common, please choose a stronger one"
         
@@ -277,6 +286,45 @@ class SecurityService:
             score += 1
         
         return min(score, 4)
+
+
+    @staticmethod
+    def check_password_reuse(user, new_password):
+        """
+        Check if password has been used recently
+        Returns True if reused, False otherwise
+        """
+        bcrypt = Bcrypt()
+        
+        # Check current password
+        if user.password and bcrypt.check_password_hash(user.password, new_password):
+            return True
+            
+        # Check history (last 5 passwords)
+        history = PasswordHistory.query.filter_by(user_id=user.id).order_by(PasswordHistory.created_at.desc()).limit(5).all()
+        for h in history:
+            if bcrypt.check_password_hash(h.password_hash, new_password):
+                return True
+        
+        return False
+
+    @staticmethod
+    def save_password_history(user, password_hash):
+        """Save old password to history"""
+        # Add new history
+        history = PasswordHistory(user_id=user.id, password_hash=password_hash)
+        db.session.add(history)
+        
+        # Cleanup old history (keep last 5)
+        all_history = PasswordHistory.query.filter_by(user_id=user.id).order_by(PasswordHistory.created_at.desc()).all()
+        if len(all_history) >= 5:
+            for old_h in all_history[4:]:
+                db.session.delete(old_h)
+        
+        try:
+            db.session.commit()
+        except:
+            db.session.rollback()
 
 # Create singleton instance
 security_service = SecurityService()

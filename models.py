@@ -17,6 +17,12 @@ class User(UserMixin, db.Model):
     customer_view_requested = db.Column(db.Boolean, default=False)
     can_export_customers = db.Column(db.Boolean, default=False)
     customer_access_expiry = db.Column(db.DateTime, nullable=True)
+    
+    # --- Performance Monitor Access (v02) ---
+    can_view_performance = db.Column(db.Boolean, default=False)
+    performance_view_requested = db.Column(db.Boolean, default=False)
+    performance_access_expiry = db.Column(db.DateTime, nullable=True)
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # --- Security Fields (v02) ---
@@ -57,8 +63,11 @@ class Order(db.Model):
     outsource = db.Column(db.String(100))
     item_count = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    work_finish_date = db.Column(db.DateTime, nullable=True) # New column
+    actual_delivery_date = db.Column(db.DateTime, nullable=True)
+    assignment_start_date = db.Column(db.DateTime, nullable=True) # When assignment becomes active
 
-    items = db.relationship('OrderItem', backref='order', lazy='joined')
+    items = db.relationship('OrderItem', backref='order', lazy='joined', cascade='all, delete-orphan')
 
 # --- OrderItem Model ---
 class OrderItem(db.Model):
@@ -73,7 +82,7 @@ class OrderItem(db.Model):
     service_assignments = db.Column(db.Text) 
     # Stores a JSON mapping of service name to status (yts, wip, done, etc.)
     service_statuses = db.Column(db.Text)
-    status = db.Column(db.String(50))
+    status = db.Column(db.String(50), default='yts')
     defects = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -82,12 +91,28 @@ class Expense(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     amount = db.Column(db.Float, nullable=False)
+    real_amount = db.Column(db.Float, nullable=True, default=0.0)
     category = db.Column(db.String(50), nullable=False)
     expense_date = db.Column(db.Date, nullable=False, default=datetime.now)
     description = db.Column(db.String(255))
     status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved
     added_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.now)
+    
+    # Request tracking for non-super admins
+    request_type = db.Column(db.String(20), default='none') # none, delete, edit
+    request_reason = db.Column(db.String(255), nullable=True)
+    request_data = db.Column(db.Text, nullable=True) # JSON literal for proposed edits
+    
+    @property
+    def get_request_data(self):
+        import json
+        if self.request_data:
+            try:
+                return json.loads(self.request_data)
+            except:
+                return {}
+        return {}
     
     creator = db.relationship('User', foreign_keys=[added_by])
 
@@ -125,7 +150,7 @@ class Attendance(db.Model):
     regularized_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
-    user = db.relationship('User', foreign_keys=[user_id], backref='attendances')
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('attendances', cascade='all, delete-orphan'))
     regularizer = db.relationship('User', foreign_keys=[regularized_by])
 
 # --- Holiday Model ---
@@ -133,8 +158,18 @@ class Holiday(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False, unique=True)
     name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.String(200), nullable=True)
+    description = db.Column(db.String(255), nullable=True)
+
+class Notification(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    title = db.Column(db.String(100), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.now)
+    link = db.Column(db.String(200), nullable=True)
+
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('notifications', cascade='all, delete-orphan'))
 
 # --- Login Attempt Model (v02 - Security) ---
 class LoginAttempt(db.Model):
@@ -150,4 +185,46 @@ class LoginAttempt(db.Model):
     
     user = db.relationship('User', backref='login_attempts')
 
+# --- Password History Model (v02 - Security) ---
+class PasswordHistory(db.Model):
+    """Track previous passwords to prevent reuse"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', backref=db.backref('password_history', cascade='all, delete-orphan'))
+
+# --- Staff Model ---
+class Staff(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    mobile = db.Column(db.String(20), nullable=True)
+    place = db.Column(db.String(100), nullable=True)
+    salary_type = db.Column(db.String(20), default="monthly")  # monthly, per_day
+    base_salary = db.Column(db.Float, default=0.0)  # monthly amount or daily rate
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', foreign_keys=[user_id])
+# --- Payment Transaction Model (v02) ---
+class PaymentTransaction(db.Model):
+    """Track Razorpay payment transactions"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    razorpay_order_id = db.Column(db.String(50), nullable=True, unique=True)
+    razorpay_payment_id = db.Column(db.String(50), nullable=True, unique=True)
+    razorpay_signature = db.Column(db.String(255), nullable=True)
+    razorpay_plink_id = db.Column(db.String(50), nullable=True, unique=True)
+    short_url = db.Column(db.String(255), nullable=True)
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), default='INR')
+    status = db.Column(db.String(20), default='created') # created, authorized, captured, failed
+    method = db.Column(db.String(20), nullable=True) # card, netbanking, upi
+    error_code = db.Column(db.String(50), nullable=True)
+    error_description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    order = db.relationship('Order', backref=db.backref('transactions', cascade='all, delete-orphan'))
 

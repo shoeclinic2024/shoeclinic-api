@@ -1,119 +1,253 @@
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">📦 Total Orders</h6>
-                <h3 class="text-primary">{{ yearly.total_orders }}</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">✅ Completed</h6>
-                <h3 class="text-success">{{ yearly.completed }}</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">⏳ Pending</h6>
-                <h3 class="text-warning">{{ yearly.pending }}</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">💰 Total Revenue</h6>
-                <h3 class="text-info">₹{{ "%.2f"|format(yearly.total_revenue) }}</h3>
-            </div>
-        </div>
-    </div>
-</div>
+{% extends "base.html" %}
 
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">📅 Select Year</h6>
-                <div class="d-flex gap-2 align-items-center">
-                    <select class="form-select form-select-sm" style="max-width: 150px;" onchange="changeYear(this.value)">
-                        {% for y in years %}
-                            <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
-                        {% endfor %}
-                    </select>
-                    <span class="badge bg-primary">Year: {{ selected_year }}</span>
+{% block content %}
+<div class="container-fluid px-0">
+    <!-- Report Tabs -->
+    <div class="report-nav-container mb-3">
+        <ul class="nav nav-pills report-nav-pills">
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_daily' %}active{% endif %}"
+                    href="{{ url_for('report_daily') }}">Daily Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_weekly' %}active{% endif %}"
+                    href="{{ url_for('report_weekly') }}">Weekly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_monthly' %}active{% endif %}"
+                    href="{{ url_for('report_monthly') }}">Monthly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'report_yearly' %}active{% endif %}"
+                    href="{{ url_for('report_yearly') }}">Yearly Report</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link {% if request.endpoint == 'admin.financial_report' %}active{% endif %}"
+                    href="{{ url_for('admin.financial_report') }}">Financial Report</a>
+            </li>
+        </ul>
+    </div>
+    <!-- Header / Year Selection -->
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+        <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-calendar3 me-2"></i>Yearly Report</h5>
+        <div class="d-flex align-items-center gap-2">
+            <span class="fw-bold small text-muted">YEAR:</span>
+            <select class="form-select form-select-sm" id="yearSelect" style="width: 100px;" onchange="changeYear()">
+                {% for y in years %}
+                <option value="{{ y }}" {% if y==selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+
+            <div class="btn-group ms-2 me-2">
+                {% if current_user.role == 'super_admin' %}
+                <a href="{{ url_for('export_report', report_type='yearly', report_format='excel', year=selected_year) }}"
+                    class="btn btn-outline-success btn-sm" title="Export Excel">
+                    <i class="bi bi-file-earmark-spreadsheet"></i>
+                </a>
+                <a href="{{ url_for('export_report', report_type='yearly', report_format='pdf', year=selected_year) }}"
+                    class="btn btn-outline-danger btn-sm" title="Export PDF">
+                    <i class="bi bi-file-earmark-pdf"></i>
+                </a>
+                {% else %}
+                <button class="btn btn-outline-secondary btn-sm"
+                    onclick="requestExport('Yearly Report ({{ selected_year }})', 'Excel')" title="Request Excel">
+                    <i class="bi bi-lock-fill small"></i> <i class="bi bi-file-earmark-spreadsheet"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm"
+                    onclick="requestExport('Yearly Report ({{ selected_year }})', 'PDF')" title="Request PDF">
+                    <i class="bi bi-lock-fill small"></i> <i class="bi bi-file-earmark-pdf"></i>
+                </button>
+                {% endif %}
+            </div>
+
+            <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i
+                    class="bi bi-printer"></i></button>
+        </div>
+    </div>
+
+    {% if yearly.error %}
+    <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> Error generating report: {{ yearly.error }}
+    </div>
+    {% else %}
+    <!-- Executive Summary Table -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header bg-light py-2 border-bottom">
+            <h6 class="mb-0 fw-bold text-dark text-uppercase small">Executive Summary · {{ yearly.title }}</h6>
+        </div>
+        <div class="card-body p-0">
+            <table class="table table-bordered mb-0">
+                <tbody>
+                    <tr>
+                        <th class="bg-light text-muted text-uppercase small" style="width: 20%;">Target Deliveries</th>
+                        <td class="fw-bold" style="width: 30%;">{{ yearly.total_orders }}</td>
+                        <th class="bg-light text-muted text-uppercase small" style="width: 20%;">Billed Orders</th>
+                        <td style="width: 30%;">{{ yearly.billed_count }}</td>
+                    </tr>
+                    <tr>
+                        <th class="bg-light text-muted text-uppercase small">Expected Revenue</th>
+                        <td class="text-primary fw-bold">₹{{ "%.2f"|format(yearly.total_revenue) }}</td>
+                        <th class="bg-light text-muted text-uppercase small">Billed Revenue</th>
+                        <td class="text-success fw-bold">₹{{ "%.2f"|format(yearly.billed_revenue or 0) }}</td>
+                    </tr>
+                    <tr>
+                        <th class="bg-light text-muted text-uppercase small">Paid Orders</th>
+                        <td class="fw-bold">{{ yearly.paid_count }}</td>
+                        <th class="bg-light text-muted text-uppercase small">Paid Revenue</th>
+                        <td class="text-success fw-bold">₹{{ "%.2f"|format(yearly.paid_revenue or 0) }}</td>
+                    </tr>
+                    <tr>
+                        <th class="bg-light text-muted text-uppercase small">Expenses (Approved)</th>
+                        <td class="text-danger fw-bold">₹{{ "%.2f"|format(yearly.total_expenses) }}</td>
+                        <th class="bg-light text-muted text-uppercase small">Net Profit</th>
+                        <td class="fw-bold {% if yearly.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            ₹{{ "%.2f"|format(yearly.net_profit) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <!-- Operational Metrics Table -->
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-white py-2 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark small text-uppercase">Production Statistics</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="small text-muted text-uppercase">Metric</th>
+                                <th class="text-end small text-muted text-uppercase">Count</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Assigned Items (Target)</td>
+                                <td class="text-end fw-bold">{{ yearly.ops.target_assigned }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-secondary small me-2"></i>Yet To Start</td>
+                                <td class="text-end">{{ yearly.ops.yts_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-warning small me-2"></i>Work In Progress</td>
+                                <td class="text-end">{{ yearly.ops.wip_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-info small me-2"></i>Done (Work Finished)</td>
+                                <td class="text-end">{{ yearly.ops.done_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-primary small me-2"></i>Ready to Deliver</td>
+                                <td class="text-end">{{ yearly.ops.ready_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Orders</td>
+                                <td class="text-end">{{ yearly.ops.billed_granular_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Delivered</td>
+                                <td class="text-end fw-bold">{{ yearly.ops.delivered_count }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technician Performance Table -->
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-white py-2 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark small text-uppercase">Technician Efficiency</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="small text-muted text-uppercase">Name</th>
+                                <th class="small text-muted text-uppercase text-center">Progress</th>
+                                <th class="text-end small text-muted text-uppercase">Done/Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if yearly.tech_performance %}
+                            {% for name, stats in yearly.tech_performance.items() %}
+                            {% set pct = (stats.completed / stats.assigned * 100)|round|int if stats.assigned > 0 else 0
+                            %}
+                            <tr>
+                                <td class="fw-bold text-dark" style="font-size: 0.9rem;">{{ name }}</td>
+                                <td class="align-middle" style="width: 40%;">
+                                    <div class="progress" style="height: 6px;">
+                                        <div class="progress-bar {% if pct == 100 %}bg-success{% else %}bg-primary{% endif %}"
+                                            role="progressbar" style="width: {{ pct }}%"></div>
+                                    </div>
+                                    <div class="text-center" style="font-size: 10px; color: #888;">{{ pct }}%</div>
+                                </td>
+                                <td class="text-end text-dark fw-bold">{{ stats.completed }} / {{ stats.assigned }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted py-3">No targets assigned this year</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expense Summary Table -->
+        <div class="col-md-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header bg-white py-2 border-bottom">
+                    <h6 class="mb-0 fw-bold text-dark small text-uppercase">Expense Breakdown</h6>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="small text-muted text-uppercase">Category/Title</th>
+                                <th class="text-end small text-muted text-uppercase">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if yearly.expenses %}
+                            {% for exp in yearly.expenses %}
+                            <tr>
+                                <td>
+                                    <div class="text-truncate" style="max-width: 150px;">{{ exp.title }}</div>
+                                    <small class="text-muted">{{ exp.category }}</small>
+                                </td>
+                                <td class="text-end">₹{{ "%.2f"|format(exp.amount) }}</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="bg-light fw-bold">
+                                <td>TOTAL</td>
+                                <td class="text-end text-danger">₹{{ "%.2f"|format(yearly.total_expenses) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="2" class="text-center text-muted py-3">No expenses recorded this year</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
-
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">💸 Total Discount</h6>
-                <h3 class="text-danger">₹{{ "%.2f"|format(yearly.total_discount) }}</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">💹 Average Per Order</h6>
-                <h3 class="text-info">₹{{ "%.2f"|format(yearly.total_revenue / yearly.total_orders if yearly.total_orders > 0 else 0) }}</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card bg-light">
-            <div class="card-body">
-                <h6 class="card-title text-muted">📊 Completion Rate</h6>
-                <h3 class="text-success">{{ "%.1f"|format(yearly.completed / yearly.total_orders * 100 if yearly.total_orders > 0 else 0) }}%</h3>
-            </div>
-        </div>
-    </div>
-</div>
-
-<h5 class="mb-3">📋 Order Details</h5>
-<div class="table-responsive">
-    <table class="table table-hover table-sm">
-        <thead class="table-light">
-            <tr>
-                <th>Job ID</th>
-                <th>Date</th>
-                <th>Customer</th>
-                <th>Technician</th>
-                <th>Status</th>
-                <th>Amount</th>
-                <th>Discount</th>
-                <th>Net</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% if yearly.orders %}
-                {% for order in yearly.orders|sort(attribute='pickup_date', reverse=True) %}
-                <tr>
-                    <td><strong>{{ order.job_id }}</strong></td>
-                    <td><small>{{ order.pickup_date.strftime('%d-%m-%Y') if order.pickup_date else '-' }}</small></td>
-                    <td>{{ order.customer_name }}</td>
-                    <td><small>{{ order.technician or '-' }}</small></td>
-                    <td><span class="badge bg-{{ order.status|status_color }}">{{ order.status }}</span></td>
-                    <td>₹{{ "%.2f"|format(order.price or 0) }}</td>
-                    <td>-₹{{ "%.2f"|format(order.discount|float(0)) }}</td>
-                    <td><strong>₹{{ "%.2f"|format((order.price or 0) - (order.discount|float(0))) }}</strong></td>
-                </tr>
-                {% endfor %}
-            {% else %}
-                <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
-                        <i class="bi bi-inbox"></i> No orders for this year
-                    </td>
-                </tr>
-            {% endif %}
-        </tbody>
-    </table>
-</div>
+<script>
+    function changeYear() {
+        const year = document.getElementById('yearSelect').value;
+        window.location.href = "{{ url_for('report_yearly') }}?year=" + year;
+    }
+</script>
+{% endblock %}

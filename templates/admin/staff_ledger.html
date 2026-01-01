@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold mb-1"><i class="bi bi-person-lines-fill text-primary me-2"></i>Staff Ledger: {{
+                staff.name }}</h3>
+            <p class="text-muted mb-0">Payroll Tracking & History</p>
+        </div>
+        <a href="javascript:history.back()" class="btn btn-outline-dark rounded-pill px-4">
+            <i class="bi bi-arrow-left me-2"></i>Back
+        </a>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row g-4 mb-5">
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-primary bg-opacity-10 h-100">
+                <div class="card-body p-4 text-center">
+                    <small class="text-muted fw-bold text-uppercase d-block mb-2">Total Earned (Lifetime)</small>
+                    <h3 class="fw-bold text-primary mb-0">₹ {{ "%.2f"|format(total_earned) }}</h3>
+                    <small class="text-muted">Based on attendance & {{ staff.salary_type }} rate</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm rounded-4 bg-success bg-opacity-10 h-100">
+                <div class="card-body p-4 text-center">
+                    <small class="text-muted fw-bold text-uppercase d-block mb-2">Total Paid (Lifetime)</small>
+                    <h3 class="fw-bold text-success mb-0">₹ {{ "%.2f"|format(total_paid) }}</h3>
+                    <small class="text-muted">Total of all salary expenses</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div
+                class="card border-0 shadow-sm rounded-4 {% if balance > 0 %}bg-warning{% else %}bg-info{% endif %} bg-opacity-10 h-100">
+                <div class="card-body p-4 text-center">
+                    <small class="text-muted fw-bold text-uppercase d-block mb-2">Current Net Balance</small>
+                    <h3 class="fw-bold {% if balance > 0 %}text-danger{% else %}text-dark{% endif %} mb-0">₹ {{
+                        "%.2f"|format(balance|abs) }}</h3>
+                    <small class="text-muted">{% if balance > 0 %}Amount due to pay{% else %}Credit / Advance balance{%
+                        endif %}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Attendance History -->
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-calendar-check me-2 text-primary"></i>Work History</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Date</th>
+                                    <th>Status</th>
+                                    <th>Work Details</th>
+                                    <th class="text-end pe-4">Earned</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for a in atts %}
+                                {% set e = 0.0 %}
+                                {% if staff.salary_type == 'per_day' %}
+                                {% if a.status == 'Present' %}{% set e = staff.base_salary %}{% elif a.status ==
+                                'Half-Day' %}{% set e = staff.base_salary * 0.5 %}{% endif %}
+                                {% elif staff.salary_type == 'per_hour' and a.check_in and a.check_out %}
+                                {% set h = min((a.check_out - a.check_in).total_seconds() / 3600, 12.0)|int %}
+                                {% set e = h * staff.base_salary %}
+                                {% endif %}
+                                <tr>
+                                    <td class="ps-4">{{ a.date.strftime('%d %b, %Y') }}</td>
+                                    <td>
+                                        <span
+                                            class="badge {% if a.status == 'Present' %}bg-success{% elif a.status == 'Half-Day' %}bg-info{% else %}bg-secondary{% endif %} rounded-pill">
+                                            {{ a.status }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if staff.salary_type == 'per_hour' and a.check_in %}
+                                        <small class="text-muted">
+                                            {{ a.check_in.strftime('%H:%M') }} - {{ a.check_out.strftime('%H:%M') if
+                                            a.check_out else '??' }}
+                                            ({{ h if h else 0 }} hrs)
+                                        </small>
+                                        {% else %}
+                                        <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end pe-4">₹ {{ "%.2f"|format(e) }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% if not atts %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-4 text-muted">No attendance records found</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment History -->
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-0">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-wallet2 me-2 text-success"></i>Payment History</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4">Date</th>
+                                    <th>Category</th>
+                                    <th class="text-end pe-4">Paid</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in payments %}
+                                <tr>
+                                    <td class="ps-4">{{ p.expense_date.strftime('%d %b, %Y') }}</td>
+                                    <td>
+                                        <div class="small fw-bold">{{ p.category }}</div>
+                                        <small class="text-muted">{{ p.note or '-' }}</small>
+                                    </td>
+                                    <td class="text-end pe-4 text-success fw-bold">₹ {{ "%.2f"|format(p.real_amount or
+                                        p.amount) }}</td>
+                                </tr>
+                                {% endfor %}
+                                {% if not payments %}
+                                <tr>
+                                    <td colspan="3" class="text-center py-4 text-muted">No payout records found</td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

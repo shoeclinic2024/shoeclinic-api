@@ -16,15 +16,24 @@
             --content-bg: #f8f9fb;
         }
 
-        html,
+        html {
+            margin: 0;
+            padding: 0;
+            background-color: var(--content-bg);
+            transition: background-color 0.3s;
+        }
+
         body {
             margin: 0;
-            height: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
             box-sizing: border-box;
             font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background-color: var(--content-bg);
             color: #212529;
             transition: background-color 0.3s, color 0.3s;
+            overflow-x: hidden;
         }
 
         /* Sidebar */
@@ -89,6 +98,52 @@
         }
 
         .user-info,
+        .logout-link {
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        /* Premium Nav Tabs/Pills Styling */
+        .report-nav-container {
+            background-color: transparent !important;
+            border: none !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 1rem !important;
+        }
+
+        .report-nav-pills .nav-link {
+            color: #6c757d;
+            background-color: transparent;
+            border: 1px solid transparent;
+            border-radius: 50px;
+            /* Pill shape */
+            padding: 8px 16px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            margin-right: 0.5rem;
+        }
+
+        /* Dark Mode adjustments for nav-pills */
+        body.dark-mode .report-nav-pills .nav-link {
+            color: #adb5bd;
+        }
+
+        .report-nav-pills .nav-link:hover {
+            color: #0d6efd;
+            background-color: rgba(13, 110, 253, 0.1);
+        }
+
+        .report-nav-pills .nav-link.active {
+            color: #fff !important;
+            background-color: #0d6efd !important;
+            box-shadow: 0 4px 6px rgba(13, 110, 253, 0.3);
+        }
+
+        body.dark-mode .report-nav-pills .nav-link:hover {
+            color: #6ea8fe;
+            background-color: rgba(13, 110, 253, 0.2);
+        }
+
         .mode-toggle {
             padding: 14px 20px;
             font-size: 0.9rem;
@@ -105,19 +160,69 @@
 
         /* Main content */
         .main-content {
+            flex: 1;
             margin-left: 0;
-            padding: 32px;
+            padding: 24px;
             min-height: 100vh;
+            width: 100%;
             transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: inherit;
         }
 
         .main-content.shifted {
             margin-left: 250px;
+            width: calc(100% - 250px);
         }
 
-        /* Alerts */
-        .main-content .alert {
-            margin-bottom: 1rem;
+        /* Notifications / Toasts */
+        .flash-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 350px;
+            max-width: 90vw;
+        }
+
+        .flash-container .alert {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border: none;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            padding: 1rem 1.25rem;
+            animation: slideInRight 0.4s ease-out;
+            backdrop-filter: blur(8px);
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .alert-success {
+            background-color: rgba(21, 128, 61, 0.95) !important;
+            color: #ffffff !important;
+        }
+
+        .alert-warning {
+            background-color: rgba(180, 83, 9, 0.95) !important;
+            color: #ffffff !important;
+        }
+
+        .alert-danger {
+            background: rgba(220, 38, 38, 0.95) !important;
+            color: #ffffff !important;
+        }
+
+        .btn-close {
+            filter: brightness(0) invert(1);
         }
 
         /* Cards & Forms */
@@ -242,12 +347,36 @@
         }
 
         body.bg-dark .badge {
-            background-color: #334155 !important;
+            background-color: #334155;
             color: #f1f5f9 !important;
+        }
+
+        body.bg-dark .badge.bg-danger,
+        body.bg-gray .badge.bg-danger {
+            background-color: #ef4444 !important;
+            color: #ffffff !important;
+        }
+
+        body.bg-dark .badge.bg-warning,
+        body.bg-gray .badge.bg-warning {
+            background-color: #f59e0b !important;
+            color: #000000 !important;
         }
 
         body.bg-dark .text-muted {
             color: #94a3b8 !important;
+        }
+
+        .proposed-changes .text-warning {
+            color: #ffc107 !important;
+        }
+
+        .x-small {
+            font-size: 0.75rem;
+        }
+
+        .italic {
+            font-style: italic;
         }
 
         body.bg-dark .user-info,
@@ -302,6 +431,12 @@
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4) !important;
         }
 
+        body.bg-gray .compact-filters {
+            background-color: #2f2f2f !important;
+            border-color: #424242 !important;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4) !important;
+        }
+
         body.bg-dark .table-container {
             background-color: transparent !important;
         }
@@ -340,6 +475,242 @@
             color: #f1f5f9 !important;
         }
 
+        /* Fix Table Backgrounds in Dark Mode */
+        body.bg-dark .table,
+        body.bg-dark .table> :not(caption)>*>* {
+            background-color: #1e293b !important;
+            color: #e2e8f0 !important;
+            border-color: #334155 !important;
+        }
+
+        body.bg-dark .table-striped>tbody>tr:nth-of-type(odd)>* {
+            background-color: #262f3e !important;
+            /* Slightly lighter for striping */
+            color: #e2e8f0 !important;
+        }
+
+        body.bg-dark .table-hover>tbody>tr:hover>* {
+            background-color: #334155 !important;
+            color: #fff !important;
+        }
+
+
+        /* Gray Mode - Antigravity Style */
+        body.bg-gray {
+            background-color: #212121 !important;
+            /* Neutral Dark Gray */
+            color: #ececec !important;
+        }
+
+        body.bg-gray .main-content {
+            background-color: #212121 !important;
+            color: #ececec !important;
+        }
+
+        body.bg-gray .sidebar {
+            background: #171717 !important;
+            /* Darker Gray */
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        body.bg-gray .sidebar h4 {
+            border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+        }
+
+        body.bg-gray .sidebar a {
+            color: #bdc3c7 !important;
+        }
+
+        body.bg-gray .sidebar a:hover,
+        body.bg-gray .sidebar a.active {
+            background-color: #333333 !important;
+            color: #ffffff !important;
+        }
+
+        body.bg-gray .card {
+            background-color: #2f2f2f !important;
+            border-color: #424242 !important;
+            color: #ececec !important;
+        }
+
+        body.bg-gray .card-header {
+            background-color: #212121 !important;
+            border-bottom-color: #424242 !important;
+            color: #ffffff !important;
+        }
+
+        body.bg-gray .form-control,
+        body.bg-gray .form-select {
+            background-color: #2f2f2f !important;
+            border-color: #424242 !important;
+            color: #ececec !important;
+        }
+
+        body.bg-gray .form-control:focus,
+        body.bg-gray .form-select:focus {
+            background-color: #2f2f2f !important;
+            border-color: #bdbdbd !important;
+            /* Gray accent */
+            color: #ececec !important;
+            box-shadow: 0 0 0 0.2rem rgba(189, 189, 189, 0.25) !important;
+        }
+
+        body.bg-gray .table,
+        body.bg-gray .table> :not(caption)>*>* {
+            background-color: #2f2f2f !important;
+            color: #ececec !important;
+            border-color: #424242 !important;
+        }
+
+        body.bg-gray .table-striped>tbody>tr:nth-of-type(odd)>* {
+            background-color: #383838 !important;
+            color: #ececec !important;
+        }
+
+        body.bg-gray .table-hover>tbody>tr:hover>* {
+            background-color: #424242 !important;
+            color: #fff !important;
+        }
+
+        body.bg-gray .btn-outline-secondary {
+            color: #bdbdbd !important;
+            border-color: #616161 !important;
+        }
+
+        body.bg-gray .user-info,
+        body.bg-gray .mode-toggle {
+            background-color: #171717 !important;
+            border-top-color: #333333 !important;
+            color: #9e9e9e !important;
+        }
+
+        /* Gray/Dark Mode Input placeholders */
+        body.bg-gray ::placeholder,
+        body.bg-dark ::placeholder {
+            color: #d1d1d1 !important;
+            /* Lighter gray for better visibility */
+            opacity: 1;
+        }
+
+        /* High Contrast for Dark/Gray Modes */
+        body.bg-dark .text-muted,
+        body.bg-gray .text-muted {
+            color: #bdc3c7 !important;
+            /* Slightly dimmed white/gray */
+        }
+
+        body.bg-dark .text-dark,
+        body.bg-gray .text-dark {
+            color: #ffffff !important;
+        }
+
+        body.bg-dark .card-body,
+        body.bg-gray .card-body,
+        body.bg-dark .card-header,
+        body.bg-gray .card-header,
+        body.bg-dark .card-footer,
+        body.bg-gray .card-footer {
+            color: #ffffff !important;
+            background-color: transparent !important;
+            /* Let parent bg show */
+        }
+
+        /* Force dark backgrounds on typically light elements */
+        body.bg-dark .bg-white,
+        body.bg-gray .bg-white,
+        body.bg-dark .bg-light,
+        body.bg-gray .bg-light,
+        body.bg-dark .list-group-item,
+        body.bg-gray .list-group-item {
+            background-color: transparent !important;
+            color: #fff !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Calendar Specific Overrides */
+        body.bg-dark .calendar-header,
+        body.bg-gray .calendar-header {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            color: #fff !important;
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        body.bg-dark .calendar-day,
+        body.bg-gray .calendar-day {
+            border-color: rgba(255, 255, 255, 0.1) !important;
+            color: #fff !important;
+        }
+
+        body.bg-dark .calendar-day.empty,
+        body.bg-gray .calendar-day.empty {
+            background-color: rgba(0, 0, 0, 0.2) !important;
+        }
+
+        body.bg-dark .calendar-day:hover:not(.empty),
+        body.bg-gray .calendar-day:hover:not(.empty) {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        body.bg-dark .day-number,
+        body.bg-gray .day-number {
+            color: #e0e0e0 !important;
+        }
+
+        /* Modal Overrides */
+        body.bg-dark .modal-content,
+        body.bg-gray .modal-content {
+            background-color: #212529;
+            /* Dark bg for modal */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff !important;
+        }
+
+        body.bg-gray .modal-content {
+            background-color: #2f2f2f !important;
+            /* Gray bg for modal */
+        }
+
+        body.bg-dark .modal-header,
+        body.bg-gray .modal-header,
+        body.bg-dark .modal-footer,
+        body.bg-gray .modal-footer {
+            border-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        body.bg-dark .close,
+        body.bg-gray .close,
+        body.bg-dark .btn-close,
+        body.bg-gray .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
+        }
+
+        /* Headings Override */
+        body.bg-dark h1,
+        body.bg-dark h2,
+        body.bg-dark h3,
+        body.bg-dark h4,
+        body.bg-dark h5,
+        body.bg-dark h6,
+        body.bg-dark .h1,
+        body.bg-dark .h2,
+        body.bg-dark .h3,
+        body.bg-dark .h4,
+        body.bg-dark .h5,
+        body.bg-dark .h6,
+        body.bg-gray h1,
+        body.bg-gray h2,
+        body.bg-gray h3,
+        body.bg-gray h4,
+        body.bg-gray h5,
+        body.bg-gray h6,
+        body.bg-gray .h1,
+        body.bg-gray .h2,
+        body.bg-gray .h3,
+        body.bg-gray .h4,
+        body.bg-gray .h5,
+        body.bg-gray .h6 {
+            color: #ffffff !important;
+        }
 
         .filters-row .form-control,
         .filters-row .form-select {
@@ -383,10 +754,30 @@
             background: rgba(255, 255, 255, 0.06);
             border-radius: 6px;
         }
+
+        /* Sidebar Arrow Rotation */
+        .sidebar .bi-chevron-down {
+            display: inline-block;
+            transition: transform 0.3s ease;
+        }
+
+        /* Rotate arrow when link doesn't have 'collapsed' class */
+        .sidebar a[data-bs-toggle="collapse"]:not(.collapsed) .bi-chevron-down {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 
 <body>
+    <script>
+        // Prevent Flash of Light Mode (FOUC)
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            document.body.classList.add('bg-dark');
+        } else if (savedTheme === 'gray') {
+            document.body.classList.add('bg-gray');
+        }
+    </script>
 
     <!-- Sidebar -->
     <div class="sidebar">
@@ -395,83 +786,52 @@
             <a href="{{ url_for('home') }}" class="{% if request.endpoint=='home' %}active{% endif %}">
                 <i class="bi bi-house-door-fill"></i> Dashboard Home
             </a>
-            {% if current_user.role in ['admin', 'super_admin'] %}
             <a href="{{ url_for('tsc_dashboard') }}"
                 class="{% if request.endpoint=='tsc_dashboard' %}active{% endif %}">
                 <i class="bi bi-columns-gap"></i> TSC Dashboard
             </a>
+            {% if current_user.role in ['admin', 'super_admin'] %}
             <a href="{{ url_for('add_order') }}" class="{% if request.endpoint=='add_order' %}active{% endif %}">
                 <i class="bi bi-plus-circle"></i> Add Order
             </a>
-            <a href="{{ url_for('admin_panel') }}" class="{% if request.endpoint=='admin_panel' %}active{% endif %}">
+            <a href="{{ url_for('admin.admin_panel') }}"
+                class="{% if request.endpoint=='admin_panel' %}active{% endif %}">
                 <i class="bi bi-person-gear"></i> Admin Panel
             </a>
+
             {% endif %}
 
-            {% if current_user.role == 'super_admin' %}
-            <a href="{{ url_for('admin.pending_approvals') }}"
-                class="{% if request.endpoint=='admin.pending_approvals' %}active{% endif %} d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-shield-check"></i> Pending Approvals</span>
-                {% if pending_approvals_count > 0 %}
-                <span class="badge bg-danger rounded-pill">{{ pending_approvals_count }}</span>
-                {% endif %}
-            </a>
-            {% endif %}
+
 
             <a href="{{ url_for('my_works') }}" class="{% if request.endpoint=='my_works' %}active{% endif %}">
                 <i class="bi bi-tools"></i> My Works
             </a>
+
             <a href="{{ url_for('attendance') }}" class="{% if request.endpoint=='attendance'%}active{% endif %}">
                 <i class="bi bi-person-check-fill"></i> Attendance
+            </a>
+
+            <a href="{{ url_for('admin.notifications') }}"
+                class="{% if request.endpoint=='admin.notifications' %}active{% endif %} d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-bell-fill"></i> Notifications</span>
+                {% if unread_count and unread_count > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ unread_count }}</span>
+                {% endif %}
             </a>
 
 
             {% if current_user.role in ['admin', 'super_admin'] %}
             <!-- Reports Collapse -->
-            <a class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#reportMenu">
-                <span><i class="bi bi-journals"></i> Reports</span>
-                <i class="bi bi-chevron-down"></i>
+            <!-- Single Report Link -->
+            <a href="{{ url_for('report_daily') }}"
+                class="{% if request.endpoint in ['report_daily', 'report_weekly', 'report_monthly', 'report_yearly', 'admin.financial_report'] %}active{% endif %}">
+                <i class="bi bi-journals"></i> Reports
             </a>
-            <div class="collapse {% if request.endpoint in ['report_daily','report_weekly','report_monthly','report_yearly'] %}show{% endif %}"
-                id="reportMenu">
-                <a href="{{ url_for('report_daily') }}"
-                    class="{% if request.endpoint=='report_daily'%}active{% endif %}">
-                    <i class="bi bi-calendar-day"></i> Daily Report
-                </a>
-                <a href="{{ url_for('report_weekly') }}"
-                    class="{% if request.endpoint=='report_weekly'%}active{% endif %}">
-                    <i class="bi bi-calendar-week"></i> Weekly Report
-                </a>
-                <a href="{{ url_for('report_monthly') }}"
-                    class="{% if request.endpoint=='report_monthly'%}active{% endif %}">
-                    <i class="bi bi-calendar-range"></i> Monthly Report
-                </a>
-                <a href="{{ url_for('report_yearly') }}"
-                    class="{% if request.endpoint=='report_yearly'%}active{% endif %}">
-                    <i class="bi bi-calendar-check"></i> Yearly Report
-                </a>
-            </div>
 
-            <!-- Expense Collapse -->
-            <a class="d-flex justify-content-between align-items-center" data-bs-toggle="collapse" href="#expenseMenu">
-                <span><i class="bi bi-cash-coin"></i> Expense</span>
-                <i class="bi bi-chevron-down"></i>
+            <a href="{{ url_for('admin.day_to_day_expense') }}"
+                class="{% if request.endpoint == 'admin.day_to_day_expense' or request.endpoint == 'day_to_day_expense' %}active{% endif %}">
+                <i class="bi bi-cash-coin"></i> Expense
             </a>
-            <div class="collapse {% if request.endpoint in ['admin.day_to_day_expense','day_to_day_expense','monthly_expense','expense_dashboard'] %}show{% endif %}"
-                id="expenseMenu">
-                <a href="{{ url_for('admin.day_to_day_expense', filter_type='date') }}"
-                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'date' %}active{% endif %}">
-                    <i class="bi bi-calendar-day"></i> Day to Day Expense
-                </a>
-                <a href="{{ url_for('admin.day_to_day_expense', filter_type='month') }}"
-                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'month' %}active{% endif %}">
-                    <i class="bi bi-calendar-month"></i> Monthly Expense
-                </a>
-                <a href="{{ url_for('admin.day_to_day_expense', filter_type='year') }}"
-                    class="{% if request.endpoint == 'admin.day_to_day_expense' and request.args.get('filter_type') == 'year' %}active{% endif %}">
-                    <i class="bi bi-graph-up"></i> Expense Dashboard
-                </a>
-            </div>
 
             <a href="{{ url_for('admin.payouts') }}"
                 class="{% if request.endpoint == 'admin.payouts' or request.endpoint == 'payouts' %}active{% endif %}">
@@ -497,9 +857,16 @@
             </a>
         </div>
 
-        <!-- Dark Mode Toggle -->
-        <div class="mode-toggle" onclick="toggleTheme()">
-            <i class="bi bi-moon-stars-fill" id="themeIcon"></i> Toggle Theme
+        <!-- Theme Toggle -->
+        <div class="mode-toggle" onclick="toggleTheme()" style="cursor: pointer;">
+            <div class="d-flex align-items-center w-100 justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
+                    <span id="themeLabel">Dark Mode</span>
+                </div>
+                <!-- Circle indicator for cycling -->
+                <i class="bi bi-arrow-repeat opacity-50"></i>
+            </div>
         </div>
 
         <!-- User Info -->
@@ -511,23 +878,37 @@
 
     <!-- Main Content -->
     <div class="main-content">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ 'success' if category=='success' else 'warning' }} alert-dismissible fade show"
-            role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        <div class="flash-container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ 'success' if category=='success' else 'warning' }} alert-dismissible fade show"
+                role="alert">
+                <div class="d-flex align-items-center">
+                    <i
+                        class="bi {{ 'bi-check-circle-fill' if category=='success' else 'bi-exclamation-triangle-fill' }} me-2 fs-5"></i>
+                    <div>{{ message }}</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
         </div>
-        {% endfor %}
-        {% endif %}
-        {% endwith %}
 
         {% block filters %}{% endblock %}
         {% block content %}{% endblock %}
+
+        <!-- Floating Copyright Text (Aligned to Chatbot Head) -->
+        {% if request.path in ['/', '/home'] %}
+        <div style="position: fixed; bottom: 45px; right: 95px; opacity: 0.5; font-size: 0.72rem; z-index: 9997; pointer-events: none; white-space: nowrap;"
+            class="text-muted d-none d-md-block">
+            &copy; 2024 The Shoe Clinic. All rights reserved.
+        </div>
+        {% endif %}
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
         // Sidebar hover functionality
         const sidebar = document.querySelector('.sidebar');
@@ -548,10 +929,13 @@
         }
 
         document.addEventListener('mousemove', function (e) {
-            // Show sidebar when mouse is within 50px of left edge
-            if (e.clientX < 50) {
+            // Show sidebar when mouse is within 60px of left edge (increased trigger zone)
+            if (e.clientX < 60) {
                 showSidebar();
-            } else if (!sidebar.matches(':hover')) {
+            }
+            // Grace period: Only force hide if mouse is clearly away from the sidebar area (> 260px)
+            // This prevents the "jitter" where moving from x=50 to x=60 closes it before animation completes.
+            else if (e.clientX > 280 && !sidebar.matches(':hover')) {
                 hideSidebar();
             }
         });
@@ -566,42 +950,103 @@
 
         // Load theme from localStorage on page load
         document.addEventListener('DOMContentLoaded', function () {
-            const savedTheme = localStorage.getItem('theme');
+            const savedTheme = localStorage.getItem('theme') || 'light';
             if (savedTheme === 'dark') {
                 applyDarkTheme();
+            } else if (savedTheme === 'gray') {
+                applyGrayTheme();
+            } else {
+                applyLightTheme();
             }
+
+            // Auto-dismiss alerts after 2 seconds
+            const alerts = document.querySelectorAll('.alert-dismissible');
+            alerts.forEach(function (alert) {
+                setTimeout(function () {
+                    let bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }, 2000); // 2 seconds
+            });
         });
 
         function applyDarkTheme() {
+            // Remove others
+            document.body.classList.remove('bg-gray');
+            document.documentElement.classList.remove('bg-gray');
+
+            // Add Dark
             document.body.classList.add('bg-dark');
-            document.body.classList.add('text-light');
+            document.documentElement.classList.add('bg-dark');
             document.querySelector('.main-content').classList.add('bg-dark');
-            document.querySelector('.main-content').classList.add('text-light');
             document.querySelector('.sidebar').classList.add('bg-dark');
+
+            // Icon
             const icon = document.getElementById('themeIcon');
-            icon.classList.remove('bi-moon-stars-fill');
-            icon.classList.add('bi-brightness-high-fill');
+            if (icon) {
+                icon.className = 'bi bi-moon-stars-fill';
+            }
+
+            const label = document.getElementById('themeLabel');
+            if (label) label.textContent = "Dark Mode";
+
             localStorage.setItem('theme', 'dark');
         }
 
-        function applyLightTheme() {
+        function applyGrayTheme() {
+            // Remove others
             document.body.classList.remove('bg-dark');
-            document.body.classList.remove('text-light');
-            document.querySelector('.main-content').classList.remove('bg-dark');
-            document.querySelector('.main-content').classList.remove('text-light');
-            document.querySelector('.sidebar').classList.remove('bg-dark');
+            document.documentElement.classList.remove('bg-dark');
+
+            // Add Gray
+            document.body.classList.add('bg-gray');
+            document.documentElement.classList.add('bg-gray');
+            document.querySelector('.main-content').classList.add('bg-gray');
+            document.querySelector('.sidebar').classList.add('bg-gray');
+
+            // Icon - Palette/Circle
             const icon = document.getElementById('themeIcon');
-            icon.classList.add('bi-moon-stars-fill');
-            icon.classList.remove('bi-brightness-high-fill');
+            if (icon) {
+                icon.className = 'bi bi-palette-fill';
+            }
+
+            const label = document.getElementById('themeLabel');
+            if (label) label.textContent = "Gray Mode";
+
+            localStorage.setItem('theme', 'gray');
+        }
+
+        function applyLightTheme() {
+            // Remove others
+            document.body.classList.remove('bg-dark');
+            document.body.classList.remove('bg-gray');
+            document.documentElement.classList.remove('bg-dark');
+            document.documentElement.classList.remove('bg-gray');
+            document.querySelector('.main-content').classList.remove('bg-dark');
+            document.querySelector('.main-content').classList.remove('bg-gray');
+            document.querySelector('.sidebar').classList.remove('bg-dark');
+            document.querySelector('.sidebar').classList.remove('bg-gray');
+
+            // Icon
+            const icon = document.getElementById('themeIcon');
+            if (icon) {
+                icon.className = 'bi bi-sun-fill';
+            }
+
+            const label = document.getElementById('themeLabel');
+            if (label) label.textContent = "Light Mode";
+
             localStorage.setItem('theme', 'light');
         }
 
         function toggleTheme() {
-            const isDarkMode = document.body.classList.contains('bg-dark');
-            if (isDarkMode) {
-                applyLightTheme();
-            } else {
+            const currentTheme = localStorage.getItem('theme') || 'light';
+
+            if (currentTheme === 'light') {
                 applyDarkTheme();
+            } else if (currentTheme === 'dark') {
+                applyGrayTheme();
+            } else {
+                applyLightTheme();
             }
         }
     </script>
@@ -704,6 +1149,49 @@
     {% if request.path in ['/', '/home'] %}
     {% include 'tsc_assist.html' %}
     {% endif %}
+
+    <!-- Razorpay Checkout Script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <script>
+        function requestExport(reportName, format, details = '') {
+            // Using a simple confirm and then fetch for the request
+            if (!confirm(`Do you want to send a request to the Super Admin for the ${format} export of ${reportName}?`)) {
+                return;
+            }
+
+            fetch('/request_report_export', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    report_name: reportName,
+                    format: format,
+                    details: details
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Show a nice success toast or alert
+                        alert(data.message);
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch((error) => {
+                    console.error('Error:', error);
+                    alert('An error occurred while sending the request. Please try again later.');
+                });
+        }
+    </script>
+    <!-- jQuery and Bootstrap Bundle -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Extra scripts from child templates -->
+    {% block extra_js %}{% endblock %}
 </body>
 
 </html>

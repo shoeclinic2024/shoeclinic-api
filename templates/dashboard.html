@@ -5,6 +5,9 @@
   /* Table & Dashboard Styles */
   .table-container {
     overflow-x: auto;
+    width: 100%;
+    display: block;
+    margin-top: 15px;
   }
 
   .table th,
@@ -51,20 +54,21 @@
   }
 
   .dashboard-header {
-    margin: 8px 0 6px 0;
+    margin: 8px 0 12px 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;
+    width: 100%;
   }
 
   .compact-filters {
-    max-width: 100%;
-    margin: 10px 18px;
+    width: 100%;
+    margin: 10px 0;
     background: #fff;
     border-radius: 10px;
-    padding: 10px 14px;
+    padding: 12px 18px;
     box-shadow: 0 6px 18px rgba(17, 24, 39, 0.06);
     border: 1px solid rgba(0, 0, 0, 0.04);
   }
@@ -127,8 +131,8 @@
   }
 </style>
 
-<div class="d-flex flex-wrap justify-content-between align-items-start mb-2 px-1 dashboard-header">
-  <div class="d-flex flex-column align-items-start" style="margin-left: 18px;">
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-2 dashboard-header">
+  <div class="d-flex flex-column align-items-start">
     <!-- FIXED: Use 'home' instead of non-existing 'dashboard' -->
     <a href="{{ url_for('home') }}" class="btn btn-sm btn-outline-secondary mb-1">← Back to Main Page</a>
     <h5 class="text-primary fw-bold mb-0 d-flex align-items-center">
@@ -136,8 +140,7 @@
     </h5>
   </div>
 
-  <form method="GET" action="{{ url_for('tsc_dashboard') }}" class="d-flex align-items-center"
-    style="gap:8px; margin-right:18px;">
+  <form method="GET" action="{{ url_for('tsc_dashboard') }}" class="ms-auto d-flex align-items-center" style="gap:8px;">
     <input type="text" name="search" class="form-control compact-search" placeholder="Search name, job ID..."
       value="{{ request.args.get('search', '') }}">
     <button type="submit" class="btn btn-primary btn-compact">🔍</button>
@@ -157,11 +160,9 @@
         <option value="yts" {% if request.args.get('status_filter')=='yts' %}selected{% endif %}>yts</option>
         <option value="wip" {% if request.args.get('status_filter')=='wip' %}selected{% endif %}>wip</option>
         <option value="done" {% if request.args.get('status_filter')=='done' %}selected{% endif %}>done</option>
-        <option value="re wash" {% if request.args.get('status_filter')=='re wash' %}selected{% endif %}>re wash
-        </option>
-        <option value="pack" {% if request.args.get('status_filter')=='pack' %}selected{% endif %}>pack pend</option>
         <option value="ready to deliver" {% if request.args.get('status_filter')=='ready to deliver' %}selected{% endif
           %}>ready to deliver</option>
+        <option value="billed" {% if request.args.get('status_filter')=='billed' %}selected{% endif %}>billed</option>
       </select>
       <input type="number" class="form-control" name="discount_filter" placeholder="Discount"
         value="{{ request.args.get('discount_filter', '') }}" style="width:110px;">
@@ -181,255 +182,489 @@
 
       <button type="submit" class="btn btn-primary btn-compact">Apply</button>
       <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary btn-compact">Clear</a>
-      {% if current_user.role == 'super_admin' %}
-      <a href="{{ url_for('export_dashboard_excel', **request.args) }}" class="btn btn-success btn-compact">
-        <i class="bi bi-file-earmark-excel me-1"></i> Excel
-      </a>
-      <a href="{{ url_for('export_dashboard_pdf', **request.args) }}" class="btn btn-danger btn-compact">
-        <i class="bi bi-file-earmark-pdf me-1"></i> PDF
-      </a>
-      {% else %}
-      <button class="btn btn-success btn-compact disabled" title="Restricted to Super Admin"
-        style="opacity: 0.6; cursor: not-allowed;">
-        <i class="bi bi-file-earmark-excel me-1"></i> Excel <i class="bi bi-lock-fill ms-1"></i>
-      </button>
-      <button class="btn btn-danger btn-compact disabled" title="Restricted to Super Admin"
-        style="opacity: 0.6; cursor: not-allowed;">
-        <i class="bi bi-file-earmark-pdf me-1"></i> PDF <i class="bi bi-lock-fill ms-1"></i>
-      </button>
-      {% endif %}
+      <div class="ms-auto d-flex gap-2 align-items-center">
+        {% if current_user.role == 'super_admin' %}
+        <button type="submit" formaction="{{ url_for('export_dashboard_excel') }}" class="btn btn-success btn-compact">
+          <i class="bi bi-file-earmark-excel me-1"></i> Excel
+        </button>
+        <button type="submit" formaction="{{ url_for('export_dashboard_pdf') }}" class="btn btn-danger btn-compact">
+          <i class="bi bi-file-earmark-pdf me-1"></i> PDF
+        </button>
+        <button type="button" id="bulkDeleteBtn" class="btn btn-outline-danger btn-compact d-none"
+          onclick="confirmBulkDelete()">
+          <i class="bi bi-trash3-fill me-1"></i> Delete Selected
+        </button>
+        {% else %}
+        <button type="button" class="btn btn-success btn-compact disabled" title="Restricted to Super Admin"
+          style="opacity: 0.6; cursor: not-allowed;">
+          <i class="bi bi-file-earmark-excel me-1"></i> Excel <i class="bi bi-lock-fill ms-1"></i>
+        </button>
+        <button type="button" class="btn btn-danger btn-compact disabled" title="Restricted to Super Admin"
+          style="opacity: 0.6; cursor: not-allowed;">
+          <i class="bi bi-file-earmark-pdf me-1"></i> PDF <i class="bi bi-lock-fill ms-1"></i>
+        </button>
+        {% endif %}
+      </div>
     </div>
   </form>
 </div>
 
 <!-- Orders Table -->
-<div class="table-container">
-  <table class="table table-bordered table-hover table-striped text-center">
-    <thead class="table-dark">
-      <tr>
-        <th></th>
-        <th>Sl. No</th>
-        <th>Technician</th>
-        <th>Job ID</th>
-        <th>Name</th>
-        <th>Pickup Date</th>
-        <th>Service Date</th>
-        <th>Drop Date</th>
-        <th>Place</th>
-        <th>Service Note</th>
-        <th>Status</th>
-        <th>Mobile</th>
-        <th>Product</th>
-        <th>Token</th>
-        <th>Price</th>
-        <th>Payment Mode</th>
-        <th>Payment Status</th>
-        <th>Discount</th>
-        <th>Outsource</th>
-        <th>Count</th>
-        <th>Dispatch</th>
-        <th>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for order in orders %}
-      <tr class="parent-row" data-order-id="{{ order.id }}">
-        <td><i class="bi bi-chevron-right expand-button" onclick="toggleChildRow(this, '{{ order.id }}')"></i></td>
-        <td>{{ loop.index }}</td>
-        <td>
+<form id="bulkDeleteForm" method="POST" action="{{ url_for('bulk_delete_orders') }}">
+  <div class="table-container">
+    <table class="table table-bordered table-hover table-striped text-center">
+      <thead class="table-dark">
+        <tr>
+          <th><i class="bi bi-list-ul"></i></th>
+          {% if current_user.role == 'super_admin' %}
+          <th><input type="checkbox" id="selectAll" onclick="toggleAllCheckboxes(this)"></th>
+          {% endif %}
+          <th><i class="bi bi-hash me-1"></i>Sl. No</th>
+          <th><i class="bi bi-tag me-1"></i>Job ID</th>
+          <th><i class="bi bi-ticket-perforated me-1"></i>Token</th>
+          <th><i class="bi bi-person me-1"></i>Name</th>
+          <th><i class="bi bi-calendar-check me-1"></i>Pickup</th>
+          <th><i class="bi bi-tools me-1"></i>Service</th>
+          <th><i class="bi bi-calendar-plus me-1"></i>Service Date</th>
+          <th><i class="bi bi-calendar-x me-1"></i>Drop</th>
+          <th><i class="bi bi-geo-alt me-1"></i>Place</th>
+          <th><i class="bi bi-activity me-1"></i>Status</th>
+          <th><i class="bi bi-phone me-1"></i>Mobile</th>
+          <th><i class="bi bi-box me-1"></i>Product</th>
+          <th><i class="bi bi-currency-rupee me-1"></i>Price</th>
+          <th><i class="bi bi-credit-card me-1"></i>Payment</th>
+          <th><i class="bi bi-credit-card-2-front me-1"></i>Payment Status</th>
+          <th><i class="bi bi-percent me-1"></i>Discount</th>
+          <th><i class="bi bi-truck me-1"></i>Outsource</th>
+          <th><i class="bi bi-123 me-1"></i>Count</th>
+          {% if current_user.role in ['admin', 'super_admin'] %}
+          <th><i class="bi bi-gear me-1"></i>Actions</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for order in orders %}
+        <tr class="parent-row" data-order-id="{{ order.id }}">
+          <td><i class="bi bi-chevron-right expand-button" onclick="toggleChildRow(this, '{{ order.id }}')"></i></td>
+          {% if current_user.role == 'super_admin' %}
+          <td><input type="checkbox" name="order_ids" value="{{ order.id }}" onclick="updateBulkDeleteButton()"></td>
+          {% endif %}
+          <td>{{ loop.index }}</td>
+          {% set tech_names = [] %}
+
+          {# Check order-level technician #}
           {% if order.technician %}
-          <span class="fw-bold text-dark">{{ order.technician }}</span>
-          {% else %}
-          {% set tech_list = [] %}
+          {% set _ = tech_names.append(order.technician) %}
+          {% endif %}
+
+          {# Check item-level technicians and service assignments #}
           {% for itm in order.items %}
-          {% if itm.technician and itm.technician not in tech_list %}
-          {% set _ = tech_list.append(itm.technician) %}
+          {% if itm.technician and itm.technician not in tech_names %}
+          {% set _ = tech_names.append(itm.technician) %}
+          {% endif %}
+
+          {# Check service_assignments JSON #}
+          {% if itm.service_assignments %}
+          {% set assignments = itm.service_assignments|from_json %}
+          {% for service, tech in assignments.items() %}
+          {% if tech and tech not in tech_names %}
+          {% set _ = tech_names.append(tech) %}
+          {% endif %}
+          {% endfor %}
           {% endif %}
           {% endfor %}
 
-          {% if tech_list %}
-          <span class="fw-bold text-dark">{{ tech_list|join(', ') }}</span>
-          {% else %}
-          <span class="text-muted small">-</span>
-          {% endif %}
-          {% endif %}
-        </td>
-        <td>{{ order.job_id }}</td>
-        <td>{{ order.customer_name }}</td>
-        <td>{{ order.pickup_date | format_date }}</td>
-        <td>{{ order.service_date | format_date }}</td>
-        <td>{{ order.drop_date | format_date }}</td>
-        <td>{{ order.place }}</td>
-        <td>
-          {% set services = [] %}
-          {% for item in order.items %}
-          {% if item.services %}
-          {% for s in item.services.split(',') %}
-          {% set svc = s|trim %}
-          {% if svc and svc not in services %}
-          {% set _ = services.append(svc) %}
-          {% endif %}
-          {% endfor %}
-          {% endif %}
-          {% endfor %}
-          {{ services|join(', ') }}
-          {% if order.service_note %}<br><small class="text-muted">{{ order.service_note }}</small>{% endif %}
-        </td>
-        <td><span class="badge bg-{{ order.status | status_color }}">{{ order.status }}</span></td>
-        <td>{{ order.mobile }}</td>
-        <td>{{ order.product_name }}</td>
-        <td>{{ order.token }}</td>
-        <td>{{ order.price }}</td>
-        <td>{{ order.payment_mode or '' }}</td>
-        <td>{{ order.payment_status or '' }}</td>
-        <td>{{ order.discount }}</td>
-        <td>{{ order.outsource }}</td>
-        <td>{{ order.item_count }}</td>
-        <td>{{ order.dispatch or '' }}</td>
-        <td>
-          <a href="{{ url_for('edit_order', order_id=order.id) }}" class="btn btn-sm btn-warning">✏️</a>
-          <form action="{{ url_for('delete_order', order_id=order.id) }}" method="POST" style="display:inline;">
-            <button type="submit" class="btn btn-sm btn-danger"
-              onclick="return confirm('Delete this order?')">🗑️</button>
-          </form>
-        </td>
-      </tr>
-
-      <!-- Child row -->
-      <tr class="child-row" id="child-{{ order.id }}">
-        <td colspan="26">
-          <div class="child-content">
-            {% if order.items %}
-            <h6 class="mb-3">📦 Order Items Breakdown</h6>
-            <div class="table-responsive">
-              <table class="table table-sm table-bordered mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>#</th>
-                    <th>Product Name</th>
-                    <th>Services</th>
-                    <th>Service Status</th>
-                    <th>Price</th>
-                    <th>Discount</th>
-                    <th>Subtotal</th>
-                    <th>Item Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for item in order.items %}
-                  <tr>
-                    <td class="text-center fw-bold">{{ loop.index }}</td>
-                    <td>
-                      <strong>{{ item.product_name or 'Item' }}</strong>
-                      {% if item.defects %}
-                      <br><small class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> DETECTED:
-                        {{ item.defects }}</small>
-                      {% endif %}
-                      {% if item.technician %}<br><small class="text-muted">👤 {{ item.technician }}</small>{% endif %}
-                    </td>
-                    <td>
-                      {% if item.services %}
-                      {% set service_list = item.services.split(',') %}
-                      {% set assignments = item.service_assignments|from_json %}
-                      <div class="d-flex flex-wrap gap-2">
-                        {% for svc in service_list %}
-                        {% set s_name = svc|trim %}
-                        <div class="d-inline-flex align-items-center">
-                          <span class="badge bg-primary rounded-end-0">{{ s_name }}</span>
-                          <span
-                            class="badge bg-light text-dark border-top border-bottom border-start-0 border-end-0 rounded-0 fw-normal">
-                            <i class="bi bi-person-fill small me-1"></i>{{ assignments.get(s_name) or '-' }}
-                          </span>
-                          {% set statuses = item.service_statuses|from_json %}
-                          {% set s_status = statuses.get(s_name)|default('yts') %}
-                          <span
-                            class="badge bg-{{ s_status|status_color }} rounded-start-0 border border-start-0 fw-normal"
-                            style="font-size: 0.65rem;">
-                            {{ s_status|upper }}
-                          </span>
-                        </div>
-                        {% endfor %}
-                      </div>
-                      {% else %}
-                      <span class="text-muted">-</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      {% if item.status %}
-                      {% if item.status|lower == 'done' or item.status|lower == 'completed' %}
-                      <span class="badge bg-success">✓ {{ item.status }}</span>
-                      {% elif item.status|lower in ['wip', 'in progress', 'started'] %}
-                      <span class="badge bg-warning">⏳ {{ item.status }}</span>
-                      {% elif item.status|lower in ['pending', 'yts'] %}
-                      <span class="badge bg-secondary">⏸ {{ item.status }}</span>
-                      {% elif item.status|lower in ['cancelled', 'rejected'] %}
-                      <span class="badge bg-danger">✗ {{ item.status }}</span>
-                      {% else %}
-                      <span class="badge bg-info">{{ item.status }}</span>
-                      {% endif %}
-                      {% else %}
-                      <span class="text-muted">-</span>
-                      {% endif %}
-                    </td>
-                    <td class="text-end">₹{{ "%.2f" | format(item.price or 0) }}</td>
-                    <td class="text-end text-danger">-₹{{ "%.2f" | format(item.discount or 0) }}</td>
-                    <td class="text-end fw-bold">₹{{ "%.2f" | format((item.price or 0) - (item.discount or 0)) }}</td>
-                    <td>
-                      {% if item.status %}
-                      {% if item.status|lower == 'done' or item.status|lower == 'completed' %}
-                      <span class="badge bg-success">DONE</span>
-                      {% elif item.status|lower in ['wip', 'in progress', 'started'] %}
-                      <span class="badge bg-warning text-dark">IN PROGRESS</span>
-                      {% elif item.status|lower in ['pending', 'yts'] %}
-                      <span class="badge bg-secondary">PENDING</span>
-                      {% elif item.status|lower in ['cancelled', 'rejected'] %}
-                      <span class="badge bg-danger">CANCELLED</span>
-                      {% else %}
-                      <span class="badge bg-info">{{ item.status }}</span>
-                      {% endif %}
-                      {% else %}
-                      <span class="badge bg-light text-dark">UNASSIGNED</span>
-                      {% endif %}
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+          <td>{{ order.job_id }}</td>
+          <td>{{ order.token }}</td>
+          <td class="{{ 'text-danger fw-bold' if tech_names else '' }}">
+            {{ order.customer_name }}
+            {% if tech_names %}
+            <div class="fw-bold mt-1" style="font-size: 0.75rem; color: #ff4d4d; letter-spacing: 0.3px;">
+              TECH: {{ tech_names|join(', ')|upper }}
+            </div>
+            {% endif %}
+          </td>
+          <td>{{ order.pickup_date | format_date }}</td>
+          <td class="text-start">
+            {% set services = [] %}
+            {% for item in order.items %}
+            {% if item.services %}
+            {% for s in item.services.split(',') %}
+            {% set svc = s|trim %}
+            {% if svc and svc not in services %}
+            {% set _ = services.append(svc) %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% endfor %}
+            <span class="small">{{ services|join(', ') }}</span>
+          </td>
+          <td>
+            {% if order.service_date %}
+            <div class="d-flex align-items-center gap-1">
+              <span
+                class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 rounded-pill small">
+                {{ order.service_date | format_date }}
+              </span>
+              {% if order.work_finish_date %}
+              <i class="bi bi-arrow-right text-muted" style="font-size: 0.7rem;"></i>
+              <span
+                class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill small">
+                {{ order.work_finish_date | format_date }}
+              </span>
+              {% endif %}
             </div>
             {% else %}
-            <p class="text-muted">No items added to this order</p>
+            <span class="text-muted">-</span>
             {% endif %}
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+          </td>
+          <td>{{ order.drop_date | format_date }}</td>
+          <td>{{ order.place }}</td>
+          <td><span class="badge bg-{{ order.status | status_color }}">{{ order.status }}</span></td>
+          <td>{{ order.mobile }}</td>
+          <td>{{ order.product_name }}</td>
+          <td>{{ order.price }}</td>
+          <td>{{ order.payment_mode or '' }}</td>
+          <td>{{ order.payment_status or '' }}</td>
+          <td>{{ order.discount }}</td>
+          <td>{{ order.outsource }}</td>
+          <td>{{ order.item_count }}</td>
+          {% if current_user.role in ['admin', 'super_admin'] %}
+          <td>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                aria-expanded="false">
+                Actions
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow">
+                <li>
+                  <a class="dropdown-item" href="{{ url_for('edit_order', order_id=order.id) }}">
+                    <i class="bi bi-pencil-square me-2 text-warning"></i> Edit Order
+                  </a>
+                </li>
+                {% if order.payment_status|lower != 'paid' and order.price and order.price > 0 %}
+                <li>
+                  <a class="dropdown-item" href="javascript:void(0)"
+                    onclick="handleRazorpay('{{ order.id }}', '{{ order.price }}')">
+                    <i class="bi bi-credit-card me-2 text-success"></i> Pay and Mark Paid
+                  </a>
+                </li>
+                {% endif %}
+                {% if current_user.role == 'super_admin' %}
+                <li>
+                  <hr class="dropdown-divider">
+                </li>
+                <li>
+                  <form action="{{ url_for('delete_order', order_id=order.id) }}" method="POST" class="d-inline">
+                    <button type="submit" class="dropdown-item text-danger"
+                      onclick="return confirm('⚠️ WARNING: Are you sure you want to DELETE this order PERMANENTLY?\n\nThis action cannot be undone and all associated records will be lost forever.')">
+                      <i class="bi bi-trash3-fill me-2"></i> Delete Permanently
+                    </button>
+                  </form>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+
+        <!-- Child row -->
+        <tr class="child-row" id="child-{{ order.id }}">
+          <td colspan="{{ '27' if current_user.role == 'super_admin' else '26' }}">
+            <div class="child-content">
+              {% if order.items %}
+              <h6 class="mb-3">📦 Order Items Breakdown</h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>#</th>
+                      <th>Product Name</th>
+                      <th>Services</th>
+                      <th>Service Status</th>
+                      <th>Price</th>
+                      <th>Discount</th>
+                      <th>Subtotal</th>
+                      <th>Item Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for item in order.items %}
+                    <tr>
+                      <td class="text-center fw-bold">{{ loop.index }}</td>
+                      <td>
+                        <strong>{{ item.product_name or 'Item' }}</strong>
+                        {% if item.defects %}
+                        <br><small class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> DETECTED:
+                          {{ item.defects }}</small>
+                        {% endif %}
+                        {% if item.technician %}<br><small class="text-muted">👤 {{ item.technician }}</small>{% endif
+                        %}
+                      </td>
+                      <td>
+                        {% if item.services %}
+                        {% set service_list = item.services.split(',') %}
+                        {% set assignments = item.service_assignments|from_json %}
+                        <div class="d-flex flex-wrap gap-2">
+                          {% for svc in service_list %}
+                          {% set s_name = svc|trim %}
+                          <div class="d-inline-flex align-items-center">
+                            <span class="badge bg-dark rounded-end-0" style="opacity: 0.8;">{{ s_name }}</span>
+                            <span
+                              class="badge bg-light text-dark border-top border-bottom border-start-0 border-end-0 rounded-start-0 fw-normal">
+                              <i class="bi bi-person-fill small me-1"></i>{{ assignments.get(s_name) or 'Unassigned' }}
+                            </span>
+                          </div>
+                          {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {% if item.services %}
+                        {% set service_list = item.services.split(',') %}
+                        {% set statuses = item.service_statuses|from_json %}
+                        <div class="d-flex flex-wrap gap-2">
+                          {% for svc in service_list %}
+                          {% set s_name = svc|trim %}
+                          {% set s_status = statuses.get(s_name) or item.status or 'yts' %}
+                          <div class="d-inline-flex align-items-center">
+                            <span class="badge bg-light text-dark border rounded-end-0 x-small">{{ s_name }}</span>
+                            <span class="badge bg-{{ s_status|status_color }} rounded-start-0 fw-normal"
+                              style="font-size: 0.7rem;">
+                              {{ (s_status|upper) if s_status != 'ready to deliver' else 'READY' }}
+                            </span>
+                          </div>
+                          {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">-</span>
+                        {% endif %}
+                      </td>
+                      <td class="text-end">₹{{ "%.2f" | format(item.price or 0) }}</td>
+                      <td class="text-end text-danger">-₹{{ "%.2f" | format(item.discount or 0) }}</td>
+                      <td class="text-end fw-bold">₹{{ "%.2f" | format((item.price or 0) - (item.discount or 0)) }}</td>
+                      <td>
+                        {% if item.status %}
+                        {% if item.status|lower == 'done' or item.status|lower == 'completed' %}
+                        <span class="badge bg-success">DONE</span>
+                        {% elif item.status|lower in ['wip', 'in progress', 'started'] %}
+                        <span class="badge bg-warning text-dark">IN PROGRESS</span>
+                        {% elif item.status|lower in ['pending', 'yts'] %}
+                        <span class="badge bg-secondary">PENDING</span>
+                        {% elif item.status|lower in ['cancelled', 'rejected'] %}
+                        <span class="badge bg-danger">CANCELLED</span>
+                        {% else %}
+                        <span class="badge bg-info">{{ item.status }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="badge bg-light text-dark">UNASSIGNED</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% else %}
+              <p class="text-muted">No items added to this order</p>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<style>
+  /* Ensure the table is scrollable while keeping icons neat */
+  .table-container {
+    overflow-x: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: #495057 transparent;
+  }
+
+  .table-container::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .table-container::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .table-container::-webkit-scrollbar-thumb {
+    background: #495057;
+    border-radius: 10px;
+  }
+
+  .table-container::-webkit-scrollbar-thumb:hover {
+    background: #6c757d;
+  }
+
+  .expand-button {
+    cursor: pointer;
+    padding: 5px;
+    display: inline-block;
+  }
+
+  /* Bulk Delete styles */
+  .btn-outline-danger.btn-compact {
+    border-width: 2px;
+    font-weight: 600;
+  }
+</style>
 
 <script>
   function toggleChildRow(button, orderId) {
     const childRow = document.getElementById(`child-${orderId}`);
     button.classList.toggle('expanded');
     childRow.classList.toggle('show');
+
+    // Toggle icon
+    if (button.classList.contains('bi-chevron-right')) {
+      button.classList.remove('bi-chevron-right');
+      button.classList.add('bi-chevron-down');
+    } else {
+      button.classList.remove('bi-chevron-down');
+      button.classList.add('bi-chevron-right');
+    }
   }
 
   // Live table refresh every 30s
   function fetchOrders() {
+    console.log("Refreshing dashboard data...");
     $.ajax({
       url: window.location.pathname + window.location.search,
       type: 'GET',
       dataType: 'html',
       success: function (data) {
         var newTable = $(data).find('.table-container').html();
-        if (newTable) $('.table-container').html(newTable);
+        if (newTable) {
+          $('.table-container').html(newTable);
+
+          // Re-initialize Bootstrap Dropdowns for newly added elements
+          var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'))
+          dropdownElementList.map(function (dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl)
+          });
+        }
+      },
+      error: function (xhr, status, error) {
+        console.error("Dashboard refresh failed:", error);
       }
     });
   }
-  setInterval(fetchOrders, 30000);
-</script>
 
+  // Initialize on load just in case
+  document.addEventListener('DOMContentLoaded', function () {
+    var dropdownElementList = [].slice.call(document.querySelectorAll('[data-bs-toggle="dropdown"]'))
+    dropdownElementList.map(function (dropdownToggleEl) {
+      return new bootstrap.Dropdown(dropdownToggleEl)
+    });
+  });
+
+  setInterval(fetchOrders, 30000);
+
+  function toggleAllCheckboxes(source) {
+    const checkboxes = document.getElementsByName('order_ids');
+    for (let i = 0; i < checkboxes.length; i++) {
+      checkboxes[i].checked = source.checked;
+    }
+    updateBulkDeleteButton();
+  }
+
+  function handleRazorpay(orderId, amount) {
+    // Show a small "Creating Order" alert or loader
+    fetch(`/create_payment/${orderId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          const options = {
+            "key": data.razorpay_key_id,
+            "amount": data.amount,
+            "currency": data.currency,
+            "name": data.order_name,
+            "description": data.order_description,
+            "order_id": data.razorpay_order_id,
+            "prefill": {
+              "name": data.prefill_name,
+              "contact": data.prefill_contact
+            },
+            "handler": function (response) {
+              // Verify payment
+              fetch('/verify_payment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature
+                })
+              })
+                .then(res => res.json())
+                .then(verifyData => {
+                  if (verifyData.status === 'success') {
+                    alert('Payment captured successfully!');
+                    location.reload();
+                  } else {
+                    alert('Verification failed: ' + verifyData.message);
+                  }
+                });
+            },
+            "theme": { "color": "#111827" }
+          };
+          const rzp1 = new Razorpay(options);
+          rzp1.on('payment.failed', function (response) {
+            alert("Payment failed: " + response.error.description);
+          });
+          rzp1.open();
+        } else {
+          alert("Error creating payment: " + data.message);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+      });
+  }
+
+  function updateBulkDeleteButton() {
+    const checkboxes = document.getElementsByName('order_ids');
+    const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+    let anyChecked = false;
+    for (let checkbox of checkboxes) {
+      if (checkbox.checked) {
+        anyChecked = true;
+        break;
+      }
+    }
+
+    if (anyChecked) {
+      bulkDeleteBtn.classList.remove('d-none');
+    } else {
+      bulkDeleteBtn.classList.add('d-none');
+    }
+  }
+
+  function confirmBulkDelete() {
+    const checkboxes = document.getElementsByName('order_ids');
+    let count = 0;
+    for (let checkbox of checkboxes) {
+      if (checkbox.checked) count++;
+    }
+
+    if (confirm(`⚠️ WARNING: Are you sure you want to DELETE ${count} selected orders PERMANENTLY?\n\nThis action cannot be undone.`)) {
+      document.getElementById('bulkDeleteForm').submit();
+    }
+  }
+</script>
 {% endblock %}

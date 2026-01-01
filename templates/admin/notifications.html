@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    /* Fix for dropdowns being clipped by table-responsive or card overflow */
+    .overflow-hidden {
+        overflow: visible !important;
+    }
+
+    .card-body.p-0 {
+        overflow: visible !important;
+    }
+
+    .list-group {
+        overflow: visible !important;
+    }
+
+    .list-group-item {
+        overflow: visible !important;
+    }
+</style>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-primary"><i class="bi bi-bell-fill me-2"></i> Notifications</h2>
+        {% if notifications %}
+        <a href="{{ url_for('admin.clear_all_notifications') }}" class="btn btn-outline-secondary btn-sm rounded-pill">
+            <i class="bi bi-check-all me-1"></i> Mark all as read
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Pending Users -->
+    {% if pending_users %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-info">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-info"><i class="bi bi-person-plus-fill me-2"></i>Action Required: New
+                Registrations</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for user in pending_users %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ user.username }}</h5>
+                            <span class="badge bg-secondary">{{ user.role }}</span>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('admin.approve_user', user_id=user.id) }}"
+                                class="btn btn-success rounded-pill px-4 shadow-sm">Approve</a>
+                            <a href="{{ url_for('admin.reject_user', user_id=user.id) }}"
+                                class="btn btn-outline-danger rounded-pill px-4"
+                                onclick="return confirm('Reject user?')">Reject</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Pending Expenses -->
+    {% if pending_expenses %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-primary">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-cash-stack me-2"></i>Action Required: Verify Expenses
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for expense in pending_expenses %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ expense.title }}</h5>
+                            <p class="mb-0 text-muted">Amount: <strong>₹{{ expense.amount }}</strong> | Date: {{
+                                expense.expense_date.strftime('%d %b') }}</p>
+                            <small class="text-muted">By: {{ expense.added_by_user.username if expense.added_by_user
+                                else 'Unknown' }}</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('admin.approve_expense', expense_id=expense.id) }}"
+                                class="btn btn-primary rounded-pill px-4 shadow-sm">Approve</a>
+                            <a href="{{ url_for('admin.reject_expense', expense_id=expense.id) }}"
+                                class="btn btn-outline-danger rounded-pill px-4"
+                                onclick="return confirm('Reject expense?')">Reject</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Access Requests -->
+    {% if access_requests %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-purple"
+        style="border-color: #6f42c1 !important;">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold" style="color: #6f42c1;"><i class="bi bi-database-lock me-2"></i>Action Required:
+                Database Access</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for req in access_requests %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ req.username }}</h5>
+                            <p class="mb-0 text-muted">Requesting access to Customer Database</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-purple dropdown-toggle text-white rounded-pill px-4 shadow-sm"
+                                    type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                    style="background-color: #6f42c1;">
+                                    <i class="bi bi-shield-lock-fill me-1"></i> Authorize Access
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2"
+                                    style="min-width: 250px; z-index: 1050;">
+                                    <li>
+                                        <h6 class="dropdown-header fw-bold text-primary"><i
+                                                class="bi bi-eye me-2"></i>VIEW ONLY (NO EXPORT)</h6>
+                                    </li>
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=1) }}">
+                                            <i class="bi bi-clock me-2"></i>1 Hour Access</a></li>
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false', duration=4) }}">
+                                            <i class="bi bi-clock-history me-2"></i>4 Hours Access</a></li>
+                                    <li><a class="dropdown-item rounded-2 py-2 fw-bold"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='false') }}">
+                                            <i class="bi bi-infinity me-2"></i>Permanent View Only</a></li>
+
+                                    <li>
+                                        <hr class="dropdown-divider my-2">
+                                    </li>
+
+                                    <li>
+                                        <h6 class="dropdown-header fw-bold text-danger"><i
+                                                class="bi bi-download me-2"></i>FULL ACCESS (WITH EXPORT)</h6>
+                                    </li>
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=1) }}">
+                                            <i class="bi bi-clock me-2 text-danger"></i>1 Hour Full</a></li>
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true', duration=4) }}">
+                                            <i class="bi bi-clock-history me-2 text-danger"></i>4 Hours Full</a>
+                                    </li>
+                                    <li><a class="dropdown-item rounded-2 py-2 fw-bold text-danger"
+                                            href="{{ url_for('admin.approve_customer_access', user_id=req.id, export='true') }}">
+                                            <i class="bi bi-infinity me-2"></i>Permanent Full Access</a></li>
+                                </ul>
+                            </div>
+                            <a href="{{ url_for('admin.reject_customer_access', user_id=req.id) }}"
+                                class="btn btn-outline-secondary rounded-pill px-4"
+                                onclick="return confirm('Reject this access request?')">Deny</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Performance Monitor Access Requests -->
+    {% if performance_requests %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-info">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-info"><i class="bi bi-speedometer2 me-2"></i>Action Required: Performance
+                Monitor Access</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for req in performance_requests %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ req.username }}</h5>
+                            <p class="mb-0 text-muted">Requesting access to Performance Monitor</p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <div class="dropdown d-inline-block">
+                                <button class="btn btn-info dropdown-toggle text-white rounded-pill px-4 shadow-sm"
+                                    type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="bi bi-shield-check me-1"></i> Authorize Access
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 p-2"
+                                    style="min-width: 250px; z-index: 1050;">
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_performance_access', user_id=req.id, duration=1) }}">
+                                            <i class="bi bi-clock me-2"></i>1 Hour Access</a></li>
+                                    <li><a class="dropdown-item rounded-2 py-2"
+                                            href="{{ url_for('admin.approve_performance_access', user_id=req.id, duration=4) }}">
+                                            <i class="bi bi-clock-history me-2"></i>4 Hours Access</a></li>
+                                    <li><a class="dropdown-item rounded-2 py-2 fw-bold"
+                                            href="{{ url_for('admin.approve_performance_access', user_id=req.id) }}">
+                                            <i class="bi bi-infinity me-2"></i>Permanent Access</a></li>
+                                </ul>
+                            </div>
+                            <a href="{{ url_for('admin.reject_performance_access', user_id=req.id) }}"
+                                class="btn btn-outline-secondary rounded-pill px-4"
+                                onclick="return confirm('Reject this access request?')">Deny</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Active Database Access (Revocable) -->
+    {% if active_access_users %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-success">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-success"><i class="bi bi-database-check me-2"></i>Active Database Access</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for user in active_access_users %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ user.username }}</h5>
+                            <p class="mb-0 text-muted small">
+                                <i class="bi bi-clock-history"></i> Expires:
+                                {% if user.customer_access_expiry %}
+                                {{ (user.customer_access_expiry|ist).strftime('%d-%b %I:%M %p') }}
+                                {% else %}
+                                Indefinite
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('admin.toggle_customer_view', user_id=user.id) }}"
+                                class="btn btn-outline-danger rounded-pill px-4"
+                                onclick="return confirm('Revoke access for {{ user.username }}?');">
+                                <i class="bi bi-x-circle me-1"></i> Revoke
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Active Performance Access -->
+    {% if active_performance_users %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-info">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-info"><i class="bi bi-speedometer2 me-2"></i>Active Performance Access</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for user in active_performance_users %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ user.username }}</h5>
+                            <p class="mb-0 text-muted small">
+                                <i class="bi bi-clock-history"></i> Expires:
+                                {% if user.performance_access_expiry %}
+                                {{ (user.performance_access_expiry|ist).strftime('%d-%b %I:%M %p') }}
+                                {% else %}
+                                Indefinite
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('admin.reject_performance_access', user_id=user.id) }}"
+                                class="btn btn-outline-danger rounded-pill px-4"
+                                onclick="return confirm('Revoke Performance access for {{ user.username }}?');">
+                                <i class="bi bi-x-circle me-1"></i> Revoke
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Expense Modification Requests -->
+    {% if expense_requests %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-danger">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Action Required:
+                Modification Requests</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for req in expense_requests %}
+                <div class="list-group-item p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold text-danger">Request to {{ req.request_type|upper }} Expense</h5>
+                            <p class="mb-0 fw-bold">{{ req.title }} (₹{{ "{:,.2f}".format(req.amount) }})</p>
+
+                            {% if req.request_type == 'edit' %}
+                            {% set data = req.get_request_data() %}
+                            {% if data %}
+                            <div class="proposed-changes my-2 p-2 bg-light rounded-3 small border">
+                                <div class="fw-bold mb-1 text-primary"><i class="bi bi-pencil-square me-1"></i>Proposed
+                                    Changes:</div>
+                                {% if data.title != req.title %}
+                                <div class="text-dark"><strong>Title:</strong> {{ data.title }}</div>
+                                {% endif %}
+                                {% if data.amount|float != req.amount|float %}
+                                <div class="text-dark"><strong>Amount:</strong> ₹{{ "{:,.2f}".format(data.amount|float)
+                                    }}</div>
+                                {% endif %}
+                                {% if data.expense_date != req.expense_date.strftime('%Y-%m-%d') %}
+                                <div class="text-dark"><strong>Date:</strong> {{ data.expense_date }}</div>
+                                {% endif %}
+                                {% if data.category != req.category %}
+                                <div class="text-dark"><strong>Category:</strong> {{ data.category }}</div>
+                                {% endif %}
+                                {% if data.description != req.description %}
+                                <div class="text-dark"><strong>Desc:</strong> {{ data.description }}</div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                            {% else %}
+                            <div class="text-danger small fw-bold mb-2 mt-1"><i class="bi bi-trash me-1"></i>PERMANENT
+                                DELETION REQUESTED</div>
+                            {% endif %}
+
+                            <small class="text-muted">Reason: "{{ req.request_reason }}"</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('admin.process_expense_request', expense_id=req.id, action='approve') }}"
+                                class="btn btn-danger rounded-pill px-4 shadow-sm">Approve</a>
+                            <a href="{{ url_for('admin.process_expense_request', expense_id=req.id, action='reject') }}"
+                                class="btn btn-outline-secondary rounded-pill px-4">Dismiss</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% if pending_leaves %}
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 border-start border-4 border-warning">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold text-warning"><i class="bi bi-calendar-minus-fill me-2"></i>Action Required: Pending
+                Leaves</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="list-group list-group-flush">
+                {% for leave in pending_leaves %}
+                <div class="list-group-item p-4">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1 fw-bold">{{ leave.user.username }}</h5>
+                            <p class="mb-1 text-muted">Requested leave for <strong>{{ leave.date.strftime('%d %b, %Y')
+                                    }}</strong></p>
+                            <small class="text-muted fst-italic">"{{ leave.note or 'No reason provided' }}"</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <form action="{{ url_for('attendance_manage') }}" method="POST">
+                                <input type="hidden" name="attendance_id" value="{{ leave.id }}">
+                                <input type="hidden" name="action" value="approve_leave">
+                                <button type="submit"
+                                    class="btn btn-success rounded-pill px-4 shadow-sm">Approve</button>
+                            </form>
+                            <form action="{{ url_for('attendance_manage') }}" method="POST">
+                                <input type="hidden" name="attendance_id" value="{{ leave.id }}">
+                                <input type="hidden" name="action" value="reject_leave">
+                                <button type="submit" class="btn btn-outline-danger rounded-pill px-4"
+                                    onclick="return confirm('Reject request?')">Reject</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+        <div class="card-body p-0">
+            {% if notifications %}
+            <div class="list-group list-group-flush">
+                {% for n in notifications %}
+                <div
+                    class="list-group-item list-group-item-action p-4 {% if not n.is_read %}border-start border-4 border-warning bg-light-subtle{% endif %}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center mb-1">
+                                <h5 class="mb-0 fw-bold {% if not n.is_read %}text-dark{% else %}text-muted{% endif %}">
+                                    {{ n.title }}
+                                </h5>
+                                {% if not n.is_read %}
+                                <span class="badge bg-warning text-dark ms-2 small">New</span>
+                                {% endif %}
+                            </div>
+                            <p class="mb-2 {% if not n.is_read %}text-dark{% else %}text-muted{% endif %}">
+                                {{ n.message }}
+                            </p>
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="text-muted small"><i class="bi bi-clock me-1"></i> {{
+                                    n.created_at.strftime('%d %b %Y, %I:%M %p') }}</span>
+                                {% if n.link %}
+                                <a href="{{ n.link }}" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold">View
+                                    details <i class="bi bi-arrow-right"></i></a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if not n.is_read %}
+                        <a href="{{ url_for('admin.mark_notification_read', notif_id=n.id) }}"
+                            class="btn btn-light btn-sm rounded-circle shadow-sm" title="Mark as read">
+                            <i class="bi bi-check2"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-bell-slash display-1 text-muted opacity-25 mb-3"></i>
+                <h4 class="text-muted">No notifications yet</h4>
+                <p class="text-muted small">You're all caught up!</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-light-subtle {
+        background-color: rgba(255, 193, 7, 0.03) !important;
+    }
+
+    body.bg-dark .bg-light-subtle {
+        background-color: rgba(255, 193, 7, 0.05) !important;
+    }
+</style>
+{% endblock %}

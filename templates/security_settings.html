@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .bg-success-soft {
+        background-color: rgba(25, 135, 84, 0.1);
+    }
+
+    .bg-danger-soft {
+        background-color: rgba(220, 53, 69, 0.1);
+    }
+
+    .badge.border-success {
+        border: 1px solid rgba(25, 135, 84, 0.2);
+    }
+
+    .badge.border-danger {
+        border: 1px solid rgba(220, 53, 69, 0.2);
+    }
+
+    .card-header[data-bs-toggle="collapse"] {
+        transition: background-color 0.2s ease;
+    }
+
+    .card-header[data-bs-toggle="collapse"]:hover {
+        background-color: #2c3034 !important;
+    }
+
+    /* Strictly scoped to only the Security Monitoring arrow */
+    .monitoring-header .bi-chevron-down {
+        display: inline-block !important;
+        transition: transform 0.3s ease-in-out !important;
+        /* Allow clicks to pass through */
+    }
+
+    .monitoring-header .bi-chevron-down.active {
+        transform: rotate(180deg) !important;
+    }
+</style>
+<div class="container mt-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="mb-1">🛡️ {% if current_user.role == 'super_admin' %}Security Settings{% else %}Manage Password{%
+                endif %}</h2>
+            <p class="text-muted">
+                {% if current_user.role == 'super_admin' %}
+                Manage system security and monitor login activity.
+                {% else %}
+                Update your password and view account status.
+                {% endif %}
+            </p>
+        </div>
+        <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+
+    {% if current_user.role == 'super_admin' %}
+    <!-- SUPER ADMIN VIEW: Full Dashboard & Monitoring -->
+    <div class="row g-4">
+        <!-- Account Status Card -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="card-title mb-0"><i class="bi bi-person-badge me-2"></i>Account Status (Admin)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span>Username:</span>
+                        <span class="fw-bold">{{ current_user.username }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span>Authentication:</span>
+                        {% if current_user.two_factor_enabled %}
+                        <span class="badge bg-success"><i class="bi bi-shield-check"></i> 2FA Enabled</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark"><i class="bi bi-shield-exclamation"></i> Password
+                            Only</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-grid gap-2 mt-4">
+                        {% if current_user.two_factor_enabled %}
+                        <a href="{{ url_for('disable_2fa_confirm') }}" class="btn btn-outline-danger">
+                            <i class="bi bi-unlock-fill me-2"></i> Disable 2FA
+                        </a>
+                        {% else %}
+                        <a href="{{ url_for('setup_2fa') }}" class="btn btn-primary">
+                            <i class="bi bi-lock-fill me-2"></i> Enable 2FA (Google Auth)
+                        </a>
+                        {% endif %}
+                        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal"
+                            data-bs-target="#changePasswordModal">
+                            <i class="bi bi-key me-2"></i> Change Password
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session Activity Card -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-transparent py-3">
+                    <h5 class="card-title mb-0"><i class="bi bi-activity me-2"></i>Your Recent Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <small class="text-muted d-block">Last Login:</small>
+                        <span class="fw-medium">{{ current_user.last_login_at.strftime('%Y-%m-%d %H:%M:%S') if
+                            current_user.last_login_at else 'Never' }}</span>
+                    </div>
+                    <div class="mb-3">
+                        <small class="text-muted d-block">Last IP:</small>
+                        <span class="font-monospace text-secondary">{{ current_user.last_login_ip|mask_ip }}</span>
+                    </div>
+                    <div class="alert alert-light border small mb-0">
+                        <i class="bi bi-info-circle me-1"></i> Admin sessions expire after 30 mins.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GLOBAL MONITORING SECTION (Collapsible for cleaner look) -->
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center collapsed monitoring-header"
+                    style="cursor: pointer; border-radius: 10px 10px 0 0;" data-bs-toggle="collapse"
+                    data-bs-target="#monitoringCollapse" aria-expanded="false" aria-controls="monitoringCollapse">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-eye-fill me-2"></i>Global Login Monitoring
+                        <small class="ms-2 text-muted fw-normal">(Click to expand)</small>
+                    </h5>
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-primary me-3">Last 50 attempts</span>
+                        <i class="bi bi-chevron-down"></i>
+                    </div>
+                </div>
+
+                <div class="collapse" id="monitoringCollapse">
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="bg-light">
+                                    <tr>
+                                        <th class="ps-4">User</th>
+                                        <th>IP Address</th>
+                                        <th>Status</th>
+                                        <th>Reason / Agent</th>
+                                        <th class="pe-4">Timestamp</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for activity in recent_activity %}
+                                    <tr>
+                                        <td class="ps-4"><strong>{{ activity.username }}</strong></td>
+                                        <td><code class="text-secondary small">{{ activity.ip_address|mask_ip }}</code>
+                                        </td>
+                                        <td>
+                                            {% if activity.success %}
+                                            <span class="badge bg-success-soft text-success border-success">
+                                                <i class="bi bi-check-circle-fill me-1"></i> Success
+                                            </span>
+                                            {% else %}
+                                            <span class="badge bg-danger-soft text-danger border-danger">
+                                                <i class="bi bi-x-circle-fill me-1"></i> Failed
+                                            </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {% if activity.failure_reason %}
+                                                <span class="text-danger fw-medium">{{
+                                                    activity.failure_reason|replace('_', ' ')|capitalize }}</span>
+                                                {% else %}
+                                                {{ activity.user_agent[:40] }}{{ '...' if activity.user_agent|length >
+                                                40 }}
+                                                {% endif %}
+                                            </small>
+                                        </td>
+                                        <td class="pe-4 text-muted"><small>{{ activity.timestamp.strftime('%Y-%m-%d
+                                                %H:%M:%S') }}</small></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Privacy Footer -->
+                    <div class="card-footer bg-light py-2 text-center" style="border-radius: 0 0 10px 10px;">
+                        <small class="text-muted">
+                            <i class="bi bi-shield-shaded me-1"></i>
+                            <strong>Privacy Protected:</strong> IP addresses are masked and auto-deleted (Attacker logs:
+                            24h | User logs: 30d).
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- TECHNICIAN / REGULAR ADMIN VIEW: Simplified Change Password -->
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <div class="card shadow-sm text-center">
+                <div class="card-body py-5">
+                    <div class="mb-4">
+                        <i class="bi bi-shield-lock text-primary" style="font-size: 4rem;"></i>
+                    </div>
+                    <h4 class="fw-bold">Update Password</h4>
+                    <p class="text-muted mb-4">Protect your account by setting a strong, unique password.</p>
+
+                    <button type="button" class="btn btn-warning px-5 py-2 fw-bold w-100" data-bs-toggle="modal"
+                        data-bs-target="#changePasswordModal">
+                        <i class="bi bi-key-fill me-2"></i> Update Password Now
+                    </button>
+
+                    <div class="mt-4 pt-3 border-top">
+                        <small class="text-muted d-block mb-1">Account Role</small>
+                        <span class="badge bg-light text-dark border">{{ current_user.role|upper }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Change Password Modal -->
+<div class="modal fade" id="changePasswordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Change Password</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('change_password') }}" method="POST">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" class="form-control" name="current_password" required
+                            placeholder="Enter current password">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="form-control" name="new_password" required minlength="8"
+                            placeholder="Enter new password">
+                        <div class="form-text small">
+                            Min 8 characters, include numbers and symbols.
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" class="form-control" name="confirm_password" required minlength="8"
+                            placeholder="Re-enter new password">
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning fw-bold px-4">Update Password</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var myCollapse = document.getElementById('monitoringCollapse');
+        var icon = document.querySelector('.monitoring-header .bi-chevron-down');
+
+        if (myCollapse && icon) {
+            myCollapse.addEventListener('shown.bs.collapse', function () {
+                icon.classList.add('active');
+            });
+
+            myCollapse.addEventListener('hidden.bs.collapse', function () {
+                icon.classList.remove('active');
+            });
+        }
+    });
+</script>
+{% endblock %}

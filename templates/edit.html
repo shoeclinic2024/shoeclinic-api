@@ -11,9 +11,8 @@
         <h3 class="mb-4">Edit Order</h3>
         <form method="POST" class="row g-3">
 
-            <!-- Basic Info -->
-            <div class="col-md-6">
-                <label>Technician</label>
+            <div class="col-md-12 mb-2">
+                <label>Assign Technician</label>
                 <select name="technician" class="form-select">
                     <option value="">Unassigned</option>
                     {% for person in staff %}
@@ -22,11 +21,15 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label>Job ID</label>
                 <input type="text" name="job_id" class="form-control" value="{{ order.job_id }}">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
+                <label>Token</label>
+                <input type="text" name="token" class="form-control" value="{{ order.token or '' }}">
+            </div>
+            <div class="col-md-4">
                 <label>Customer Name</label>
                 <input type="text" name="customer_name" class="form-control" value="{{ order.customer_name }}">
             </div>
@@ -35,12 +38,17 @@
                 <input type="date" name="pickup_date" class="form-control"
                     value="{{ order.pickup_date.strftime('%Y-%m-%d') if order.pickup_date }}">
             </div>
-            <div class="col-md-6">
-                <label>Service Date</label>
+            <div class="col-md-4">
+                <label>Service Date (Start)</label>
                 <input type="date" name="service_date" class="form-control"
                     value="{{ order.service_date.strftime('%Y-%m-%d') if order.service_date }}">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
+                <label>Work Finish Date</label>
+                <input type="date" name="work_finish_date" class="form-control"
+                    value="{{ order.work_finish_date.strftime('%Y-%m-%d') if order.work_finish_date }}">
+            </div>
+            <div class="col-md-4">
                 <label>Drop Date</label>
                 <input type="date" name="drop_date" class="form-control"
                     value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}">
@@ -93,8 +101,7 @@
                     value="{{ order.mobile }}"></div>
             <div class="col-md-6"><label>Product Name</label><input type="text" name="product_name" class="form-control"
                     value="{{ order.product_name or '' }}"></div>
-            <div class="col-md-6"><label>Token</label><input type="text" name="token" class="form-control"
-                    value="{{ order.token or '' }}"></div>
+
             <div class="col-md-6"><label>Price</label><input type="number" step="0.01" name="price" class="form-control"
                     value="{{ order.price or '' }}"></div>
             <div class="col-md-6"><label>Payment Mode</label><input type="text" name="payment_mode" class="form-control"
