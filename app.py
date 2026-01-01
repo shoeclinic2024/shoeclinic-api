@@ -3202,7 +3202,15 @@ razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 @app.route("/health")
 def health():
     """Check application and database health"""
-    status = {"status": "healthy", "database": "connected", "version": APP_VERSION}
+    db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    engine_type = "postgresql" if "postgresql" in db_uri else "sqlite"
+    
+    status = {
+        "status": "healthy", 
+        "database": "connected", 
+        "engine": engine_type,
+        "version": APP_VERSION
+    }
     try:
         # Try a simple query
         from models import User
