@@ -978,7 +978,7 @@ def login():
             flash(f"🔒 Account locked after {security_service.MAX_LOGIN_ATTEMPTS} failed attempts. Locked for {security_service.LOCKOUT_DURATION_MINUTES} minutes.", "danger")
             security_service.log_login_attempt(username, ip_address, False, "locked_now", user.id)
         else:
-            attempts_remaining = security_service.MAX_LOGIN_ATTEMPTS - user.failed_login_attempts
+            attempts_remaining = security_service.MAX_LOGIN_ATTEMPTS - (user.failed_login_attempts or 0)
             flash(f"❌ Invalid password. {attempts_remaining} attempts remaining.", "danger")
             security_service.log_login_attempt(username, ip_address, False, "wrong_password", user.id)
         

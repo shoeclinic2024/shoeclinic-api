@@ -103,7 +103,7 @@ class SecurityService:
         if not user:
             return
         
-        user.failed_login_attempts += 1
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         user.last_failed_login = datetime.utcnow()
         
         if user.failed_login_attempts >= SecurityService.MAX_LOGIN_ATTEMPTS:
