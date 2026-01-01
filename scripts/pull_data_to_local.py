@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # SOURCE: Railway Database (Live)
-RAILWAY_URL = "postgresql://postgres:QvWlkCypHfDYJPQQYTQUjlNYcxvrhTXf@trolley.proxy.rlwy.net:40006/railway"
+# SOURCE: Railway Database (Live)
+RAILWAY_URL = os.getenv("RAILWAY_DATABASE_URL")
+
 
 # DESTINATION: Local Database (from .env)
 LOCAL_URL = os.getenv("DATABASE_URL")
