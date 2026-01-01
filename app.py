@@ -45,9 +45,12 @@ app.jinja_env.filters['mask_ip'] = mask_ip
 
 # --- Database Config ---
 import os
-app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///shoeclinic.db")
+# Check multiple possible env vars for DB (prioritize DATABASE_URL)
+db_url = os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL") or os.getenv("POSTGRES_URL")
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url or "sqlite:///shoeclinic.db"
+
 # Fix for Render/Heroku postgres:// URLs
-if app.config["SQLALCHEMY_DATABASE_URI"] and app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgres://"):
+if app.config["SQLALCHEMY_DATABASE_URI"].startswith("postgres://"):
     app.config["SQLALCHEMY_DATABASE_URI"] = app.config["SQLALCHEMY_DATABASE_URI"].replace("postgres://", "postgresql://", 1)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"check_same_thread": False}} if "sqlite" in app.config["SQLALCHEMY_DATABASE_URI"] else {}
@@ -3201,7 +3204,11 @@ razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 # --- Diagnostics & Health ---
 @app.route("/health")
 def health():
-    """Check application and database health"""
+    """Check application and database health with enhanced diagnostics"""
+    # Check multiple possible env vars for DB
+    db_keys = ["DATABASE_URL", "DATABASE_PUBLIC_URL", "POSTGRES_URL"]
+    found_key = next((k for k in db_keys if os.getenv(k)), None)
+    
     db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
     engine_type = "postgresql" if "postgresql" in db_uri else "sqlite"
     
@@ -3209,12 +3216,16 @@ def health():
         "status": "healthy", 
         "database": "connected", 
         "engine": engine_type,
+        "env_db_key_found": found_key,
+        "available_env_vars": [k for k in os.environ.keys() if not k.startswith("GS_") and len(k) < 30],
         "version": APP_VERSION
     }
+    
     try:
         # Try a simple query
         from models import User
         User.query.first()
+        status["database_table_check"] = "success"
     except Exception as e:
         status["status"] = "unhealthy"
         status["database"] = f"error: {str(e)}"
