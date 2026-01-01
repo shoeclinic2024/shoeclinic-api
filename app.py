@@ -3209,8 +3209,8 @@ def health():
     db_keys = ["DATABASE_URL", "DATABASE_PUBLIC_URL", "POSTGRES_URL"]
     found_key = next((k for k in db_keys if os.getenv(k)), None)
     
-    db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
-    engine_type = "postgresql" if "postgresql" in db_uri else "sqlite"
+    config_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
+    engine_type = "postgresql" if "postgresql" in config_uri else "sqlite"
     
     status = {
         "status": "healthy", 
@@ -3222,9 +3222,15 @@ def health():
     }
     
     try:
-        # Try a simple query
-        from models import User
+        # Check multiple tables
+        from models import User, LoginAttempt, Order
         User.query.first()
+        status["user_table"] = "ok"
+        LoginAttempt.query.first()
+        status["login_attempt_table"] = "ok"
+        Order.query.first()
+        status["order_table"] = "ok"
+        
         status["database_table_check"] = "success"
     except Exception as e:
         status["status"] = "unhealthy"
@@ -3255,6 +3261,32 @@ def debug_env():
             env_info[k] = "Missing"
             
     return jsonify(env_info)
+
+# --- Global Error Handler ---
+@app.errorhandler(500)
+def handle_500_error(e):
+    """Fallback for 500 errors to show traceback if debug is on or via JSON"""
+    import traceback
+    error_info = {
+        "status": "error",
+        "message": "Internal Server Error",
+        "error_type": type(e).__name__,
+        "error_details": str(e),
+        "traceback": traceback.format_exc() if os.getenv("FLASK_DEBUG") == "1" else "Enable FLASK_DEBUG=1 to see traceback"
+    }
+    # Always log the full traceback to server logs
+    print(f"\nCRITICAL ERROR:\n{traceback.format_exc()}")
+    
+    if request.path.startswith('/api/') or request.headers.get('Accept') == 'application/json':
+        return jsonify(error_info), 500
+    
+    # Return a JSON response for debugging even on non-API routes if it's a 500
+    return jsonify(error_info), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch-all for any unhandled exception"""
+    return handle_500_error(e)
 
 # --- Utils ---
 if __name__ == "__main__":
