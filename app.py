@@ -3216,8 +3216,6 @@ def health():
         "status": "healthy", 
         "database": "connected", 
         "engine": engine_type,
-        "env_db_key_found": found_key,
-        "available_env_vars": [k for k in os.environ.keys() if not k.startswith("GS_") and len(k) < 30],
         "version": APP_VERSION
     }
     
@@ -3238,29 +3236,6 @@ def health():
     
     return jsonify(status), 200 if status["status"] == "healthy" else 500
 
-@app.route("/debug-env")
-def debug_env():
-    """Verify presence of key environment variables (sensitive values masked)"""
-    if not os.getenv("FLASK_DEBUG"):
-        return "Access denied: Debug Mode is OFF", 403
-        
-    keys = ["DATABASE_URL", "SECRET_KEY", "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "PORT"]
-    env_info = {}
-    for k in keys:
-        val = os.getenv(k)
-        if val:
-            env_info[k] = f"Present (length: {len(val)})"
-            if k == "DATABASE_URL":
-                # Show protocol and host for DB URL but hide password
-                try: 
-                    protocol = val.split("://")[0]
-                    host = val.split("@")[1].split("/")[0]
-                    env_info[k] = f"{protocol}://****@{host}"
-                except: pass
-        else:
-            env_info[k] = "Missing"
-            
-    return jsonify(env_info)
 
 # --- Global Error Handler ---
 @app.errorhandler(500)
