@@ -2760,14 +2760,14 @@ def vendor_management():
             entry = {
                 'item': v_item,
                 'tasks': v_tasks,
-                'vendor_amount': v_item.order.vendor_amount or 0.0
+                'vendor_amount': 0.0 # v_item.order.vendor_amount or 0.0
             }
             # If all vendor tasks are done, it's history
             is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
             if is_v_done:
                 vendor_history.append(entry)
                 if v_item.order.id not in processed_orders:
-                    total_vendor_paid += (v_item.order.vendor_amount or 0.0)
+                    # total_vendor_paid += (v_item.order.vendor_amount or 0.0)
                     processed_orders.add(v_item.order.id)
             else:
                 vendor_active.append(entry)

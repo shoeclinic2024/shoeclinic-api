@@ -156,7 +156,8 @@ def inject_pending_counts():
             db.or_(Attendance.reg_requested == True, Attendance.status == 'Leave Pending')
         ).count()
         # Modification requests (Edit/Delete) on approved expenses
-        modification_requests = Expense.query.filter(Expense.request_type != 'none').count()
+        # modification_requests = Expense.query.filter(Expense.request_type != 'none').count()
+        modification_requests = 0
         
         return dict(pending_approvals_count=pending_users + pending_expenses + pending_customer_access + pending_performance_access + pending_attendance + modification_requests)
     return dict(pending_approvals_count=0)
@@ -1192,10 +1193,10 @@ def login():
     session['last_activity'] = datetime.utcnow().isoformat()
     
     # Check for first-time login to show welcome message
-    if not user.first_login_seen:
-        session['show_welcome_modal'] = True
-        user.first_login_seen = True
-        db.session.commit()
+    # if not user.first_login_seen:
+    #     session['show_welcome_modal'] = True
+    #     user.first_login_seen = True
+    #     db.session.commit()
     
     flash("✅ Login successful!", "success")
     return redirect(url_for("home"))
