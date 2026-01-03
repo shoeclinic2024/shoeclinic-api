@@ -2777,7 +2777,103 @@ def vendor_management():
                            vendor_history=vendor_history, 
                            total_vendor_paid=total_vendor_paid)
 
-@admin_bp.route("/edit_manual_task/<int:task_id>", methods=["POST"])
+@admin_bp.route("/emergency_db_fix")
+@login_required
+@super_admin_required
+def emergency_db_fix():
+    import sqlalchemy as sa
+    from sqlalchemy import create_engine, text, inspect
+    import os
+    
+    # Capture output
+    logs = []
+    def log(msg):
+        logs.append(str(msg))
+    
+    try:
+        engine = db.engine
+        inspector = inspect(engine)
+        
+        with engine.connect() as conn:
+            log("--- Starting Schema Repair via Web ---")
+            
+            # 1. User Table
+            columns = [c['name'] for c in inspector.get_columns('user')]
+            if 'first_login_seen' not in columns:
+                log("Fixing: Adding 'first_login_seen' to user table...")
+                conn.execute(text('ALTER TABLE "user" ADD COLUMN first_login_seen BOOLEAN DEFAULT FALSE'))
+                log("Success: Added first_login_seen")
+            else:
+                log("OK: 'first_login_seen' exists.")
+                
+            # 2. Order Table
+            columns = [c['name'] for c in inspector.get_columns('order')]
+            if 'vendor_amount' not in columns:
+                log("Fixing: Adding 'vendor_amount' to order table...")
+                conn.execute(text('ALTER TABLE "order" ADD COLUMN vendor_amount FLOAT'))
+                log("Success: Added vendor_amount")
+            else:
+                log("OK: 'vendor_amount' exists.")
+                
+            # 3. Expense Table
+            columns = [c['name'] for c in inspector.get_columns('expense')]
+            if 'request_type' not in columns:
+                log("Fixing: Adding 'request_type'...")
+                conn.execute(text("ALTER TABLE expense ADD COLUMN request_type VARCHAR(20) DEFAULT 'none'"))
+            if 'request_reason' not in columns:
+                conn.execute(text("ALTER TABLE expense ADD COLUMN request_reason VARCHAR(255)"))
+            if 'request_data' not in columns:
+                conn.execute(text("ALTER TABLE expense ADD COLUMN request_data TEXT"))
+            log("OK: Expense columns checked.")
+            
+            # 4. Tables
+            if not inspector.has_table('manual_task'):
+                log("Fixing: Creating 'manual_task' table...")
+                conn.execute(text("""
+                    CREATE TABLE manual_task (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR(100) NOT NULL,
+                        description TEXT,
+                        assigned_to VARCHAR(100),
+                        status VARCHAR(20) DEFAULT 'yts',
+                        due_date TIMESTAMP,
+                        task_type VARCHAR(50) DEFAULT 'Pickup',
+                        customer_name VARCHAR(100),
+                        mobile VARCHAR(20),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP
+                    )
+                """))
+                log("Success: Created manual_task table")
+            else:
+                log("OK: manual_task table exists")
+
+            if not inspector.has_table('cash_deposit'):
+                log("Fixing: Creating 'cash_deposit' table...")
+                conn.execute(text("""
+                    CREATE TABLE cash_deposit (
+                        id SERIAL PRIMARY KEY,
+                        amount FLOAT NOT NULL,
+                        deposit_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                        reference VARCHAR(100),
+                        notes VARCHAR(255),
+                        added_by INTEGER REFERENCES "user"(id),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        request_type VARCHAR(20) DEFAULT 'none',
+                        request_reason VARCHAR(255)
+                    )
+                """))
+                log("Success: Created cash_deposit table")
+            else:
+                log("OK: cash_deposit table exists")
+                
+            conn.commit()
+            log("--- COMPLETE ---")
+            
+    except Exception as e:
+        log(f"ERROR: {str(e)}")
+        
+    return "<br>".join(logs)
 @login_required
 @super_admin_required
 def edit_manual_task(task_id):

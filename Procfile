@@ -1,1 +1,1 @@
-web: python scripts/magic_fix.py && gunicorn app:app
+web: flask db upgrade && gunicorn app:app
