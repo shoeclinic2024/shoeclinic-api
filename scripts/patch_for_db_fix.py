@@ -1,14 +1,17 @@
 import re
 import os
 
-files_to_patch = ['e:/app_v02/app.py', 'e:/app_v02/admin.py']
+files_to_patch = ['e:/app_v02/app.py', 'e:/app_v02/admin.py', 'e:/app_v02/models.py']
 
+# (pattern, replacement, is_line_replacement)
 replacements = [
-    # 1. First, comment out any line that performs an assignment to these attributes
-    # We use a broad match for any line containing 'attribute ='
-    (r'.*\b(expense|order|user|current_user|v_item\.order)\.(request_type|request_reason|request_data|vendor_amount|first_login_seen)\s*=.*', '# Line commented: Attribute assignment'),
+    # Models.py definitions
+    (r'^\s*(first_login_seen|vendor_amount|request_type|request_reason|request_data)\s*=\s*db\.Column.*$', r'    # \1 removed temporarily'),
     
-    # 2. Then, replace attribute access in expressions (getters)
+    # Assignments (MUST keep indentation and provide a valid statement like 'pass' to avoid IndentationError)
+    (r'^(\s*).*?\b(expense|order|user|current_user|v_item\.order)\.(request_type|request_reason|request_data|vendor_amount|first_login_seen)\s*=.*$', r'\1pass # Attribute assignment removed'),
+    
+    # Expressions / Getters
     (r'\b(Expense|expense)\.(request_type|request_reason|request_data)\b', '"none"'),
     (r'\b(order|o|v_item\.order)\.vendor_amount\b', '0.0'),
     (r'\b(user|current_user)\.first_login_seen\b', 'False'),
@@ -21,14 +24,17 @@ for file_path in files_to_patch:
         
     print(f"Patching {file_path}...")
     with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
+        lines = f.readlines()
     
-    new_content = content
-    # We process each pattern on the whole content
-    for pattern, replacement in replacements:
-        new_content = re.sub(pattern, replacement, new_content)
+    new_lines = []
+    for line in lines:
+        new_line = line
+        for pattern, replacement in replacements:
+            # We use MULTILINE-like behavior by processing line-by-line
+            new_line = re.sub(pattern, replacement, new_line)
+        new_lines.append(new_line)
     
     with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(new_content)
+        f.writelines(new_lines)
 
 print("Done patching.")

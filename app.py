@@ -1194,7 +1194,7 @@ def login():
     # Check for first-time login to show welcome message
     if not False:
         session['show_welcome_modal'] = True
-# Line commented: Attribute assignment
+        pass # Attribute assignment removed
         db.session.commit()
     
     flash("✅ Login successful!", "success")
@@ -1695,9 +1695,9 @@ def add_order():
             order.outsource = request.form.get("outsource")
             try:
                 v_amt = request.form.get("vendor_amount")
-# Line commented: Attribute assignment
+                pass # Attribute assignment removed
             except:
-# Line commented: Attribute assignment
+                pass # Attribute assignment removed
 
             db.session.add(order)
             db.session.flush()
@@ -1856,9 +1856,9 @@ def edit_order(order_id):
         order.outsource = request.form.get("outsource")
         try:
             v_amt = request.form.get("vendor_amount")
-# Line commented: Attribute assignment
+            pass # Attribute assignment removed
         except:
-# Line commented: Attribute assignment
+            pass # Attribute assignment removed
             
         order.item_count = int(request.form.get("item_count")) if request.form.get("item_count") else None
 

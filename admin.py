@@ -2396,8 +2396,8 @@ def request_delete_expense(expense_id):
             return redirect(url_for('admin.day_to_day_expense'))
             
         # Request Delete
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
+        pass # Attribute assignment removed
+        pass # Attribute assignment removed
         db.session.commit()
         flash("Deletion request submitted to Super Admin.", "info")
     
@@ -2448,9 +2448,9 @@ def request_edit_expense(expense_id):
             'expense_date': expense_date_str,
             'description': description
         }
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
+        pass # Attribute assignment removed
+        pass # Attribute assignment removed
+        pass # Attribute assignment removed
         db.session.commit()
         flash("Edit request submitted for approval.", "info")
         
@@ -2469,9 +2469,9 @@ def process_expense_request(expense_id, action):
     
     if action == 'reject':
         # Store title before clearing record if necessary, but here we keep the record
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
+        pass # Attribute assignment removed
+        pass # Attribute assignment removed
+        pass # Attribute assignment removed
         flash("Request rejected.", "info")
         
         # Create notification
@@ -2509,9 +2509,9 @@ def process_expense_request(expense_id, action):
                 expense.description = data['description']
                 
                 # Clear request
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
-# Line commented: Attribute assignment
+                pass # Attribute assignment removed
+                pass # Attribute assignment removed
+                pass # Attribute assignment removed
                 flash("Expense edit approved and applied.", "success")
                 
                 # Create notification

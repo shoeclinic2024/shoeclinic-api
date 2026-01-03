@@ -42,7 +42,7 @@ class User(UserMixin, db.Model):
     last_activity = db.Column(db.DateTime, nullable=True)
     
     # UI Flags
-    first_login_seen = db.Column(db.Boolean, default=False)
+    # first_login_seen removed temporarily
 
 # --- Order Model ---
 class Order(db.Model):
@@ -64,7 +64,7 @@ class Order(db.Model):
     payment_status = db.Column(db.String(50))
     discount = db.Column(db.String(50))
     outsource = db.Column(db.String(100))
-    vendor_amount = db.Column(db.Float)
+    # vendor_amount removed temporarily
     item_count = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.now)
     work_finish_date = db.Column(db.DateTime, nullable=True) # New column
@@ -104,9 +104,9 @@ class Expense(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     # Request tracking for non-super admins
-    request_type = db.Column(db.String(20), default='none') # none, delete, edit
-    request_reason = db.Column(db.String(255), nullable=True)
-    request_data = db.Column(db.Text, nullable=True) # JSON literal for proposed edits
+    # request_type removed temporarily
+    # request_reason removed temporarily
+    # request_data removed temporarily
     
     @property
     def get_request_data(self):
@@ -129,9 +129,9 @@ class CashDeposit(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
     
     # Request tracking for non-super admins
-    request_type = db.Column(db.String(20), default='none') # none, delete, edit
-    request_reason = db.Column(db.String(255), nullable=True)
-    request_data = db.Column(db.Text, nullable=True) # JSON literal for proposed edits
+    # request_type removed temporarily
+    # request_reason removed temporarily
+    # request_data removed temporarily
     
     @property
     def get_request_data(self):
