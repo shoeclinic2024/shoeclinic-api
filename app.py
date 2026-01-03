@@ -3944,7 +3944,7 @@ if __name__ == "__main__":
     # Use PORT from environment (default to 5000 for local)
     port = int(os.environ.get("PORT", 5000))
     # Enable Debug Mode for automatic reloading
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=False, host='0.0.0.0', port=port)
 # --- Payment Gateway Routes (v02) ---
 
 @app.route("/create_payment/<int:order_id>", methods=["POST"])
