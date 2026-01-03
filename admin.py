@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-﻿# admin.py
+# admin.py
 from flask import Blueprint, render_template, flash, request, redirect, url_for, jsonify, send_file
 from flask_login import login_required, current_user
 from database import db

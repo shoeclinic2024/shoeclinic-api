@@ -25,7 +25,9 @@ TABLES_IN_ORDER = [
     'holiday',
     'login_attempt',
     'password_history',
-    'payment_transaction'
+    'payment_transaction',
+    'manual_task',
+    'cash_deposit'
 ]
 
 def sync_to_local():
@@ -73,11 +75,16 @@ def sync_to_local():
             src_cur.execute(f'SELECT "{col_str}" FROM "{table}"')
             rows = src_cur.fetchall()
             
+            # 3. Prepare Local (Truncate first for a clean mirror)
+            print(f"    [*] Cleaning local table '{table}'...")
+            dst_cur.execute(f'TRUNCATE TABLE "{table}" CASCADE')
+
             if not rows:
-                print(f"    [INFO] No data in live database for '{table}'. Skipping.")
+                print(f"    [INFO] No data in live database for '{table}'. Done.")
+                dst_conn.commit()
                 continue
 
-            # 3. Insert into Local
+            # 4. Insert into Local
             print(f"    [*] Syncing {len(rows)} records to Local...")
             
             try:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-﻿from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, session, send_file, jsonify
+from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, login_user, logout_user, login_required, UserMixin, current_user
