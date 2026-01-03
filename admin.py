@@ -2815,17 +2815,86 @@ def emergency_db_fix():
     try:
         engine = db.engine
         inspector = inspect(engine)
+        tables = inspector.get_table_names()
+        
         with engine.begin() as conn:
             log("--- Starting Schema Repair ---")
-            columns = [c['name'] for c in inspector.get_columns('user')]
-            if 'first_login_seen' not in columns:
+            
+            # --- USER ---
+            u_cols = [c['name'] for c in inspector.get_columns('user')]
+            if 'first_login_seen' not in u_cols:
                 conn.execute(text('ALTER TABLE "user" ADD COLUMN first_login_seen BOOLEAN DEFAULT FALSE'))
-            columns = [c['name'] for c in inspector.get_columns('order')]
-            if 'vendor_amount' not in columns:
+                log("Added user.first_login_seen")
+
+            # --- ORDER ---
+            o_cols = [c['name'] for c in inspector.get_columns('order')]
+            if 'vendor_amount' not in o_cols:
                 conn.execute(text('ALTER TABLE "order" ADD COLUMN vendor_amount FLOAT'))
-            columns = [c['name'] for c in inspector.get_columns('expense')]
-            if 'request_type' not in columns:
+                log("Added order.vendor_amount")
+
+            # --- EXPENSE ---
+            e_cols = [c['name'] for c in inspector.get_columns('expense')]
+            if 'request_type' not in e_cols:
                 conn.execute(text("ALTER TABLE expense ADD COLUMN request_type VARCHAR(20) DEFAULT 'none'"))
+            if 'request_reason' not in e_cols:
+                conn.execute(text("ALTER TABLE expense ADD COLUMN request_reason VARCHAR(255)"))
+            if 'request_data' not in e_cols:
+                conn.execute(text("ALTER TABLE expense ADD COLUMN request_data TEXT"))
+            log("Ensured expense request columns")
+
+            # --- MANUAL TASK (Table or Columns) ---
+            if 'manual_task' not in tables:
+                log("Creating manual_task table...")
+                conn.execute(text("""
+                    CREATE TABLE manual_task (
+                        id SERIAL PRIMARY KEY,
+                        title VARCHAR(100) NOT NULL,
+                        description TEXT,
+                        assigned_to VARCHAR(100),
+                        status VARCHAR(20) DEFAULT 'yts',
+                        due_date TIMESTAMP,
+                        task_type VARCHAR(50) DEFAULT 'Pickup',
+                        customer_name VARCHAR(100),
+                        mobile VARCHAR(20),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP
+                    )
+                """))
+            else:
+                m_cols = [c['name'] for c in inspector.get_columns('manual_task')]
+                if 'description' not in m_cols:
+                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN description TEXT'))
+                    log("Added manual_task.description")
+                if 'customer_name' not in m_cols:
+                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN customer_name VARCHAR(100)'))
+                if 'mobile' not in m_cols:
+                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN mobile VARCHAR(20)'))
+
+            # --- CASH DEPOSIT ---
+            if 'cash_deposit' not in tables:
+                log("Creating cash_deposit table...")
+                conn.execute(text("""
+                    CREATE TABLE cash_deposit (
+                        id SERIAL PRIMARY KEY,
+                        amount FLOAT NOT NULL,
+                        deposit_date DATE NOT NULL,
+                        reference VARCHAR(100),
+                        notes VARCHAR(255),
+                        added_by INTEGER REFERENCES "user"(id),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        request_type VARCHAR(20) DEFAULT 'none',
+                        request_reason VARCHAR(255),
+                        request_data TEXT
+                    )
+                """))
+            else:
+                # Add request columns if missing
+                c_cols = [c['name'] for c in inspector.get_columns('cash_deposit')]
+                if 'request_type' not in c_cols:
+                    conn.execute(text("ALTER TABLE cash_deposit ADD COLUMN request_type VARCHAR(20) DEFAULT 'none'"))
+                    conn.execute(text("ALTER TABLE cash_deposit ADD COLUMN request_reason VARCHAR(255)"))
+                    conn.execute(text("ALTER TABLE cash_deposit ADD COLUMN request_data TEXT"))
+
             log("--- COMPLETE ---")
     except Exception as e:
         log(f"ERROR: {str(e)}")
