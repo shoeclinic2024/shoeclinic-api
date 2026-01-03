@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 ﻿from flask import Flask, render_template, render_template_string, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -137,11 +138,11 @@ def init_db():
                 upgrade()
             except:
                 pass  # Migrations might not exist yet
-        return "✅ Database tables created successfully! You can now use the application."
+        return "\u2705 Database tables created successfully! You can now use the application."
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        return f"❌ Error creating tables:<br><pre>{error_details}</pre>", 500
+        return f"\u274c Error creating tables:<br><pre>{error_details}</pre>", 500
 
 from functools import wraps
 
@@ -1172,7 +1173,7 @@ def login():
             security_service.log_login_attempt(username, ip_address, False, "locked_now", user.id)
         else:
             attempts_remaining = security_service.MAX_LOGIN_ATTEMPTS - (user.failed_login_attempts or 0)
-            flash(f"❌ Invalid password. {attempts_remaining} attempts remaining.", "danger")
+            flash(f"\u274c Invalid password. {attempts_remaining} attempts remaining.", "danger")
             security_service.log_login_attempt(username, ip_address, False, "wrong_password", user.id)
         
         return redirect(url_for("login_page"))
@@ -1197,7 +1198,7 @@ def login():
         user.first_login_seen = True
         db.session.commit()
     
-    flash("✅ Login successful!", "success")
+    flash("\u2705 Login successful!", "success")
     return redirect(url_for("home"))
 
 @app.route("/register", methods=["POST"])
@@ -1216,7 +1217,7 @@ def register():
     # Validate password strength
     is_valid, error_message = security_service.validate_password_strength(password)
     if not is_valid:
-        flash(f"❌ {error_message}", "danger")
+        flash(f"\u274c {error_message}", "danger")
         return redirect(url_for("login_page"))
 
     hashed_pw = bcrypt.generate_password_hash(password).decode("utf-8")
@@ -1255,7 +1256,7 @@ def forgot_password():
             return redirect(url_for("forgot_password"))
             
         if not user.two_factor_enabled:
-            flash("❌ 2FA is not enabled for this account. Please contact the Admin.", "danger")
+            flash("\u274c 2FA is not enabled for this account. Please contact the Admin.", "danger")
             return redirect(url_for("forgot_password"))
             
         # User exists and has 2FA -> Proceed to verification
@@ -1284,7 +1285,7 @@ def reset_password_2fa():
             session['reset_verified'] = True
             return redirect(url_for("reset_password_new"))
         else:
-            flash("❌ Invalid code. Please try again.", "danger")
+            flash("\u274c Invalid code. Please try again.", "danger")
             
     return render_template("reset_password_2fa.html")
 
@@ -1311,12 +1312,12 @@ def reset_password_new():
         from security_service import security_service
         is_valid, msg = security_service.validate_password_strength(new_pw, user)
         if not is_valid:
-            flash(f"❌ {msg}", "danger")
+            flash(f"\u274c {msg}", "danger")
             return redirect(url_for("reset_password_new"))
             
         # Check for reuse
         if security_service.check_password_reuse(user, new_pw):
-            flash("❌ You cannot reuse a recent password. Please choose a new one.", "danger")
+            flash("\u274c You cannot reuse a recent password. Please choose a new one.", "danger")
             return redirect(url_for("reset_password_new"))
             
         # Update
@@ -1329,7 +1330,7 @@ def reset_password_new():
         user.account_locked_until = None
         db.session.commit()
             
-        flash("✅ Password updated successfully! Please login.", "success")
+        flash("\u2705 Password updated successfully! Please login.", "success")
         session.pop('reset_username', None)
         session.pop('reset_verified', None)
         return redirect(url_for("login_page"))
@@ -1373,10 +1374,10 @@ def verify_2fa_login():
             session.pop('pending_2fa_ip', None)
             session['last_activity'] = datetime.utcnow().isoformat()
             
-            flash("✅ Login successful!", "success")
+            flash("\u2705 Login successful!", "success")
             return redirect(url_for("home"))
         else:
-            flash("❌ Invalid code. Please try again.", "danger")
+            flash("\u274c Invalid code. Please try again.", "danger")
     
     return render_template("verify_2fa_login.html", username=user.username)
 
@@ -1447,10 +1448,10 @@ def verify_2fa_setup():
         current_user.two_factor_enabled = True
         db.session.commit()
         
-        flash("✅ Two-Factor Authentication enabled successfully!", "success")
+        flash("\u2705 Two-Factor Authentication enabled successfully!", "success")
         return redirect(url_for('security_settings'))
     else:
-        flash("❌ Invalid code. Please try again.", "danger")
+        flash("\u274c Invalid code. Please try again.", "danger")
         # Regenerate to prevent replay/stale issues (optional, but flow redirects back)
         uri = security_service.get_totp_uri(current_user, secret)
         qr_code = security_service.generate_qr_code(uri)
@@ -1560,7 +1561,7 @@ def unlock_account(user_id):
     user.failed_login_attempts = 0
     db.session.commit()
     
-    flash(f"✅ Account unlocked for {user.username}", "success")
+    flash(f"\u2705 Account unlocked for {user.username}", "success")
     return redirect(request.referrer or url_for("admin.manage_users"))
 
 
@@ -1758,7 +1759,7 @@ def add_order():
                 order.product_name = first_product_name
 
             db.session.commit()
-            flash("Order added successfully ✅", "success")
+            flash("Order added successfully \u2705", "success")
             return redirect(url_for("pickup_confirmation", order_id=order.id))
 
         except Exception as e:
@@ -2058,7 +2059,7 @@ def update_task_status():
                 order.status = 'wip'
                 
             db.session.commit()
-            flash(f"Status updated to {new_status} ✅", "success")
+            flash(f"Status updated to {new_status} \u2705", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error updating status: {str(e)}", "danger")
@@ -2867,7 +2868,7 @@ def attendance_manage():
             # Create notification
             notif = Notification(
                 user_id=att.user_id,
-                title="Attendance Regularized ✅",
+                title="Attendance Regularized \u2705",
                 message=f"Your regularization request for {att.date.strftime('%d %b')} was approved as '{att.status}'.",
                 link=url_for('attendance')
             )
@@ -2881,7 +2882,7 @@ def attendance_manage():
             # Create notification
             notif = Notification(
                 user_id=att.user_id,
-                title="Leave Approved ✅",
+                title="Leave Approved \u2705",
                 message=f"Your leave request for {att.date.strftime('%d %b')} has been APPROVED.",
                 link=url_for('attendance')
             )
@@ -2894,7 +2895,7 @@ def attendance_manage():
             # Create notification
             notif = Notification(
                 user_id=att.user_id,
-                title="Leave Rejected ❌",
+                title="Leave Rejected \u274c",
                 message=f"Your leave request for {att.date.strftime('%d %b')} has been REJECTED by Admin.",
                 link=url_for('attendance')
             )
@@ -2906,7 +2907,7 @@ def attendance_manage():
             # Create notification
             notif = Notification(
                 user_id=att.user_id,
-                title="Regularization Rejected ❌",
+                title="Regularization Rejected \u274c",
                 message=f"Your regularization request for {att.date.strftime('%d %b')} was rejected by Super Admin.",
                 link=url_for('attendance')
             )
