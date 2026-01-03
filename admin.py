@@ -2862,13 +2862,22 @@ def emergency_db_fix():
                 """))
             else:
                 m_cols = [c['name'] for c in inspector.get_columns('manual_task')]
-                if 'description' not in m_cols:
-                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN description TEXT'))
-                    log("Added manual_task.description")
-                if 'customer_name' not in m_cols:
-                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN customer_name VARCHAR(100)'))
-                if 'mobile' not in m_cols:
-                    conn.execute(text('ALTER TABLE manual_task ADD COLUMN mobile VARCHAR(20)'))
+                # List of all expected columns and their types
+                expected = {
+                    'description': 'TEXT',
+                    'assigned_to': 'VARCHAR(100)',
+                    'status': "VARCHAR(20) DEFAULT 'yts'",
+                    'due_date': 'TIMESTAMP',
+                    'task_type': "VARCHAR(50) DEFAULT 'Pickup'",
+                    'customer_name': 'VARCHAR(100)',
+                    'mobile': 'VARCHAR(20)',
+                    'created_at': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+                    'completed_at': 'TIMESTAMP'
+                }
+                for col, col_type in expected.items():
+                    if col not in m_cols:
+                        conn.execute(text(f'ALTER TABLE manual_task ADD COLUMN {col} {col_type}'))
+                        log(f"Added manual_task.{col}")
 
             # --- CASH DEPOSIT ---
             if 'cash_deposit' not in tables:
