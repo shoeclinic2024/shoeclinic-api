@@ -2,19 +2,17 @@
 from flask import Blueprint, render_template, flash, request, redirect, url_for, jsonify, send_file
 from flask_login import login_required, current_user
 from database import db
-from models import User, Expense, Notification, Staff, Attendance, Order, OrderItem, ManualTask
+from models import User, Expense, Notification, Staff, Attendance
 import io
 import pandas as pd
 from datetime import datetime, timedelta
 from sqlalchemy import extract, func
 from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.utils import ImageReader
 from functools import wraps
 import json
-import base64
 
 def admin_required(f):
     @wraps(f)
@@ -50,7 +48,7 @@ def panel():
         data['pending_users'] = User.query.filter_by(is_active=False).count()
         data['pending_expenses'] = Expense.query.filter_by(status='pending').count()
         data['pending_access'] = User.query.filter_by(customer_view_requested=True).count()
-        data['modification_requests'] = Expense.query.filter("none" != 'none').count()
+        data['modification_requests'] = Expense.query.filter(Expense.request_type != 'none').count()
         data['total_pending'] = data['pending_users'] + data['pending_expenses'] + data['pending_access'] + data['modification_requests']
     
     # Detect Database Engine
@@ -338,15 +336,7 @@ def analytics():
             _, total_svcs, top_svc = get_service_analysis(orders)
             
 
-            # Vendor Cost calculation to prevent double-counting
-            total_vendor_cost = 0.0
-            processed_v_ids = set()
-            for o in orders:
-                if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
-                    total_vendor_cost += float(0.0)
-                    processed_v_ids.add(o.id)
-
-            total_exp = sum([float(e.amount or 0) for e in expenses]) + total_vendor_cost
+            total_exp = sum([float(e.amount or 0) for e in expenses])
             margin = total_rev - total_exp
             margin_p = (margin / total_rev * 100) if total_rev > 0 else 0
             exp_p = (total_exp / total_rev * 100) if total_rev > 0 else 0
@@ -368,7 +358,6 @@ def analytics():
                 'total_services': total_svcs,
                 'top_service': top_svc,
                 'svcs_per_order': (total_svcs / total) if total > 0 else 0,
-                'total_vendor_cost': total_vendor_cost,
                 'total_expense': total_exp,
                 'profit_margin': margin,
                 'margin_percentage': margin_p,
@@ -576,23 +565,13 @@ def export_analytics_excel():
 
     # Calculate summaries
     total_rev = sum([float(o.price or 0) for o in orders])
-    
-    total_vendor_cost = 0.0
-    processed_v_ids = set()
-    for o in orders:
-        if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
-            total_vendor_cost += float(0.0)
-            processed_v_ids.add(o.id)
-
-    total_exp = sum([float(e.amount or 0) for e in expenses]) + total_vendor_cost
+    total_exp = sum([float(e.amount or 0) for e in expenses])
     billed_rev = sum([float(o.price or 0) for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
     
     # 1. Summary Data
     summary_data = [
         {'Metric': 'Total Revenue (Gross)', 'Value': total_rev},
         {'Metric': 'Billed Revenue (Actual)', 'Value': billed_rev},
-        {'Metric': 'Operational Expenses', 'Value': total_exp - total_vendor_cost},
-        {'Metric': 'Vendor Costs', 'Value': total_vendor_cost},
         {'Metric': 'Total Expenses', 'Value': total_exp},
         {'Metric': 'Net Profit', 'Value': total_rev - total_exp},
         {'Metric': 'Profit Margin (%)', 'Value': ((total_rev-total_exp)/total_rev*100) if total_rev > 0 else 0},
@@ -641,7 +620,7 @@ def add_watermark(canvas, doc):
     """Add watermark to PDF pages"""
     canvas.saveState()
     canvas.setFont('Helvetica-Bold', 55)
-    canvas.setFillGray(0.9)
+    canvas.setFillGray(0.85)
     canvas.translate(300, 400)
     canvas.rotate(45)
     canvas.drawCentredString(0, 0, "The Shoe Clinic")
@@ -705,15 +684,7 @@ def export_analytics_pdf():
 
     def get_metrics(orders, expenses):
         rev = sum([float(o.price or 0) for o in orders])
-        
-        v_cost = 0.0
-        p_ids = set()
-        for o in orders:
-            if 0.0 and 0.0 > 0 and o.id not in p_ids:
-                v_cost += float(0.0)
-                p_ids.add(o.id)
-
-        exp = sum([float(e.amount or 0) for e in expenses]) + v_cost
+        exp = sum([float(e.amount or 0) for e in expenses])
         billed = sum([float(o.price or 0) for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])])
         return {'rev': rev, 'exp': exp, 'billed': billed, 'profit': rev - exp, 'margin': ((rev-exp)/rev*100) if rev > 0 else 0, 'orders': len(orders)}
 
@@ -934,7 +905,7 @@ def reports():
 @login_required
 @super_admin_required
 def work_assign():
-    from models import Order, OrderItem, User, ManualTask
+    from models import Order, OrderItem, User
     from sqlalchemy import func
     from datetime import datetime
     
@@ -997,71 +968,11 @@ def work_assign():
         except:
             pass
 
-    # Fetch manual tasks
-    manual_tasks = ManualTask.query.filter(ManualTask.status.notin_(['done', 'completed'])).all()
-    
-    # Include manual tasks in workload
-    for task in manual_tasks:
-        if task.assigned_to and task.assigned_to in workload:
-            workload[task.assigned_to]['tasks'] += 1
-            workload[task.assigned_to]['items'] += 1
-
     return render_template("admin/work_assign.html", 
                            items=active_items, 
                            staff=staff, 
                            workload=workload,
-                           manual_tasks=manual_tasks,
                            today_date=today)
-
-@admin_bp.route("/add_manual_task", methods=["POST"])
-@login_required
-@super_admin_required
-def add_manual_task():
-    try:
-        title = request.form.get("title")
-        task_type = request.form.get("task_type", "Pickup")
-        customer = request.form.get("customer_name")
-        mobile = request.form.get("mobile")
-        due_date_str = request.form.get("due_date")
-        assigned_to = request.form.get("assigned_to")
-        description = request.form.get("description")
-        
-        due_date = None
-        if due_date_str:
-            due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
-            
-        new_task = ManualTask(
-            title=title,
-            task_type=task_type,
-            customer_name=customer,
-            mobile=mobile,
-            due_date=due_date,
-            assigned_to=assigned_to,
-            description=description,
-            status='yts'
-        )
-        db.session.add(new_task)
-        db.session.commit()
-        flash("Manual task added and assigned successfully!", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error adding manual task: {str(e)}", "danger")
-        
-    return redirect(url_for('admin.work_assign'))
-
-@admin_bp.route("/delete_manual_task/<int:task_id>", methods=["POST"])
-@login_required
-@super_admin_required
-def delete_manual_task(task_id):
-    task = ManualTask.query.get_or_404(task_id)
-    try:
-        db.session.delete(task)
-        db.session.commit()
-        flash("Manual task deleted.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error deleting task: {str(e)}", "danger")
-    return redirect(url_for('admin.work_assign'))
 
 @admin_bp.route("/assign_task", methods=["POST"])
 @login_required
@@ -1080,32 +991,13 @@ def assign_task():
             item = OrderItem.query.get(item_id)
             if item:
                 if service_name:
+                    # Assign specific service
                     assignments = json.loads(item.service_assignments) if item.service_assignments else {}
                     statuses = json.loads(item.service_statuses) if item.service_statuses else {}
                     
-                    if not technician_name or technician_name == 'UNASSIGN':
-                        # Unassign Logic
-                        services_to_clear = [service_name]
-                        if service_name.lower() == 'deep clean':
-                            services_to_clear.extend(['wash', 're wash', 'packing'])
-                        
-                        for s in services_to_clear:
-                            if s in assignments:
-                                del assignments[s]
-                            if s in statuses:
-                                del statuses[s]
-                        flash(f"Service(s) cleared ✅", "info")
-                    else:
-                        # Assign Logic
-                        services_to_assign = [service_name]
-                        if service_name.lower() == 'deep clean':
-                            services_to_assign.extend(['wash', 're wash', 'packing'])
-                        
-                        for s in services_to_assign:
-                            assignments[s] = technician_name
-                            if s not in statuses:
-                                statuses[s] = 'yts'
-                        flash(f"Assigned to {technician_name} ✅", "success")
+                    assignments[service_name] = technician_name
+                    if service_name not in statuses:
+                        statuses[service_name] = 'yts'
                         
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
@@ -1114,17 +1006,28 @@ def assign_task():
                     if item.order and not item.order.service_date:
                         from datetime import datetime
                         item.order.service_date = datetime.now()
-                else:
-                    # Assign whole item (Main Lead)
-                    # We ONLY update the item-level technician now.
-                    # We do NOT automatically assign this person to every individual service anymore.
-                    item.technician = technician_name
-                    flash(f"Main Lead updated to {technician_name} ✅", "success")
                     
-                    # Ensure order service_date is set
-                    if item.order and not item.order.service_date:
-                        from datetime import datetime
-                        item.order.service_date = datetime.now()
+                    flash(f"Service '{service_name}' assigned to {technician_name} ✅", "success")
+                else:
+                    # Assign whole item
+                    item.technician = technician_name
+                    assignments = {}
+                    statuses = json.loads(item.service_statuses) if item.service_statuses else {}
+                    if item.services:
+                        for s in item.services.split(','):
+                            name = s.strip()
+                            assignments[name] = technician_name
+                            if name not in statuses:
+                                statuses[name] = 'yts'
+                    item.service_assignments = json.dumps(assignments)
+                    item.service_statuses = json.dumps(statuses)
+                    flash(f"Item assigned to {technician_name} ✅", "success")
+                
+                # Set service_date on the order if not already set
+                if item.order and not item.order.service_date:
+                    from datetime import datetime
+                    item.order.service_date = datetime.now()
+                    
                 db.session.commit()
         elif order_id:
             order = Order.query.get(order_id)
@@ -1155,93 +1058,6 @@ def assign_task():
         db.session.rollback()
         flash(f"Error assigning task: {str(e)}", "danger")
             
-    return redirect(url_for("admin.work_assign"))
-
-@admin_bp.route("/assign_task_bundle", methods=["POST"])
-@login_required
-@super_admin_required
-def assign_task_bundle():
-    from models import OrderItem
-    import json
-    
-    item_id = request.form.get("item_id")
-    technician_name = request.form.get("technician")
-    bundle_name = request.form.get("bundle_name")
-    
-    if not item_id or not technician_name or not bundle_name:
-        flash("Missing data for bundle assignment", "danger")
-        return redirect(url_for("admin.work_assign"))
-        
-    try:
-        item = OrderItem.query.get(item_id)
-        if item:
-            current_services = [s.strip() for s in item.services.split(',')] if item.services else []
-            assignments = json.loads(item.service_assignments) if item.service_assignments else {}
-            statuses = json.loads(item.service_statuses) if item.service_statuses else {}
-            
-            services_to_add = []
-            if bundle_name == 'standard_process':
-                 services_to_add = ['deep clean', 'wash', 're wash', 'packing']
-            elif bundle_name == 'cleaning_full':
-                 services_to_add = ['deep clean', 'wash', 're wash', 'packing']
-            
-            # 1. Update Services List
-            for s in services_to_add:
-                if technician_name == 'UNASSIGN':
-                    # REMOVE Logic: Remove service from list and assignments
-                    # Remove from text list
-                    temp_services = []
-                    for existing in current_services:
-                        if existing.lower() != s.lower():
-                            temp_services.append(existing)
-                    current_services = temp_services
-                    
-                    # Remove assignment
-                    if s in assignments:
-                        del assignments[s]
-                    
-                    # Remove status (optional, keeps data cleaner)
-                    if s in statuses:
-                        del statuses[s]
-
-                else:
-                    # ADD Logic: Add service if missing, assign tech
-                    # Add to text list if not present
-                    is_present = False
-                    for existing in current_services:
-                        if existing.lower() == s.lower():
-                            is_present = True
-                            break
-                    if not is_present:
-                        current_services.append(s)
-                    
-                    # Assign to Tech
-                    assignments[s] = technician_name
-                    
-                    # Init Status
-                    if s not in statuses:
-                        statuses[s] = 'yts'
-            
-            item.services = ",".join(current_services)
-            item.service_assignments = json.dumps(assignments)
-            item.service_statuses = json.dumps(statuses)
-            
-            # Ensure order service_date is set
-            if item.order and not item.order.service_date:
-                from datetime import datetime
-                item.order.service_date = datetime.now()
-            
-            db.session.commit()
-            
-            if technician_name == 'UNASSIGN':
-                flash(f"Process unassigned (cleared) ✅", "info")
-            else:
-                flash(f"Process assigned to {technician_name} ✅", "success")
-            
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error: {str(e)}", "danger")
-        
     return redirect(url_for("admin.work_assign"))
 
 @admin_bp.route("/set_assignment_date", methods=["POST"])
@@ -1556,8 +1372,7 @@ def add_expense():
 @login_required
 @admin_required
 def get_staff_balance(name):
-    from sqlalchemy import func
-    staff = Staff.query.filter(func.lower(Staff.name) == func.lower(name.strip())).first()
+    staff = Staff.query.filter_by(name=name).first()
     if not staff:
         return jsonify({'error': 'Staff not found'}), 404
         
@@ -1577,52 +1392,10 @@ def get_staff_balance(name):
                     total_earned += int(h) * float(staff.base_salary or 0)
     
     # 2. Fixed monthly earnings (Count months since created)
-    # 2. Monthly earnings (Strictly Attendance Based)
     if staff.salary_type == 'monthly':
-        if staff.user_id:
-            import calendar
-            # Reset earn count to strict attendance if user is linked
-            # (Note: This overwrites any per_day calculation above, but per_day/per_hour types enter previous block)
-            # Actually, per_day enters block 1, monthly enters block 2. Only "monthly" executes here.
-            
-            # Efficiently fetch attendance again if needed, or iterate existing 'atts' if we had them
-            # The previous block (lines 1386-1396) fetches 'atts' ONLY if salary_type is per_day/per_hour ?
-            # No, line 1386 fetches for ALL linked users, but the inner loop only acts on per_day/per_hour.
-            # So 'atts' variable IS available here if we move logic or reuse it.
-            
-            # Let's verify scope. 'atts' is defined inside "if staff.user_id:".
-            # We should reuse that logic block structure or fetch again.
-            
-            # To be safe and clean, let's restructure to use variable 'atts' if available.
-            # But since 'atts' scope is inside if, let's just re-query or assume previous block ran.
-            # Best to just re-query or check scope. The previous code structure had them separate.
-            
-            atts = Attendance.query.filter_by(user_id=staff.user_id).all()
-            monthly_earned = 0.0
-            
-            for a in atts:
-                # Determine that month's total days
-                # a.date is a date object
-                _, days_in_month = calendar.monthrange(a.date.year, a.date.month)
-                daily_rate = float(staff.base_salary or 0) / days_in_month
-                
-                if a.status == 'Present':
-                    monthly_earned += daily_rate
-                elif a.status == 'Half-Day':
-                    monthly_earned += (daily_rate * 0.5)
-            
-            total_earned = monthly_earned
-        else:
-            # Fallback for Unlinked Accounts: Pro-rata based on days existed
-            now = datetime.now().date()
-            start = staff.created_at.date()
-            days_passed = (now - start).days + 1
-            # Average 30 days? Or calculate rough months? 
-            # User wants strictness, but unlinked accounts can't be strict.
-            # Let'sstick to strict "days existing" pro-rata for unlinked.
-            # Daily rate approx = Base / 30.44
-            daily_rate = float(staff.base_salary or 0) / 30.44
-            total_earned = days_passed * daily_rate
+        now = datetime.now().date()
+        months = (now.year - staff.created_at.year) * 12 + now.month - staff.created_at.month + 1
+        total_earned = months * float(staff.base_salary or 0)
 
     # 3. Total Paid
     total_paid = db.session.query(func.sum(Expense.real_amount)).filter(
@@ -1729,7 +1502,7 @@ def day_to_day_expense():
     total_amount = sum(float(e.real_amount or e.amount or 0) for e in expenses)
     transaction_count = len(expenses)
     
-    categories = ["Rent", "Utilities", "Salary", "Salary Advance", "Supplies", "Marketing", "Petrol", "Maintenance", "Electricity", "Other"]
+    categories = ["Rent", "Utilities", "Salaries", "Salary Advance", "Supplies", "Marketing", "Petrol", "Maintenance", "Other"]
 
     return render_template("admin/day_to_day_expense.html", 
                          expenses=expenses, 
@@ -1744,11 +1517,11 @@ def day_to_day_expense():
                          selected_category=selected_category,
                          categories=categories)
 
-@admin_bp.route("/export_expenses_excel", methods=["GET", "POST"])
+@admin_bp.route("/export_expenses_excel")
 @login_required
 @super_admin_required
 def export_expenses_excel():
-    expenses, filter_type, display_date, _, _ = _get_filtered_expenses(request.values)
+    expenses, filter_type, display_date, _, _ = _get_filtered_expenses(request.args)
     
     data = []
     for e in expenses:
@@ -1757,7 +1530,7 @@ def export_expenses_excel():
             'Title': e.title,
             'Category': e.category,
             'Description': e.description or '-',
-            'Amount': e.real_amount or e.amount,
+            'Amount': e.amount,
             'Added At': e.created_at.strftime('%Y-%m-%d %H:%M:%S')
         })
     
@@ -1766,28 +1539,17 @@ def export_expenses_excel():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Expenses')
-        workbook = writer.book
-        worksheet = writer.sheets['Expenses']
-        
-        # Insert Chart if provided
-        time_chart = request.form.get('time_chart')
-        
-        if time_chart:
-            header, encoded = time_chart.split(",", 1)
-            img_data = base64.b64decode(encoded)
-            worksheet.write(2, 7, 'Spending Trend')
-            worksheet.insert_image(3, 7, 'time_chart.png', {'image_data': io.BytesIO(img_data), 'x_scale': 0.6, 'y_scale': 0.6})
         
     output.seek(0)
     
     filename = f"Expenses_Report_{display_date}.xlsx"
     return send_file(output, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
-@admin_bp.route("/export_expenses_pdf", methods=["GET", "POST"])
+@admin_bp.route("/export_expenses_pdf")
 @login_required
 @super_admin_required
 def export_expenses_pdf():
-    expenses, filter_type, display_date, _, _ = _get_filtered_expenses(request.values)
+    expenses, filter_type, display_date, _, _ = _get_filtered_expenses(request.args)
     
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=A4)
@@ -1808,9 +1570,9 @@ def export_expenses_pdf():
             e.title,
             e.category,
             e.description or '-',
-            f"INR {(e.real_amount or e.amount):.2f}"
+            f"INR {e.amount:.2f}"
         ])
-        total += (e.real_amount or e.amount)
+        total += e.amount
     
     # Add Total Row
     data.append(['', '', '', 'TOTAL', f"INR {total:.2f}"])
@@ -1829,23 +1591,6 @@ def export_expenses_pdf():
     ]))
     
     elements.append(t)
-    
-    # Add Chart to PDF
-    time_chart = request.form.get('time_chart')
-    
-    if time_chart:
-        elements.append(Spacer(1, 24))
-        elements.append(Paragraph("Visual Analytics", styles['Heading2']))
-        elements.append(Spacer(1, 12))
-        
-        try:
-            header, encoded = time_chart.split(",", 1)
-            img_data = base64.b64decode(encoded)
-            elements.append(Paragraph("Spending Trend", styles['Heading3']))
-            elements.append(Image(io.BytesIO(img_data), width=450, height=220))
-            elements.append(Spacer(1, 12))
-        except: pass
-
     doc.build(elements, onFirstPage=add_watermark, onLaterPages=add_watermark)
     
     output.seek(0)
@@ -1900,13 +1645,11 @@ def expense_chart_data():
     trend_expenses = trend_query.all()
     
     # 1. Calculate Summary (from ALL categories in this period)
-    # 1. Calculate Summary (from ALL categories in this period)
-    total_amount = sum((e.real_amount or e.amount or 0) for e in all_expenses)
+    total_amount = sum(e.amount for e in all_expenses)
     
     cat_summary = {}
     for e in all_expenses:
-        val = e.real_amount or e.amount or 0
-        cat_summary[e.category] = cat_summary.get(e.category, 0) + val
+        cat_summary[e.category] = cat_summary.get(e.category, 0) + e.amount
     
     largest_cat_name = "N/A"
     largest_cat_amount = 0
@@ -1921,14 +1664,12 @@ def expense_chart_data():
     if filter_type == 'month':
         for e in trend_expenses:
             day = e.expense_date.day
-            val = e.real_amount or e.amount or 0
-            time_groups[day] = time_groups.get(day, 0) + val
+            time_groups[day] = time_groups.get(day, 0) + e.amount
         labels = sorted(time_groups.keys())
     elif filter_type == 'year':
         for e in trend_expenses:
             month = e.expense_date.month
-            val = e.real_amount or e.amount or 0
-            time_groups[month] = time_groups.get(month, 0) + val
+            time_groups[month] = time_groups.get(month, 0) + e.amount
         labels = sorted(time_groups.keys())
     elif filter_type == 'range':
         s_date = request.args.get('start_date')
@@ -1941,22 +1682,19 @@ def expense_chart_data():
             if diff <= 62: # Up to 2 months, show daily
                 for e in trend_expenses:
                     d_key = e.expense_date.strftime('%d %b')
-                    val = e.real_amount or e.amount or 0
-                    time_groups[d_key] = time_groups.get(d_key, 0) + val
+                    time_groups[d_key] = time_groups.get(d_key, 0) + e.amount
                 # Sort by date properly
                 labels = sorted(time_groups.keys(), key=lambda x: datetime.strptime(x, '%d %b'))
             else: # Larger range, show monthly
                 for e in trend_expenses:
                     m_key = e.expense_date.strftime('%b %Y')
-                    val = e.real_amount or e.amount or 0
-                    time_groups[m_key] = time_groups.get(m_key, 0) + val
+                    time_groups[m_key] = time_groups.get(m_key, 0) + e.amount
                 labels = sorted(time_groups.keys(), key=lambda x: datetime.strptime(x, '%b %Y'))
         except (ValueError, TypeError):
             # Fallback
             for e in trend_expenses:
                 day = e.expense_date.day
-                val = e.real_amount or e.amount or 0
-                time_groups[day] = time_groups.get(day, 0) + val
+                time_groups[day] = time_groups.get(day, 0) + e.amount
             labels = sorted(time_groups.keys())
 
     time_data = [time_groups[l] for l in labels]
@@ -2001,37 +1739,13 @@ def financial_report():
         if 'error' in yearly_report:
             flash(f"Error generating yearly report: {yearly_report['error']}", "danger")
 
-        # Trend data for chart
-        trend_period = request.args.get('trend_period', 6, type=int)
-        financial_trend = []
-        import calendar
-        for i in range(trend_period - 1, -1, -1):
-            m = selected_month - i
-            y = selected_year
-            while m <= 0:
-                m += 12
-                y -= 1
-            try:
-                rep = get_monthly_report_legacy(y, m)
-                if 'error' not in rep:
-                    financial_trend.append({
-                        'label': f"{calendar.month_name[m][:3]} {y}",
-                        'revenue': float(rep.get('income', 0)),
-                        'expense': float(rep.get('total_expenses_actual', 0)),
-                        'vendor': float(rep.get('total_vendor_cost', 0))
-                    })
-            except:
-                continue
-
         return render_template(
             "admin/reports/financial.html", 
             monthly=monthly_report, 
             yearly=yearly_report,
             years=range(2023, datetime.now().year + 2),
             selected_year=selected_year,
-            selected_month=selected_month,
-            financial_trend=financial_trend,
-            trend_period=trend_period
+            selected_month=selected_month
         )
         
     except Exception as e:
@@ -2316,11 +2030,6 @@ def reject_user(user_id):
     # We delete rejected users as they don't have active accounts anyway
     # But if we want them to see a notification, we can't delete yet.
     # For now, let's just delete to keep DB clean, or just keep them inactive.
-    # Handle Foreign Key Constraints before deletion
-    from models import Staff, LoginAttempt
-    Staff.query.filter_by(user_id=user.id).update({Staff.user_id: None})
-    LoginAttempt.query.filter_by(user_id=user.id).delete()
-    
     db.session.delete(user)
     db.session.commit()
     flash(f"User {username} registration rejected and removed.", "warning")
@@ -2396,8 +2105,8 @@ def request_delete_expense(expense_id):
             return redirect(url_for('admin.day_to_day_expense'))
             
         # Request Delete
-        pass # Attribute assignment removed
-        pass # Attribute assignment removed
+        expense.request_type = 'delete'
+        expense.request_reason = reason
         db.session.commit()
         flash("Deletion request submitted to Super Admin.", "info")
     
@@ -2413,21 +2122,16 @@ def request_edit_expense(expense_id):
     # Get form data
     title = request.form.get("title")
     amount = request.form.get("amount")
-    real_amount = request.form.get("real_amount")
     category = request.form.get("category")
     expense_date_str = request.form.get("expense_date")
     description = request.form.get("description")
     reason = request.form.get("reason")
     
-    if not category:
-        flash("Registration failed: Category is required.", "danger")
-        return redirect(url_for('admin.day_to_day_expense'))
-
     if current_user.role == 'super_admin':
         # Direct Edit
         expense.title = title
-        expense.amount = float(amount or 0)
-        expense.real_amount = float(real_amount or amount or 0)
+        expense.amount = float(amount)
+        expense.real_amount = float(amount) # Keep synced for super admin quick edits
         expense.category = category
         expense.expense_date = datetime.strptime(expense_date_str, "%Y-%m-%d").date()
         expense.description = description
@@ -2443,14 +2147,13 @@ def request_edit_expense(expense_id):
         proposed_changes = {
             'title': title,
             'amount': amount,
-            'real_amount': real_amount or amount,
             'category': category,
             'expense_date': expense_date_str,
             'description': description
         }
-        pass # Attribute assignment removed
-        pass # Attribute assignment removed
-        pass # Attribute assignment removed
+        expense.request_type = 'edit'
+        expense.request_reason = reason
+        expense.request_data = json.dumps(proposed_changes)
         db.session.commit()
         flash("Edit request submitted for approval.", "info")
         
@@ -2465,13 +2168,13 @@ def process_expense_request(expense_id, action):
     from datetime import datetime
     expense = Expense.query.get_or_404(expense_id)
     recipient_id = expense.added_by
-    req_type = "none"
+    req_type = expense.request_type
     
     if action == 'reject':
         # Store title before clearing record if necessary, but here we keep the record
-        pass # Attribute assignment removed
-        pass # Attribute assignment removed
-        pass # Attribute assignment removed
+        expense.request_type = 'none'
+        expense.request_reason = None
+        expense.request_data = None
         flash("Request rejected.", "info")
         
         # Create notification
@@ -2499,19 +2202,18 @@ def process_expense_request(expense_id, action):
                 )
                 db.session.add(notif)
         elif req_type == 'edit':
-            if "none":
-                data = json.loads("none")
+            if expense.request_data:
+                data = json.loads(expense.request_data)
                 expense.title = data['title']
                 expense.amount = float(data['amount'])
-                expense.real_amount = float(data.get('real_amount') or data['amount'])
                 expense.category = data['category']
                 expense.expense_date = datetime.strptime(data['expense_date'], "%Y-%m-%d").date()
                 expense.description = data['description']
                 
                 # Clear request
-                pass # Attribute assignment removed
-                pass # Attribute assignment removed
-                pass # Attribute assignment removed
+                expense.request_type = 'none'
+                expense.request_reason = None
+                expense.request_data = None
                 flash("Expense edit approved and applied.", "success")
                 
                 # Create notification
@@ -2548,7 +2250,7 @@ def notifications():
         pending_expenses = Expense.query.filter_by(status='pending').all()
         access_requests = User.query.filter_by(customer_view_requested=True).all()
         performance_requests = User.query.filter_by(performance_view_requested=True).all()
-        expense_requests = Expense.query.filter("none" != 'none').all()
+        expense_requests = Expense.query.filter(Expense.request_type != 'none').all()
         # Fetch users with active access (excluding super admin)
         active_access_users = User.query.filter(User.can_view_customers == True, User.role != 'super_admin').all()
         active_performance_users = User.query.filter(User.can_view_performance == True, User.role != 'super_admin').all()
@@ -2626,246 +2328,29 @@ def staff_ledger(id):
                            total_paid=total_paid,
                            balance=total_earned - total_paid)
 
-# --- Cash Management & Manual Payment Routes ---
-
-@admin_bp.route("/cash_management")
-@login_required
-@admin_required
-def cash_management():
-    from models import Order, CashDeposit, User
-    from sqlalchemy import func
-    from datetime import datetime
-    
-    # Calculate Total Cash Collected (Payment Mode = Cash, Payment Status = Paid)
-    # Note: Case-insensitive check for robustness
-    cash_orders = Order.query.filter(
-        func.lower(Order.payment_status) == 'paid',
-        func.lower(Order.payment_mode) == 'cash'
-    ).all()
-    total_collected = sum([float(o.price or 0) for o in cash_orders])
-    
-    # Total Deposited
-    deposits = CashDeposit.query.order_by(CashDeposit.deposit_date.desc()).all()
-    total_deposited = sum([d.amount for d in deposits])
-    
-    cash_in_hand = total_collected - total_deposited
-    
-    today_date = datetime.now().strftime('%Y-%m-%d')
-    return render_template("admin/cash_management.html",
-                           total_collected=total_collected,
-                           total_deposited=total_deposited,
-                           cash_in_hand=cash_in_hand,
-                           deposits=deposits,
-                           today_date=today_date)
-
-@admin_bp.route("/add_cash_deposit", methods=['POST'])
-@login_required
-@admin_required
-def add_cash_deposit():
-    from models import CashDeposit
-    from datetime import datetime
-    try:
-        amount = float(request.form.get('amount'))
-        date_str = request.form.get('deposit_date')
-        reference = request.form.get('reference')
-        notes = request.form.get('notes')
-        
-        deposit_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        
-        new_deposit = CashDeposit(
-            amount=amount,
-            deposit_date=deposit_date,
-            reference=reference,
-            notes=notes,
-            added_by=current_user.id
-        )
-        db.session.add(new_deposit)
-        db.session.commit()
-        flash("Cash deposit recorded successfully", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error recording deposit: {str(e)}", "danger")
-        
-    return redirect(url_for('admin.cash_management'))
-
-@admin_bp.route("/mark_order_paid_manual", methods=['POST'])
-@login_required
-def mark_order_paid_manual():
-    from models import Order
-    
-    order_id = request.form.get('order_id')
-    amount = request.form.get('amount')
-    mode = request.form.get('payment_mode')
-    note = request.form.get('note') # Currently unused in DB but could be added later
-    
-    try:
-        order = Order.query.get(order_id)
-        if order:
-            order.payment_status = 'Paid'
-            order.payment_mode = mode
-            # Could update price if different, but usually stick to order price
-            
-            db.session.commit()
-            flash(f"Order {order.job_id} marked as PAID via {mode}", "success")
-        else:
-             flash("Order not found", "danger")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error updating order: {str(e)}", "danger")
-        
-    # specific redirection based on role or referrer could be better
-    return redirect(url_for('tsc_dashboard'))
-
-
-@admin_bp.route("/vendor_management")
-@login_required
-@admin_required
-def vendor_management():
-    # --- VENDOR TRACKING ---
-    vendor_active = []
-    vendor_history = []
-    total_vendor_paid = 0.0
-    
-    # Find all items where any task is assigned to "VENDOR"
-    v_search = '%"VENDOR"%'
-    all_vendor_items = OrderItem.query.filter(
-        (OrderItem.technician == 'VENDOR') | 
-        (OrderItem.service_assignments.ilike(v_search))
-    ).order_by(OrderItem.created_at.desc()).all()
-    
-    processed_orders = set()
-    for v_item in all_vendor_items:
-        if not v_item.order: continue
-        
-        # Extract only vendor tasks
-        try:
-            v_assigns = json.loads(v_item.service_assignments or '{}')
-            v_stats = json.loads(v_item.service_statuses or '{}')
-        except:
-            v_assigns = {}
-            v_stats = {}
-        
-        # Tasks assigned to VENDOR
-        v_tasks = []
-        core_v = [s.strip() for s in (v_item.services or '').split(',')] if v_item.services else []
-        for s_name in core_v:
-            if v_assigns.get(s_name) == 'VENDOR' or (not v_assigns.get(s_name) and v_item.technician == 'VENDOR'):
-                v_tasks.append({'name': s_name, 'status': v_stats.get(s_name, 'yts')})
-        
-        for t_name, t_user in v_assigns.items():
-            if t_user == 'VENDOR' and t_name not in core_v:
-                v_tasks.append({'name': t_name, 'status': v_stats.get(t_name, 'yts')})
-        
-        if v_tasks:
-            entry = {
-                'item': v_item,
-                'tasks': v_tasks,
-                'vendor_amount': 0.0 or 0.0
-            }
-            # If all vendor tasks are done, it's history
-            is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
-            if is_v_done:
-                vendor_history.append(entry)
-                if v_item.order.id not in processed_orders:
-                    total_vendor_paid += (0.0 or 0.0)
-                    processed_orders.add(v_item.order.id)
-            else:
-                vendor_active.append(entry)
-                
-    return render_template("admin/vendor_management.html", 
-                           vendor_active=vendor_active, 
-                           vendor_history=vendor_history, 
-                           total_vendor_paid=total_vendor_paid)
-
 @admin_bp.route("/emergency_db_fix")
-# @login_required  <-- Removed for emergency
-# @super_admin_required <-- Removed for emergency
+@login_required
+@super_admin_required
 def emergency_db_fix():
     from sqlalchemy import text, inspect
-    
     logs = []
     def log(msg):
         logs.append(str(msg))
-    
     try:
         engine = db.engine
         inspector = inspect(engine)
-        
         with engine.begin() as conn:
             log("--- Starting Schema Repair ---")
-            
-            # 1. User Table
             columns = [c['name'] for c in inspector.get_columns('user')]
             if 'first_login_seen' not in columns:
-                log("Adding 'first_login_seen'...")
                 conn.execute(text('ALTER TABLE "user" ADD COLUMN first_login_seen BOOLEAN DEFAULT FALSE'))
-            
-            # 2. Order Table
             columns = [c['name'] for c in inspector.get_columns('order')]
             if 'vendor_amount' not in columns:
-                log("Adding 'vendor_amount'...")
                 conn.execute(text('ALTER TABLE "order" ADD COLUMN vendor_amount FLOAT'))
-                
-            # 3. Expense Table
             columns = [c['name'] for c in inspector.get_columns('expense')]
             if 'request_type' not in columns:
                 conn.execute(text("ALTER TABLE expense ADD COLUMN request_type VARCHAR(20) DEFAULT 'none'"))
-            if 'request_reason' not in columns:
-                conn.execute(text("ALTER TABLE expense ADD COLUMN request_reason VARCHAR(255)"))
-            if 'request_data' not in columns:
-                conn.execute(text("ALTER TABLE expense ADD COLUMN request_data TEXT"))
-            
-            # 4. Tables
-            if not inspector.has_table('manual_task'):
-                conn.execute(text("""
-                    CREATE TABLE manual_task (
-                        id SERIAL PRIMARY KEY,
-                        title VARCHAR(100) NOT NULL,
-                        status VARCHAR(20) DEFAULT 'yts',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """))
-                log("Created manual_task table")
-
-            if not inspector.has_table('cash_deposit'):
-                conn.execute(text("""
-                    CREATE TABLE cash_deposit (
-                        id SERIAL PRIMARY KEY,
-                        amount FLOAT NOT NULL,
-                        deposit_date DATE NOT NULL DEFAULT CURRENT_DATE,
-                        added_by INTEGER REFERENCES "user"(id)
-                    )
-                """))
-                log("Created cash_deposit table")
-                
             log("--- COMPLETE ---")
-            
     except Exception as e:
         log(f"ERROR: {str(e)}")
-        
     return "<br>".join(logs)
-@login_required
-@super_admin_required
-def edit_manual_task(task_id):
-    from models import ManualTask
-    task = ManualTask.query.get_or_404(task_id)
-    try:
-        task.title = request.form.get("title")
-        task.task_type = request.form.get("task_type")
-        task.customer_name = request.form.get("customer_name")
-        task.mobile = request.form.get("mobile")
-        
-        due_date_str = request.form.get("due_date")
-        if due_date_str:
-            task.due_date = datetime.strptime(due_date_str, '%Y-%m-%d')
-            
-        task.assigned_to = request.form.get("assigned_to")
-        task.description = request.form.get("description")
-        
-        db.session.commit()
-        flash("Manual task updated successfully!", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error updating manual task: {str(e)}", "danger")
-        
-    return redirect(url_for('admin.work_assign'))

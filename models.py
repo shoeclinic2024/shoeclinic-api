@@ -40,9 +40,6 @@ class User(UserMixin, db.Model):
     # Session management
     session_token = db.Column(db.String(100), nullable=True)
     last_activity = db.Column(db.DateTime, nullable=True)
-    
-    # UI Flags
-    # first_login_seen removed temporarily
 
 # --- Order Model ---
 class Order(db.Model):
@@ -64,7 +61,6 @@ class Order(db.Model):
     payment_status = db.Column(db.String(50))
     discount = db.Column(db.String(50))
     outsource = db.Column(db.String(100))
-    # vendor_amount removed temporarily
     item_count = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.now)
     work_finish_date = db.Column(db.DateTime, nullable=True) # New column
@@ -102,36 +98,11 @@ class Expense(db.Model):
     status = db.Column(db.String(20), nullable=False, default="pending")  # pending, approved
     added_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     created_at = db.Column(db.DateTime, default=datetime.now)
-
-    # Request tracking for non-super admins
-    # request_type removed temporarily
-    # request_reason removed temporarily
-    # request_data removed temporarily
-    
-    @property
-    def get_request_data(self):
-        import json
-        if self.request_data:
-            try:
-                return json.loads(self.request_data)
-            except:
-                return {}
-        return {}
-
-# --- Cash Deposit Model ---
-class CashDeposit(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    amount = db.Column(db.Float, nullable=False)
-    deposit_date = db.Column(db.Date, nullable=False, default=datetime.now)
-    reference = db.Column(db.String(100)) # e.g. Bank Ref ID or "Handover"
-    notes = db.Column(db.String(255))
-    added_by = db.Column(db.Integer, db.ForeignKey('user.id'))
-    created_at = db.Column(db.DateTime, default=datetime.now)
     
     # Request tracking for non-super admins
-    # request_type removed temporarily
-    # request_reason removed temporarily
-    # request_data removed temporarily
+    request_type = db.Column(db.String(20), default='none') # none, delete, edit
+    request_reason = db.Column(db.String(255), nullable=True)
+    request_data = db.Column(db.Text, nullable=True) # JSON literal for proposed edits
     
     @property
     def get_request_data(self):
@@ -256,22 +227,4 @@ class PaymentTransaction(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
 
     order = db.relationship('Order', backref=db.backref('transactions', cascade='all, delete-orphan'))
-
-# --- Manual Task Model (v02) ---
-class ManualTask(db.Model):
-    """Tasks not directly linked to an order like Pickup/Delivery"""
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(100), nullable=False) # e.g. Pickup from XYZ
-    description = db.Column(db.Text, nullable=True)
-    assigned_to = db.Column(db.String(100), nullable=True) # Staff Username
-    status = db.Column(db.String(20), default="yts") # yts, wip, done
-    due_date = db.Column(db.DateTime, nullable=True)
-    task_type = db.Column(db.String(50), default="Pickup") # Pickup, Delivery, Other
-    customer_name = db.Column(db.String(100), nullable=True)
-    mobile = db.Column(db.String(20), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.now)
-    completed_at = db.Column(db.DateTime, nullable=True)
-
-    # Optional relationship if needed
-    # user = db.relationship('User', primaryjoin="ManualTask.assigned_to == User.username", foreign_keys="User.username")
 
