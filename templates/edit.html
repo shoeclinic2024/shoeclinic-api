@@ -110,8 +110,10 @@
                     class="form-control" value="{{ order.payment_status or '' }}"></div>
             <div class="col-md-6"><label>Offer/Discount</label><input type="text" name="discount" class="form-control"
                     value="{{ order.discount or '' }}"></div>
-            <div class="col-md-6"><label>Outsource</label><input type="text" name="outsource" class="form-control"
+            <div class="col-md-6"><label>Vendor Status</label><input type="text" name="outsource" class="form-control"
                     value="{{ order.outsource or '' }}"></div>
+            <div class="col-md-6"><label>Vendor Amount</label><input type="number" step="0.01" name="vendor_amount"
+                    class="form-control" value="{{ order.vendor_amount or '' }}"></div>
             <div class="col-md-6"><label>Item Count</label><input type="number" name="item_count" class="form-control"
                     value="{{ order.item_count or '' }}"></div>
 

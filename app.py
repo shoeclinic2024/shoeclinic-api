@@ -105,7 +105,7 @@ def status_color(status):
     s = str(status).lower()
     if s in ["pending", "in progress", "wip", "started", "yts"]:
         return "warning"
-    elif s in ["done", "completed", "finished", "billed"]:
+    elif s in ["done", "completed", "finished", "billed", "paid"]:
         return "success"
     elif s in ["cancelled", "rejected", "failed"]:
         return "danger"
@@ -265,11 +265,16 @@ def calculate_ops_metrics(start_date, end_date, orders=None):
         g_done = 0
         g_ready = 0
         g_billed = 0
+        g_paid = 0
+        g_unassigned = 0
         
         if orders:
             for order in orders:
-                # Force Billed status if Order is finalized
-                is_order_billed = (order.status or '').lower() in ['billed', 'delivered', 'completed']
+                o_status = (order.status or '').lower()
+                # Use Payment Status for "Paid" metric
+                is_order_paid = (order.payment_status or '').lower() == 'paid'
+                # Billed if order is finalized but not necessarily paid
+                is_order_billed = o_status in ['billed', 'delivered', 'completed']
                 
                 for item in order.items:
                     svc_list = []
@@ -278,46 +283,59 @@ def calculate_ops_metrics(start_date, end_date, orders=None):
                     
                     if not svc_list:
                         # Treat item as single task
-                        if is_order_billed:
+                        if is_order_paid:
+                            g_paid += 1
+                        elif is_order_billed:
                             g_billed += 1
                         else:
                             st = (item.status or 'yts').lower()
-                            if st in ['done', 'completed']: g_done += 1
-                            elif st in ['billed', 'delivered']: g_billed += 1
+                            is_assigned = bool(item.technician)
+                            
+                            if not is_assigned:
+                                g_unassigned += 1
+                            elif st in ['done', 'completed']: g_done += 1
                             elif st in ['ready', 'ready to deliver']: g_ready += 1
                             elif st in ['wip', 'work in progress']: g_wip += 1
                             else: g_yts += 1
                     else:
-                        # Granular Services
                         try: statuses = json.loads(item.service_statuses or '{}')
                         except: statuses = {}
+                        try: assignments = json.loads(item.service_assignments or '{}')
+                        except: assignments = {}
                         
                         for svc in svc_list:
-                            if is_order_billed:
+                            if is_order_paid:
+                                g_paid += 1
+                            elif is_order_billed:
                                 g_billed += 1
                             else:
                                 # Default to item status if specific service stat not found
-                                # This ensures if Item is 'WIP', 'Ready', or 'Done', we don't count it as 'YTS'
                                 item_stat_default = (item.status or 'yts').lower()
                                 s_stat = statuses.get(svc, item_stat_default).lower()
+                                is_assigned = bool(assignments.get(svc))
                                      
-                                if s_stat in ['done', 'completed']: g_done += 1
-                                elif s_stat in ['billed', 'delivered']: g_billed += 1
+                                if not is_assigned:
+                                    g_unassigned += 1
+                                elif s_stat in ['done', 'completed']: g_done += 1
                                 elif s_stat in ['ready', 'ready to deliver']: g_ready += 1 
                                 elif s_stat in ['wip', 'work in progress']: g_wip += 1
                                 else: g_yts += 1
 
-        total_granular_tasks = g_yts + g_wip + g_done + g_ready + g_billed
+        assigned_tasks_count = g_yts + g_wip + g_done + g_ready + g_billed + g_paid
+        total_volume = assigned_tasks_count + g_unassigned
         
         return {
             'workers_worked': workers_count or 0,
-            'target_assigned': total_granular_tasks,
+            'assigned_count': assigned_tasks_count, # This will be the "Assigned Items" count
+            'total_volume': total_volume,           # Original total if needed
+            'unassigned_count': g_unassigned,
             'yts_count': g_yts,
             'wip_count': g_wip,
             'done_count': g_done,
             'ready_count': g_ready, 
-            'billed_granular_count': g_billed, # New distinct granular count
-            'delivered_count': delivered_count, # Order level count
+            'billed_granular_count': g_billed,
+            'paid_granular_count': g_paid,          # New Paid metric
+            'delivered_count': delivered_count,     # Order level count
             'expected_delivery_count': expected_delivery_count
         }
     except Exception as e:
@@ -350,7 +368,7 @@ def calculate_tech_performance(orders):
                                 
                                 # Check status of this specific service
                                 s_status = statuses.get(svc_name, 'yts').lower()
-                                if s_status in ['done', 'completed', 'ready to deliver']:
+                                if s_status in ['ready to deliver', 'ready', 'billed', 'delivered']:
                                     tech_performance[tech_name]['completed'] += 1
                     except:
                         pass # Valid JSON check failed
@@ -362,7 +380,7 @@ def calculate_tech_performance(orders):
                         tech_performance[t_name] = {'assigned': 0, 'completed': 0}
                     tech_performance[t_name]['assigned'] += 1
                     
-                    if item.status and item.status.lower() in ['done', 'completed', 'ready to deliver']:
+                    if item.status and item.status.lower() in ['ready to deliver', 'ready', 'billed', 'delivered']:
                         tech_performance[t_name]['completed'] += 1
     except Exception as e:
         print(f"Error calculating tech performance: {e}")
@@ -377,7 +395,7 @@ def get_daily_report(date=None):
         start_of_day = datetime.combine(date, datetime.min.time())
         end_of_day = datetime.combine(date, datetime.max.time())
 
-        # Revenue from Orders (Delivery View)
+        # Revenue from Orders (Delivery View - Targets for today)
         orders = Order.query.filter(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day).all()
         
         # Only counting APPROVED expenses (Direct filter in SQL)
@@ -388,32 +406,68 @@ def get_daily_report(date=None):
         # Calculate Billed Revenue from Sales View (Orders TAKEN today that are billed)
         sales_orders = Order.query.filter(Order.pickup_date >= start_of_day, Order.pickup_date <= end_of_day).all()
         billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
-        # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        
+        # --- Operational/Production Inclusive Data (v02 Fix) ---
+        # To ensure "Production Statistics" and "Tech Efficiency" aren't empty,
+        # we include orders where ANY major activity happened today:
+        # 1. Picked Up (Assignment Start)
+        # 2. Worked On/Finished (work_finish_date)
+        # 3. Delivered/Billed (actual_delivery_date)
+        # 4. Target Delivery (drop_date)
+        
+        all_activities = Order.query.filter(
+            db.or_(
+                db.and_(Order.pickup_date >= start_of_day, Order.pickup_date <= end_of_day),
+                db.and_(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day),
+                db.and_(Order.work_finish_date >= start_of_day, Order.work_finish_date <= end_of_day),
+                db.and_(Order.actual_delivery_date >= start_of_day, Order.actual_delivery_date <= end_of_day)
+            )
+        ).all()
+
+        # --- Financial Activity (Actual transactions happening today) ---
+        today_billed_orders = Order.query.filter(Order.actual_delivery_date >= start_of_day, Order.actual_delivery_date <= end_of_day).all()
+        
+        billed_count = len(today_billed_orders)
+        billed_revenue = sum([float(o.price or 0) for o in today_billed_orders])
+        
+        paid_orders = [o for o in today_billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_revenue = sum([float(o.price or 0) for o in paid_orders])
-        billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         
         total_expenses = sum([float(e.amount or 0) for e in expenses])
+        
+        # --- Vendor Cost Tracking ---
+        # Calculate vendor costs for orders handled/active today
+        today_vendor_orders = []
+        processed_v_ids = set()
+        for o in all_activities:
+            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+                today_vendor_orders.append(o)
+                processed_v_ids.add(o.id)
+        
+        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in today_vendor_orders])
+        
         completed = Order.query.filter(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day, Order.status.ilike('%done%')).count()
         
-        # Calculate Technician Performance
-        tech_performance = calculate_tech_performance(orders)
+        # Calculate Technician Performance from ALL active items today
+        tech_performance = calculate_tech_performance(all_activities)
 
-        ops = calculate_ops_metrics(date, date, orders=orders)
+        # Calculate Ops Metrics from ALL active items today
+        ops = calculate_ops_metrics(date, date, orders=all_activities)
 
         return {
             'date': date,
             'title': date.strftime('%d %B, %Y'),
             'type': 'Daily',
             'total_orders': len(orders),
-            'total_revenue': total_revenue,
-            'billed_revenue': billed_revenue,
-            'billed_count': len(billed_orders),
+            'total_revenue': total_revenue, # Delivery Targets
+            'billed_revenue': billed_revenue, # Real billing today
+            'billed_count': billed_count,
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
-            'net_profit': total_revenue - total_expenses,
+            'total_vendor_cost': total_vendor_cost,
+            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
             'completed': completed,
             'pending': len(orders) - completed,
             'orders': orders,
@@ -441,9 +495,20 @@ def get_weekly_report(week_start=None):
         # 1. Target Orders (Delivery View - Drop Date)
         orders = Order.query.filter(Order.drop_date >= start_dt, Order.drop_date <= end_dt).all()
         
-        # 2. Sales Orders (Billing View - Pickup Date)
+        # Sales Orders (Billing View - Pickup Date)
         sales_orders = Order.query.filter(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt).all()
         billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
+        
+        # --- Operational/Production Inclusive Data (v02 Fix) ---
+        all_activities = Order.query.filter(
+            db.or_(
+                db.and_(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt),
+                db.and_(Order.drop_date >= start_dt, Order.drop_date <= end_dt),
+                db.and_(Order.work_finish_date >= start_dt, Order.work_finish_date <= end_dt),
+                db.and_(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt)
+            )
+        ).all()
+
         # --- Paid Orders Tracking (v02) ---
         paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
         paid_count = len(paid_orders)
@@ -457,10 +522,20 @@ def get_weekly_report(week_start=None):
         billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # Tech Perf
-        tech_performance = calculate_tech_performance(orders)
+        # --- Vendor Cost Tracking ---
+        vendor_orders = []
+        processed_v_ids = set()
+        for o in all_activities:
+            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+                vendor_orders.append(o)
+                processed_v_ids.add(o.id)
         
-        ops = calculate_ops_metrics(week_start, week_end, orders=orders)
+        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        
+        # Tech Perf
+        tech_performance = calculate_tech_performance(all_activities)
+        
+        ops = calculate_ops_metrics(week_start, week_end, orders=all_activities)
 
         return {
             'week_start': week_start,
@@ -474,7 +549,8 @@ def get_weekly_report(week_start=None):
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
-            'net_profit': total_revenue - total_expenses,
+            'total_vendor_cost': total_vendor_cost,
+            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -507,9 +583,20 @@ def get_monthly_report(year=None, month=None):
         # 1. Target Orders (Delivery View - Drop Date)
         orders = Order.query.filter(Order.drop_date >= start_dt, Order.drop_date <= end_dt).all()
         
-        # 2. Sales Orders (Billing View - Pickup Date)
+        # Sales Orders (Billing View - Pickup Date)
         sales_orders = Order.query.filter(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt).all()
         billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
+        
+        # --- Operational/Production Inclusive Data (v02 Fix) ---
+        all_activities = Order.query.filter(
+            db.or_(
+                db.and_(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt),
+                db.and_(Order.drop_date >= start_dt, Order.drop_date <= end_dt),
+                db.and_(Order.work_finish_date >= start_dt, Order.work_finish_date <= end_dt),
+                db.and_(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt)
+            )
+        ).all()
+
         # --- Paid Orders Tracking (v02) ---
         paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
         paid_count = len(paid_orders)
@@ -523,10 +610,20 @@ def get_monthly_report(year=None, month=None):
         billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # Tech Perf
-        tech_performance = calculate_tech_performance(orders)
+        # --- Vendor Cost Tracking ---
+        vendor_orders = []
+        processed_v_ids = set()
+        for o in all_activities:
+            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+                vendor_orders.append(o)
+                processed_v_ids.add(o.id)
         
-        ops = calculate_ops_metrics(month_start, month_end, orders=orders)
+        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        
+        # Tech Perf
+        tech_performance = calculate_tech_performance(all_activities)
+        
+        ops = calculate_ops_metrics(month_start, month_end, orders=all_activities)
         
         return {
             'month': month,
@@ -542,7 +639,8 @@ def get_monthly_report(year=None, month=None):
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
-            'net_profit': total_revenue - total_expenses,
+            'total_vendor_cost': total_vendor_cost,
+            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -576,7 +674,23 @@ def get_monthly_report_legacy(year=None, month=None):
         expenses = [e for e in all_expenses if month_start <= e.expense_date <= month_end]
         
         # Financial Breakdown
-        total_orders = len(orders)
+        # "Total Orders" = Total Services (as per user definition)
+        total_orders = 0
+        for o in orders:
+            for i in o.items:
+                if i.services:
+                    # Split by comma to count multiple services on one item (e.g. "Deep Clean,Patchwork")
+                    service_list = [s.strip() for s in i.services.split(',') if s.strip()]
+                    total_orders += len(service_list)
+                else:
+                    # If item exists but no service specified, count as 1 item/service?
+                    # Usually items have services. If not, maybe 0 or 1. Safe to assume 1 if item exists?
+                    # Let's count 1 if services is missing but item exists, or just strict service count.
+                    # Given the user's strictness, likely strict service count.
+                    # But if i.services is empty, it might be a new item. Let's count 1 to be safe, or 0.
+                    # 'services' column is String(200). 
+                    # If empty, let's treat as 1 (base product service).
+                    total_orders += 1
         billed_orders = [o for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])]
         billed_count = len(billed_orders)
 
@@ -585,11 +699,15 @@ def get_monthly_report_legacy(year=None, month=None):
         paid_count = len(paid_orders)
         paid_amount = sum([float(o.price or 0) for o in paid_orders])
         
+        # Calculate discounts specifically for PAID orders to ensure consistent Net Income
+        paid_discounts = sum([float(o.discount or 0) if o.discount else 0 for o in paid_orders])
+        
         total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in orders])
         billed_amount = sum([float(o.price or 0) for o in billed_orders])
         total_revenue = sum([float(o.price or 0) for o in orders])
         
-        income = billed_amount - total_discount
+        # Income is now Net Paid Income (Cash Basis)
+        income = paid_amount - paid_discounts
         
         # Categorized Expenses (Actual vs Real/AP)
         cat_list = ["Rent", "Petrol", "Utilities", "Salary", "Supplies", "Marketing", "Maintenance", "Electricity", "Other"]
@@ -667,7 +785,16 @@ def get_monthly_report_legacy(year=None, month=None):
             if cat in ["Salary", "Salary Advance"]:
                 emp_name = e.title.strip()
                 if emp_name not in salary_breakdown:
-                    salary_breakdown[emp_name] = {'actual': 0.0, 'real': 0.0, 'base_salary': 0.0}
+                    salary_breakdown[emp_name] = {
+                        'actual': 0.0, 
+                        'real': 0.0, 
+                        'base_salary': 0.0,
+                        'opening_balance': 0.0,
+                        'salary_type': 'unmatched',
+                        'days': 0,
+                        'hours': 0,
+                        'rate': 0
+                    }
                 salary_breakdown[emp_name]['actual'] += float(e.amount or 0)
                 salary_breakdown[emp_name]['real'] += float(e.real_amount or e.amount or 0)
                 cat = "Salary"
@@ -688,6 +815,14 @@ def get_monthly_report_legacy(year=None, month=None):
             mode = o.payment_mode or 'Default'
             payment_breakdown[mode] = payment_breakdown.get(mode, 0.0) + float(o.price or 0)
 
+        # Vendor Cost for Monthly
+        total_vendor_cost = 0.0
+        processed_v_ids = set()
+        for o in orders:
+            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
+                total_vendor_cost += float(o.vendor_amount)
+                processed_v_ids.add(o.id)
+
         return {
             'month': month,
             'year': year,
@@ -704,9 +839,10 @@ def get_monthly_report_legacy(year=None, month=None):
             'total_expenses_actual': total_expenses_actual,
             'total_expenses_real': total_expenses_real,
             'total_expenses': total_expenses_actual,  # Compatibility with reports.html
-            'profit_loss_actual': income - total_expenses_actual,
-            'profit_loss_real': income - total_expenses_real,
-            'net_profit': income - total_expenses_actual,  # Compatibility with reports.html
+            'total_vendor_cost': total_vendor_cost,
+            'profit_loss_actual': income - total_expenses_actual - total_vendor_cost,
+            'profit_loss_real': income - total_expenses_real - total_vendor_cost,
+            'net_profit': income - total_expenses_actual - total_vendor_cost,  # Compatibility with reports.html
             'completed': completed,
             'pending': total_orders - completed,
             'orders': orders,
@@ -736,9 +872,20 @@ def get_yearly_report(year=None):
         # 1. Target Orders (Delivery View - Drop Date)
         orders = Order.query.filter(Order.drop_date >= start_dt, Order.drop_date <= end_dt).all()
         
-        # 2. Sales Orders (Billing View - Pickup Date)
+        # Sales Orders (Billing View - Pickup Date)
         sales_orders = Order.query.filter(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt).all()
         billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
+        
+        # --- Operational/Production Inclusive Data (v02 Fix) ---
+        all_activities = Order.query.filter(
+            db.or_(
+                db.and_(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt),
+                db.and_(Order.drop_date >= start_dt, Order.drop_date <= end_dt),
+                db.and_(Order.work_finish_date >= start_dt, Order.work_finish_date <= end_dt),
+                db.and_(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt)
+            )
+        ).all()
+
         # --- Paid Orders Tracking (v02) ---
         paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
         paid_count = len(paid_orders)
@@ -752,11 +899,21 @@ def get_yearly_report(year=None):
         billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
+        # --- Vendor Cost Tracking ---
+        vendor_orders = []
+        processed_v_ids = set()
+        for o in all_activities:
+            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+                vendor_orders.append(o)
+                processed_v_ids.add(o.id)
+        
+        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        
         # Tech Perf
-        tech_performance = calculate_tech_performance(orders)
+        tech_performance = calculate_tech_performance(all_activities)
         
         # Production Stats
-        ops = calculate_ops_metrics(year_start, year_end, orders=orders)
+        ops = calculate_ops_metrics(year_start, year_end, orders=all_activities)
         
         return {
             'year': year,
@@ -771,7 +928,8 @@ def get_yearly_report(year=None):
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
-            'net_profit': total_revenue - total_expenses,
+            'total_vendor_cost': total_vendor_cost,
+            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -799,7 +957,15 @@ def get_yearly_report_legacy(year=None):
         expenses = [e for e in all_expenses if year_start <= e.expense_date <= year_end]
         
         # Financial Breakdown
-        total_orders = len(orders)
+        # "Total Orders" = Total Services
+        total_orders = 0
+        for o in orders:
+            for i in o.items:
+                if i.services:
+                    service_list = [s.strip() for s in i.services.split(',') if s.strip()]
+                    total_orders += len(service_list)
+                else:
+                    total_orders += 1
         billed_orders = [o for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])]
         billed_count = len(billed_orders)
 
@@ -808,11 +974,15 @@ def get_yearly_report_legacy(year=None):
         paid_count = len(paid_orders)
         paid_amount = sum([float(o.price or 0) for o in paid_orders])
         
+        # Calculate discounts specifically for PAID orders
+        paid_discounts = sum([float(o.discount or 0) if o.discount else 0 for o in paid_orders])
+
         total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in orders])
         billed_amount = sum([float(o.price or 0) for o in billed_orders])
         total_revenue = sum([float(o.price or 0) for o in orders])
         
-        income = billed_amount - total_discount
+        # Income is now Net Paid Income (Cash Basis)
+        income = paid_amount - paid_discounts
         
         # Categorized Expenses (Actual vs Real/AP)
         cat_list = ["Rent", "Petrol", "Utilities", "Salary", "Supplies", "Marketing", "Maintenance", "Electricity", "Other"]
@@ -873,7 +1043,16 @@ def get_yearly_report_legacy(year=None):
             if cat in ["Salary", "Salary Advance"]:
                 emp_name = e.title.strip()
                 if emp_name not in salary_breakdown:
-                    salary_breakdown[emp_name] = {'actual': 0.0, 'real': 0.0, 'base_salary': 0.0}
+                    salary_breakdown[emp_name] = {
+                        'actual': 0.0, 
+                        'real': 0.0, 
+                        'base_salary': 0.0,
+                        'opening_balance': 0.0, # Added for consistency
+                        'salary_type': 'unmatched',
+                        'days': 0,
+                        'hours': 0,
+                        'rate': 0
+                    }
                 salary_breakdown[emp_name]['actual'] += float(e.amount or 0)
                 salary_breakdown[emp_name]['real'] += float(e.real_amount or e.amount or 0)
                 cat = "Salary"
@@ -894,6 +1073,14 @@ def get_yearly_report_legacy(year=None):
             mode = o.payment_mode or 'Default'
             payment_breakdown[mode] = payment_breakdown.get(mode, 0.0) + float(o.price or 0)
 
+        # Vendor Cost for Yearly
+        total_vendor_cost = 0.0
+        processed_v_ids = set()
+        for o in orders:
+            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
+                total_vendor_cost += float(o.vendor_amount)
+                processed_v_ids.add(o.id)
+
         return {
             'year': year,
             'title': str(year),
@@ -909,9 +1096,10 @@ def get_yearly_report_legacy(year=None):
             'total_expenses_actual': total_expenses_actual,
             'total_expenses_real': total_expenses_real,
             'total_expenses': total_expenses_actual,  # Compatibility with reports.html
-            'profit_loss_actual': income - total_expenses_actual,
-            'profit_loss_real': income - total_expenses_real,
-            'net_profit': income - total_expenses_actual,  # Compatibility with reports.html
+            'total_vendor_cost': total_vendor_cost,
+            'profit_loss_actual': income - total_expenses_actual - total_vendor_cost,
+            'profit_loss_real': income - total_expenses_real - total_vendor_cost,
+            'net_profit': income - total_expenses_actual - total_vendor_cost,  # Compatibility with reports.html
             'completed': completed,
             'pending': total_orders - completed,
             'orders': orders,
@@ -1002,6 +1190,12 @@ def login():
     
     login_user(user)
     session['last_activity'] = datetime.utcnow().isoformat()
+    
+    # Check for first-time login to show welcome message
+    if not user.first_login_seen:
+        session['show_welcome_modal'] = True
+        user.first_login_seen = True
+        db.session.commit()
     
     flash("✅ Login successful!", "success")
     return redirect(url_for("home"))
@@ -1449,10 +1643,13 @@ def tsc_dashboard():
     # Filter by Job ID ascending (oldest orders first) and then by pickup_date descending
     orders = query.order_by(Order.job_id.asc(), Order.pickup_date.desc()).all()
     
+    # Calculate total vendor cost for filtered orders
+    total_vendor_cost = sum(o.vendor_amount or 0.0 for o in orders)
+    
     # Fetch active staff for the filter dropdown
     staff = User.query.filter_by(is_active=True).all()
     
-    return render_template("dashboard.html", orders=orders, request=request, staff=staff)
+    return render_template("dashboard.html", orders=orders, request=request, staff=staff, total_vendor_cost=total_vendor_cost)
 
 # --- Add Order ---
 @app.route("/add", methods=["GET", "POST"])
@@ -1483,8 +1680,25 @@ def add_order():
                 technician=request.form.get("technician"),
                 created_at=datetime.now()
             )
+            # v02: Payment Mode & Status from Form
+            payment_mode = request.form.get("payment_mode")
+            payment_status = request.form.get("payment_status")
+            if payment_mode:
+                order.payment_mode = payment_mode
+            if payment_status:
+                order.payment_status = payment_status
+
             if order.technician:
                 order.service_date = datetime.now()
+            
+            # v02: Vendor Info
+            order.outsource = request.form.get("outsource")
+            try:
+                v_amt = request.form.get("vendor_amount")
+                order.vendor_amount = float(v_amt) if v_amt else 0.0
+            except:
+                order.vendor_amount = 0.0
+
             db.session.add(order)
             db.session.flush()
 
@@ -1588,6 +1802,24 @@ def edit_order(order_id):
         order.service_note = request.form.get("service_note")
         
         new_status = request.form.get("status")
+        
+        # --- RESET LOGIC FOR YTS ---
+        # If moving back to "yts", we reset all dates and technicians for a fresh start
+        if new_status == 'yts' and order.status != 'yts':
+            order.service_date = None
+            order.work_finish_date = None
+            order.technician = None
+            for itm in order.items:
+                itm.technician = None
+                if itm.service_assignments:
+                    import json
+                    try:
+                        assigns = json.loads(itm.service_assignments)
+                        for k in assigns:
+                            assigns[k] = None
+                        itm.service_assignments = json.dumps(assigns)
+                    except: pass
+
         if new_status in ['done', 'ready to deliver', 'billed'] and not order.work_finish_date:
             order.work_finish_date = datetime.now()
         
@@ -1595,27 +1827,20 @@ def edit_order(order_id):
         if order.status != new_status:
             order.status = new_status
             
-            # Cascade status change to all items and their services to keep them in sync
-            # This fixes the issue where dashboard expanded view shows old/stale status
+            # Cascade status change to all items and their services
             for item in order.items:
-                # If main order is Billed, items should also show valid completed status (billed)
                 item.status = new_status
                 
                 if item.services:
-                    # Update granular service statuses
                     import json
                     try:
                         statuses = json.loads(item.service_statuses or '{}')
-                        
-                        # Initialize if empty based on services string
+                        # Force update all service statuses to match Order status
                         if not statuses and item.services:
                             statuses = {s.strip(): new_status for s in item.services.split(',')}
                         else:
-                            # Update existing keys
                             for k in statuses:
-                                # Force update all service statuses to match Order status
                                 statuses[k] = new_status
-                                
                         item.service_statuses = json.dumps(statuses)
                     except:
                         pass
@@ -1629,6 +1854,12 @@ def edit_order(order_id):
         order.payment_status = request.form.get("payment_status")
         order.discount = request.form.get("discount")
         order.outsource = request.form.get("outsource")
+        try:
+            v_amt = request.form.get("vendor_amount")
+            order.vendor_amount = float(v_amt) if v_amt else 0.0
+        except:
+            order.vendor_amount = 0.0
+            
         order.item_count = int(request.form.get("item_count")) if request.form.get("item_count") else None
 
         try:
@@ -1714,9 +1945,27 @@ def delete_user(user_id):
         flash("You cannot delete your own account.", "danger")
         return redirect(url_for("admin.manage_users"))
 
+    # Handle Foreign Key Constraints before deletion
+    from models import Staff, LoginAttempt, Expense, CashDeposit, Announcement
+    
+    # 1. Unlink from Staff profiles (don't delete staff, just unlink login)
+    Staff.query.filter_by(user_id=user.id).update({Staff.user_id: None})
+    
+    # 2. Cleanup Security Data (Login attempts, password history is already handled by cascade)
+    LoginAttempt.query.filter_by(user_id=user.id).delete()
+    
+    # 3. Unlink from historical tracking (Expenses, Deposits, etc.)
+    # We set to None to keep the records but remove the link to the deleted user
+    Expense.query.filter_by(added_by=user.id).update({Expense.added_by: None})
+    CashDeposit.query.filter_by(added_by=user.id).update({CashDeposit.added_by: None})
+    Announcement.query.filter_by(created_by=user.id).update({Announcement.created_by: None})
+    Announcement.query.filter_by(target_user_id=user.id).update({Announcement.target_user_id: None})
+    
+    # Note: Attendances, Notifications, and PasswordHistory are handled via cascade='all, delete-orphan' in models.py
+    
     db.session.delete(user)
     db.session.commit()
-    flash(f"Deleted {user.username}", "danger")
+    flash(f"User {user.username} deleted.", "danger")
     return redirect(url_for("admin.manage_users"))
 
 @app.route("/update_task_status", methods=["POST"])
@@ -1734,6 +1983,20 @@ def update_task_status():
         if item:
             statuses = json.loads(item.service_statuses) if item.service_statuses else {}
             statuses[service_name] = new_status
+            
+            # --- Automatic Deep Clean Status Logic ---
+            cleaning_subtasks = ['wash', 're wash', 'packing']
+            if service_name in cleaning_subtasks or service_name.lower() == 'deep clean':
+                # Re-calculate Deep Clean status based on subtasks
+                sub_statuses = [statuses.get(s, 'yts') for s in cleaning_subtasks]
+                
+                if all(s == 'ready to deliver' for s in sub_statuses):
+                    statuses['deep clean'] = 'ready to deliver'
+                elif any(s in ['wip', 'done', 'ready to deliver'] for s in sub_statuses):
+                    statuses['deep clean'] = 'wip'
+                else:
+                    statuses['deep clean'] = 'yts'
+            
             item.service_statuses = json.dumps(statuses)
             
             # --- Improved Status Logic ---
@@ -1744,6 +2007,16 @@ def update_task_status():
                 for s in item.services.split(','):
                     name = s.strip()
                     service_statuses.append(statuses.get(name, 'yts'))
+            
+            # v02: Include ALL tracked services (including dynamic ones like Packing, Re-Wash, etc.)
+            # We check for any keys in 'statuses' that we haven't already counted (though counting twice doesn't hurt logic much, let's be clean)
+            # Actually, simplest is to just use values of statuses dict? 
+            # But item.services defines the "core" scope. We want to ADD extras.
+            
+            core_services = [s.strip() for s in item.services.split(',')] if item.services else []
+            for k, v in statuses.items():
+                if k not in core_services:
+                     service_statuses.append(v)
             
             if not service_statuses: 
                 pass 
@@ -1792,14 +2065,56 @@ def update_task_status():
         
     return redirect(url_for("my_works"))
 
+@app.route("/update_manual_task_status", methods=["POST"])
+@login_required
+def update_manual_task_status():
+    from models import ManualTask
+    
+    task_id = request.form.get("task_id")
+    status = request.form.get("status")
+    
+    try:
+        task = ManualTask.query.get_or_404(task_id)
+        
+        # Security check: Ensure user is assigned OR is admin
+        if task.assigned_to != current_user.username and current_user.role not in ['admin', 'super_admin']:
+             flash("You are not authorized to update this task.", "danger")
+             return redirect(url_for("my_works"))
+             
+        task.status = status
+        
+        if status == 'done':
+            task.completed_at = datetime.now()
+        else:
+            task.completed_at = None
+            
+        db.session.commit()
+        flash(f"Task '{task.title}' status updated to {status.upper()}", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error updating task: {str(e)}", "danger")
+        
+    return redirect(url_for("my_works"))
+
 @app.route("/my_works")
 @login_required
 def my_works():
-    from models import Order, OrderItem
+    from models import Order, OrderItem, ManualTask
     from datetime import datetime, date
     import json
     
     today = date.today()
+    
+    # Fetch manual tasks assigned to current user
+    # Active (not done)
+    manual_tasks = ManualTask.query.filter_by(assigned_to=current_user.username)\
+                                   .filter(ManualTask.status.notin_(['done', 'completed'])).all()
+                                   
+    # Completed manual tasks (for history)
+    completed_manual_tasks = ManualTask.query.filter_by(assigned_to=current_user.username)\
+                                             .filter(ManualTask.status.in_(['done', 'completed']))\
+                                             .order_by(ManualTask.completed_at.desc()).limit(10).all()
     
     # Fetch individual tasks (OrderItem) assigned to current user (either as lead or for specific services)
     search_term = f'%"{current_user.username}"%'
@@ -1808,31 +2123,141 @@ def my_works():
         (OrderItem.service_assignments.ilike(search_term))
     ).order_by(OrderItem.created_at.desc()).all()
     
-    # Filter items based on assignment_start_date AND completion status
+    # history_entries will track what the user actually DID today/recently
+    # (Fully completed items OR individual completed sub-tasks)
+    history_entries = []
     filtered_items = []
     completed_items = []
+    upcoming_items = []
     
     for item in assigned_items:
-        if item.order:
-            if item.order.assignment_start_date and item.order.assignment_start_date.date() > today:
-                continue
+        if not item.order:
+            continue
             
-            # Split into Active vs Completed based on Item Status
-            # Note: Granular status might differ, but list is Item-based. 
-            # If Item is Ready/Billed, it goes to Completed History.
-            # If Done/WIP/YTS, it stays in Active (Active Table).
-            st = (item.status or '').lower()
-            if st in ['ready to deliver', 'billed', 'delivered', 'completed']:
-                 # Check if 'completed' should be in active or history? 
-                 # User previously differentiated 'Done' (Work Finished) vs 'Ready' (Packed).
-                 # Usually 'Ready' and 'Billed' are the finalized states. 'Done' might still need review/packing.
-                 # Let's keep 'Done' in Active for now, and 'Ready/Billed' in History.
-                 if st in ['done', 'completed']:
-                     filtered_items.append(item)
-                 else:
-                     completed_items.append(item)
-            else:
-                filtered_items.append(item)
+        # If no start date is set, or start date is in the future, it goes to "Upcoming"
+        if not item.order.assignment_start_date or item.order.assignment_start_date.date() > today:
+            upcoming_items.append(item)
+            continue
+            
+        # Get granular status
+        try:
+            statuses = json.loads(item.service_statuses or '{}')
+            assignments = json.loads(item.service_assignments or '{}')
+        except:
+            statuses = {}
+            assignments = {}
+
+        is_lead = (item.technician == current_user.username)
+        st = (item.status or '').lower()
+        is_item_fully_done = st in ['ready to deliver', 'billed', 'delivered', 'done', 'completed']
+        
+        # 1. Capture specific tasks this user completed on this item
+        core_services = [s.strip() for s in (item.services or '').split(',')] if item.services else []
+        user_tasks = []
+        
+        # Identify which tasks this user is responsible for
+        for s_name in core_services:
+            if assignments.get(s_name) == current_user.username or (not assignments.get(s_name) and is_lead):
+                user_tasks.append(s_name)
+        # Add dynamic/auxiliary tasks (like Re-Wash, Extra Packing)
+        for t_name, t_user in assignments.items():
+            if t_user == current_user.username and t_name not in core_services:
+                user_tasks.append(t_name)
+                
+        # Collect finished tasks for this user on this item
+        finished_tasks = []
+        for t_name in user_tasks:
+            t_st = statuses.get(t_name, 'yts').lower()
+            if t_st in ['done', 'ready to deliver']:
+                finished_tasks.append(t_name)
+
+        # 2. Add to History list if anything was completed
+        if finished_tasks:
+            # Create a single summary entry for this item
+            history_entries.append({
+                'job_id': item.order.job_id,
+                'product': item.product_name,
+                'customer': item.order.customer_name,
+                'tasks': finished_tasks,
+                'is_lead': is_lead,
+                'is_full_done': is_item_fully_done,
+                'status': st if is_item_fully_done else "In Progress",
+                'time': item.order.work_finish_date if (st in ['ready to deliver', 'billed', 'delivered']) else today
+            })
+
+        # 3. Decision for main list: Active vs Completed
+        if is_item_fully_done:
+            completed_items.append(item)
+        else:
+            filtered_items.append(item)
+            
+    # Add Completed Manual Tasks to History Entries
+    for mt in completed_manual_tasks:
+        history_entries.append({
+            'job_id': f"MAN-{mt.id}",
+            'product': mt.title,
+            'customer': mt.customer_name or 'N/A',
+            'tasks': [f"{mt.task_type} (Manual)"],
+            'is_lead': True,
+            'is_full_done': True,
+            'status': 'Done',
+            'time': mt.completed_at or mt.created_at # Fallback if completed_at missing
+        })
+    
+    # Sort history entries by time (descending)
+    history_entries.sort(key=lambda x: x['time'] if isinstance(x['time'], datetime) else datetime.min, reverse=True)
+
+    # --- VENDOR TRACKING FOR SUPER ADMIN ---
+    vendor_active = []
+    vendor_history = []
+    total_vendor_paid = 0.0
+    
+    if current_user.role in ['super_admin', 'admin']:
+        # Find all items where any task is assigned to "VENDOR"
+        v_search = '%"VENDOR"%'
+        all_vendor_items = OrderItem.query.filter(
+            (OrderItem.technician == 'VENDOR') | 
+            (OrderItem.service_assignments.ilike(v_search))
+        ).order_by(OrderItem.created_at.desc()).all()
+        
+        processed_orders = set()
+        for v_item in all_vendor_items:
+            if not v_item.order: continue
+            
+            # Extract only vendor tasks
+            try:
+                v_assigns = json.loads(v_item.service_assignments or '{}')
+                v_stats = json.loads(v_item.service_statuses or '{}')
+            except:
+                v_assigns = {}
+                v_stats = {}
+            
+            # Tasks assigned to VENDOR
+            v_tasks = []
+            core_v = [s.strip() for s in (v_item.services or '').split(',')] if v_item.services else []
+            for s_name in core_v:
+                if v_assigns.get(s_name) == 'VENDOR' or (not v_assigns.get(s_name) and v_item.technician == 'VENDOR'):
+                    v_tasks.append({'name': s_name, 'status': v_stats.get(s_name, 'yts')})
+            
+            for t_name, t_user in v_assigns.items():
+                if t_user == 'VENDOR' and t_name not in core_v:
+                    v_tasks.append({'name': t_name, 'status': v_stats.get(t_name, 'yts')})
+            
+            if v_tasks:
+                entry = {
+                    'item': v_item,
+                    'tasks': v_tasks,
+                    'vendor_amount': v_item.order.vendor_amount or 0.0
+                }
+                # If all vendor tasks are done, it's history
+                is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
+                if is_v_done:
+                    vendor_history.append(entry)
+                    if v_item.order.id not in processed_orders:
+                        total_vendor_paid += (v_item.order.vendor_amount or 0.0)
+                        processed_orders.add(v_item.order.id)
+                else:
+                    vendor_active.append(entry)
     
     # Calculate Granular Task Counts
     import json
@@ -1858,6 +2283,14 @@ def my_works():
                 s_name = s.strip()
                 if assignments.get(s_name) == current_user.username or (not assignments.get(s_name) and is_item_technician):
                     user_services.append(s_name)
+                    
+        # Filter for ANY Auxiliary Task assigned to user
+        # This covers Packing, Re-Wash, or any dynamically added service not in the main list
+        core_services = [s.strip() for s in (item.services or '').split(',')]
+        for task_name, assigned_user in assignments.items():
+            if assigned_user == current_user.username:
+                if task_name not in core_services and task_name not in user_services:
+                    user_services.append(task_name)
         
         # If no specific services but user is item technician, count the item itself
         if not user_services and is_item_technician:
@@ -1883,8 +2316,10 @@ def my_works():
                 else:
                     yts_count += 1
 
-    return render_template("my_works.html", items=filtered_items, completed_items=completed_items, 
-                           task_stats={'yts': yts_count, 'wip': wip_count, 'done': done_count, 'ready': ready_count, 'total': yts_count + wip_count + done_count + ready_count})
+    return render_template("my_works.html", items=filtered_items, history_entries=history_entries, upcoming_items=upcoming_items,
+                           vendor_active=vendor_active, vendor_history=vendor_history, total_vendor_paid=total_vendor_paid,
+                           task_stats={'yts': yts_count, 'wip': wip_count, 'done': done_count, 'ready': ready_count, 'total': yts_count + wip_count + done_count + ready_count},
+                           manual_tasks=manual_tasks, completed_items=completed_items, today_date=today)
 
 # Reports
 @app.route("/report_daily")
@@ -1979,11 +2414,25 @@ def print_bill():
         order = Order.query.get(order_id)
         if order:
             from datetime import datetime
-            order.status = "billed"
             if not order.actual_delivery_date:
                 order.actual_delivery_date = datetime.now()
             if not order.work_finish_date:
                 order.work_finish_date = datetime.now()
+            # v02: Capture Payment Mode on Bill Generation
+            payment_mode = request.form.get("payment_mode")
+            
+            if payment_mode:
+                order.payment_mode = payment_mode
+                # If payment mode is selected, assume Paid and Update Status
+                order.payment_status = 'Paid'
+                order.status = 'Paid'
+            elif order.payment_status == 'Paid':
+                # Preserve Paid status if already paid
+                order.status = 'Paid'
+            else:
+                # Default to billed if not paid
+                order.status = "billed"
+                
             db.session.commit()
         return redirect(url_for('view_bill', order_id=order_id))
 
@@ -3040,6 +3489,29 @@ def export_report(report_type, report_format):
             else:
                 data = get_yearly_report_legacy(year)
                 filename_prefix = f"TSC_Financial_Yearly_{year}"
+            
+            # --- Enforce Trend Data for PDF/Excel (v02 Feature) ---
+            trend_period = request.args.get('trend_period', 6, type=int)
+            historical_trend = []
+            import calendar as py_calendar
+            for i in range(trend_period - 1, -1, -1):
+                m = month - i
+                y = year
+                while m <= 0:
+                    m += 12
+                    y -= 1
+                try:
+                    rep = get_monthly_report_legacy(y, m)
+                    if 'error' not in rep:
+                        historical_trend.append({
+                            'label': f"{py_calendar.month_name[m][:3]} {y}",
+                            'revenue': float(rep.get('income', 0)),
+                            'expense': float(rep.get('total_expenses_actual', 0)),
+                            'vendor': float(rep.get('total_vendor_cost', 0))
+                        })
+                except:
+                    continue
+            data['historical_trend'] = historical_trend
 
         if not data or 'error' in data:
             flash("Error fetching report data for export.", "danger")
@@ -3082,7 +3554,8 @@ def export_report_excel(data, report_type, filename_prefix):
             'Status': order.status or '-',
             'Mobile': order.mobile or '-',
             'Amount': float(order.price or 0),
-            'Discount': order.discount or '0'
+            'Discount': order.discount or '0',
+            'Vendor Amt': float(order.vendor_amount or 0)
         })
 
     df = pd.DataFrame(export_data)
@@ -3099,6 +3572,29 @@ def export_report_excel(data, report_type, filename_prefix):
             worksheet.write(0, col_num, value, header_format)
             worksheet.set_column(col_num, col_num, 15)
 
+        # --- Section: Growth Analysis Sheet (v02) ---
+        trend = data.get('historical_trend', [])
+        if trend:
+            trend_data = []
+            for d in trend:
+                rev = d.get('revenue', 0)
+                exp = d.get('expense', 0)
+                ven = d.get('vendor', 0)
+                trend_data.append({
+                    'Period': d.get('label', '-'),
+                    'Net Income (INR)': rev,
+                    'Operational Exp (INR)': exp,
+                    'Vendor Payout (INR)': ven,
+                    'Net Profit (INR)': rev - exp - ven
+                })
+            df_trend = pd.DataFrame(trend_data)
+            df_trend.to_excel(writer, index=False, sheet_name='Growth Analysis')
+            ws_trend = writer.sheets['Growth Analysis']
+            t_header_format = workbook.add_format({'bold': True, 'bg_color': '#C5D9F1', 'border': 1})
+            for col_num, value in enumerate(df_trend.columns.values):
+                ws_trend.write(0, col_num, value, t_header_format)
+                ws_trend.set_column(col_num, col_num, 20)
+
     output.seek(0)
     filename = f"{filename_prefix}_{datetime.now().strftime('%H%M%S')}.xlsx"
     return send_file(output, as_attachment=True, download_name=filename, 
@@ -3109,60 +3605,223 @@ def export_report_pdf(data, report_type, filename_prefix):
     output = io.BytesIO()
     doc = SimpleDocTemplate(output, pagesize=landscape(A4), leftMargin=20, rightMargin=20, topMargin=20, bottomMargin=20)
     styles = getSampleStyleSheet()
+    
+    # Custom Styles
+    style_title = styles['Title']
+    style_title.fontSize = 20
+    style_title.spaceAfter = 8
+    
+    style_subtitle = styles['Normal']
+    style_subtitle.fontSize = 12
+    style_subtitle.alignment = 1 # Center
+    style_subtitle.spaceAfter = 16
+    
+    style_heading = styles['Heading3']
+    style_heading.spaceBefore = 12
+    style_heading.spaceAfter = 8
+
     elements = []
 
-    # Title
-    title_text = f"{data.get('type', report_type.capitalize())} Report: {data.get('title', '')}"
-    elements.append(Paragraph(f"<b>{title_text}</b>", styles['Title']))
-    elements.append(Spacer(1, 12))
+    # Title & Subtitle
+    title_text = f"The Shoe Clinic: {data.get('type', report_type.capitalize())} Report"
+    elements.append(Paragraph(f"<b>{title_text}</b>", style_title))
+    
+    subtitle_text = data.get('title', '')
+    if 'week_start' in data and 'week_end' in data:
+        # data['week_start'] and ['week_end'] are dates
+        s = data['week_start'].strftime('%d %b %Y') if hasattr(data['week_start'], 'strftime') else str(data['week_start'])
+        e = data['week_end'].strftime('%d %b %Y') if hasattr(data['week_end'], 'strftime') else str(data['week_end'])
+        subtitle_text = f"Period: {s} to {e}"
+    elif 'month' in data and 'year' in data and data.get('type') == 'Monthly':
+        try:
+            month_name = py_calendar.month_name[data['month']]
+            subtitle_text = f"Month: {month_name} {data['year']}"
+        except:
+            subtitle_text = f"Month: {data['month']} / {data['year']}"
+    elif 'year' in data and data.get('type') == 'Yearly':
+        subtitle_text = f"Year: {data['year']}"
+    
+    elements.append(Paragraph(subtitle_text, style_subtitle))
 
-    # Executive Summary Table
+    # --- Section: Executive Summary (Financials) ---
+    elements.append(Paragraph("<b>Executive Summary - Financial Performance</b>", style_heading))
+    
     summary_data = [
-        ['Metric', 'Value', 'Metric', 'Value'],
-        ['Total Orders', str(data.get('total_orders', 0)), 'Billed Orders', str(data.get('billed_count', 0))],
-        ['Expected Revenue', f"INR {data.get('total_revenue', 0):.2f}", 'Billed Revenue', f"INR {data.get('billed_revenue', 0):.2f}"],
-        ['Total Expenses', f"INR {data.get('total_expenses', 0):.2f}", 'Net Profit', f"INR {data.get('net_profit', 0):.2f}"]
+        ['Revenue Metric', 'Amount', 'Fulfillment Metric', 'Count'],
+        ['Expected Total Revenue', f"INR {data.get('total_revenue', 0):.2f}", 'Total Orders Targeted', str(data.get('total_orders', 0))],
+        ['Actually Billed Revenue', f"INR {data.get('billed_revenue', 0):.2f}", 'Total Billed Orders', str(data.get('billed_count', 0))],
+        ['Paid Revenue (Collected)', f"INR {data.get('paid_revenue', 0):.2f}", 'Total Paid Orders', str(data.get('paid_count', 0))],
+        ['Operational Expenses', f"INR {data.get('total_expenses', 0):.2f}", 'Unpaid/Pending Count', str(data.get('pending', 0))],
+        ['Total Vendor Payout', f"INR {data.get('total_vendor_cost', 0):.2f}", '', ''],
+        ['Net Profit (Actual)', f"INR {data.get('net_profit', 0):.2f}", '', '']
     ]
     
-    s_table = Table(summary_data, colWidths=[150, 150, 150, 150])
+    s_table = Table(summary_data, colWidths=[200, 120, 200, 120])
     s_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (0,-1), colors.lightgrey),
-        ('BACKGROUND', (2,0), (2,-1), colors.lightgrey),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2c3e50')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
         ('FONTSIZE', (0,0), (-1,-1), 10),
         ('PADDING', (0,0), (-1,-1), 6),
+        ('BACKGROUND', (0,1), (0,-1), colors.whitesmoke),
+        ('BACKGROUND', (2,1), (2,-1), colors.whitesmoke),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
     ]))
     elements.append(s_table)
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 15))
 
-    # Orders Table
+    # --- Section: Growth Analysis (Trend Table) ---
+    trend = data.get('historical_trend', [])
+    if trend:
+        elements.append(Paragraph("<b>Growth Analysis - Historical Trend (Last Period)</b>", style_heading))
+        t_header = ['Period', 'Net Income (₹)', 'Operational Exp (₹)', 'Vendor Payout (₹)', 'Net Profit (₹)']
+        t_rows = [t_header]
+        
+        for d in trend:
+            rev = d.get('revenue', 0)
+            exp = d.get('expense', 0)
+            ven = d.get('vendor', 0)
+            prof = rev - exp - ven
+            t_rows.append([
+                d.get('label', '-'),
+                f"{rev:,.0f}",
+                f"{exp:,.0f}",
+                f"{ven:,.0f}",
+                f"{prof:,.0f}"
+            ])
+            
+        t_table = Table(t_rows, colWidths=[150, 120, 120, 120, 120])
+        t_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#27ae60')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
+            ('ALIGN', (0,0), (0,-1), 'LEFT'),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ]))
+        elements.append(t_table)
+        elements.append(Spacer(1, 15))
+
+    # --- Section: Production Statistics ---
+    ops = data.get('ops', {})
+    if ops:
+        elements.append(Paragraph("<b>Production Statistics (Workload Analysis)</b>", style_heading))
+        
+        # Color for Unassigned row
+        unassigned_val = ops.get('unassigned_count', 0)
+        
+        ops_data = [
+            ['Production KPI', 'Count', 'Status / Detail', 'Description'],
+            ['Assigned Items', str(ops.get('assigned_count', 0)), 'In Pipeline', 'Total workload assigned to technicians'],
+            ['Unassigned Items', str(unassigned_val), 'REQUIRES ATTENTION', 'Items waiting for technician assignment'],
+            ['Yet To Start (Assigned)', str(ops.get('yts_count', 0)), 'Assigned/Pending', 'Tasks assigned but work not yet started'],
+            ['Work In Progress', str(ops.get('wip_count', 0)), 'In Progress', 'Tasks currently being worked on'],
+            ['Done (Work Finished)', str(ops.get('done_count', 0)), 'Pending QC/Packing', 'Tasks finished but not yet ready for delivery'],
+            ['Ready to Deliver', str(ops.get('ready_count', 0)), 'Awaiting Dispatch', 'Packed items ready for customer handover'],
+            ['Billed Orders (Granular)', str(ops.get('billed_granular_count', 0)), 'Billed', 'Finalized items in the billing cycle'],
+            ['Paid Items (Final)', str(ops.get('paid_granular_count', 0)), 'Paid', 'Items successfully paid and finalized']
+        ]
+        
+        if 'workers_count' in ops:
+             ops_data.append(['Total Workers Active', str(ops.get('workers_count', 0)), 'Labor Capacity', 'Technicians present during this period'])
+
+        o_table = Table(ops_data, colWidths=[180, 80, 130, 250])
+        o_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#27ae60')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ]))
+        
+        # Color unassigned row if > 0
+        if unassigned_val > 0:
+            o_table.setStyle(TableStyle([
+                ('BACKGROUND', (0,2), (1,2), colors.HexColor('#f8d7da')),
+                ('TEXTCOLOR', (0,2), (1,2), colors.HexColor('#721c24')),
+            ]))
+            
+        elements.append(o_table)
+        elements.append(Spacer(1, 15))
+
+    # --- Section: Technician Efficiency ---
+    tech_perf = data.get('tech_performance', {})
+    if tech_perf:
+        elements.append(Paragraph("<b>Technician Efficiency Report</b>", style_heading))
+        tech_header = ['Technician Name', 'Tasks Assigned', 'Tasks Completed', 'Efficiency %']
+        tech_rows = [tech_header]
+        
+        # Sort by efficiency
+        perf_list = []
+        for name, stats in tech_perf.items():
+            a = stats.get('assigned', 0)
+            c = stats.get('completed', 0)
+            eff = (c / a * 100) if a > 0 else 0
+            perf_list.append((name, a, c, eff))
+        
+        perf_list.sort(key=lambda x: x[3], reverse=True)
+        
+        for p in perf_list:
+            tech_rows.append([p[0], str(p[1]), str(p[2]), f"{p[3]:.1f}%"])
+            
+        t_perf_table = Table(tech_rows, colWidths=[250, 100, 100, 100])
+        t_perf_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#2980b9')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ]))
+        elements.append(t_perf_table)
+        elements.append(Spacer(1, 15))
+
+    # --- Section: Order Details (Table) ---
     orders = data.get('orders', [])
     if orders:
-        elements.append(Paragraph("<b>Order Details</b>", styles['Heading3']))
-        order_header = ['Job ID', 'Customer', 'Pickup', 'Drop', 'Mobile', 'Status', 'Amount']
+        elements.append(Paragraph("<b>Detailed Order Listing</b>", style_heading))
+        order_header = ['Job ID', 'Customer Name', 'Services', 'Pickup', 'Target Drop', 'Status', 'Amount', 'Vendor']
         order_rows = [order_header]
         
         for o in orders:
+            # Aggregate services
+            s_list = []
+            for item in o.items:
+                if item.services:
+                    s_list.extend([s.strip() for s in item.services.split(',') if s.strip()])
+            
+            p_date = o.pickup_date.strftime('%d-%m-%y') if o.pickup_date else '-'
+            d_date = o.drop_date.strftime('%d-%m-%y') if o.drop_date else '-'
+            
             order_rows.append([
                 o.job_id,
-                o.customer_name[:20] if o.customer_name else '-',
-                o.pickup_date.strftime('%d-%b') if o.pickup_date else '-',
-                o.drop_date.strftime('%d-%b') if o.drop_date else '-',
-                o.mobile or '-',
+                o.customer_name[:20],
+                ', '.join(list(set(s_list)))[:30],
+                p_date,
+                d_date,
                 o.status or '-',
-                f"{float(o.price or 0):.2f}"
+                f"{float(o.price or 0):.0f}",
+                f"{float(o.vendor_amount or 0):.0f}"
             ])
             
-        o_table = Table(order_rows, repeatRows=1)
-        o_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.darkgrey),
+        ord_table = Table(order_rows, repeatRows=1, colWidths=[65, 110, 170, 70, 70, 85, 65, 65])
+        ord_table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#6c757d')),
             ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
             ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
             ('FONTSIZE', (0,0), (-1,-1), 8),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('ALIGN', (1,1), (2,-1), 'LEFT'), # Left align name and services
+            ('PADDING', (0,0), (-1,-1), 5),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ]))
-        elements.append(o_table)
-    
+        elements.append(ord_table)
+
     def watermark(canvas, doc):
         canvas.saveState()
         canvas.setFont('Helvetica-Bold', 60)
@@ -3170,6 +3829,12 @@ def export_report_pdf(data, report_type, filename_prefix):
         canvas.translate(400, 300)
         canvas.rotate(45)
         canvas.drawCentredString(0, 0, "The Shoe Clinic")
+        canvas.restoreState()
+        
+        # Add Page Number
+        canvas.saveState()
+        canvas.setFont('Helvetica', 10)
+        canvas.drawRightString(doc.pagesize[0] - 20, 20, f"Page {doc.page} | Generated: {datetime.now().strftime('%d-%m-%Y %H:%M')}")
         canvas.restoreState()
 
     doc.build(elements, onFirstPage=watermark, onLaterPages=watermark)

@@ -2,67 +2,49 @@
 
 {% block content %}
 <div class="container-fluid py-4 px-md-5">
-    <div class="row g-4">
-        <!-- LEFT SIDEBAR: Personnel Stats -->
-        <div class="col-xl-3 col-lg-4">
-            <div class="sticky-top" style="top: 2rem;">
-                <div class="mb-4">
-                    <h2 class="h4 fw-bold mb-1">Work Assignment</h2>
-                    <p class="text-secondary small">Assign leads to ensure quality & speed.</p>
-                </div>
 
-                <div class="card bg-dark border-secondary border-opacity-25 shadow-lg rounded-4 overflow-hidden">
-                    <div class="card-header bg-dark border-secondary border-opacity-25 py-3">
-                        <h6 class="card-title mb-0 d-flex align-items-center gap-2">
-                            <i class="bi bi-person-badge text-primary"></i> Team Availability
-                        </h6>
+    <!-- TOP HORIZONTAL: Personnel Stats -->
+    <div class="card bg-dark border-secondary border-opacity-25 shadow-lg rounded-4 overflow-hidden mb-4">
+        <div class="card-header bg-dark border-secondary border-opacity-25 py-3">
+            <h6 class="card-title mb-0 d-flex align-items-center gap-2">
+                <i class="bi bi-person-badge text-primary"></i> Team Availability
+            </h6>
+        </div>
+        <div class="card-body p-3">
+            <div class="d-flex flex-row overflow-auto gap-3 pb-2" style="scrollbar-width: thin;">
+                {% for person in staff %}
+                {% set stats = workload.get(person.username, {'items': 0, 'tasks': 0}) %}
+                <div class="d-flex align-items-center bg-black bg-opacity-25 rounded-3 border border-secondary border-opacity-10 p-2"
+                    style="min-width: 250px;">
+                    <div class="avatar-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold small me-3"
+                        style="width: 36px; height: 36px; flex-shrink: 0;">
+                        {{ person.username[:1]|upper }}
                     </div>
-                    <div class="card-body p-0">
-                        <div class="list-group list-group-flush">
-                            {% for person in staff %}
-                            {% set stats = workload.get(person.username, {'items': 0, 'tasks': 0}) %}
-                            <div class="list-group-item bg-transparent border-secondary border-opacity-10 py-3 px-4">
-                                <div class="d-flex align-items-center justify-content-between mb-3">
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="avatar-circle bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center fw-bold small"
-                                            style="width: 32px; height: 32px; font-size: 0.8rem;">
-                                            {{ person.username[:1]|upper }}
-                                        </div>
-                                        <div>
-                                            <div class="fw-bold text-light small">{{ person.username }}</div>
-                                            <div class="text-secondary x-small text-uppercase tracking-wider">{{
-                                                person.role }}</div>
-                                        </div>
-                                    </div>
-                                    <div class="text-end">
-                                        <div class="text-primary fw-bold small">{{ stats['tasks'] }}</div>
-                                        <div class="text-secondary x-small">TOTAL TASKS</div>
-                                    </div>
-                                </div>
-                                <div
-                                    class="p-2 rounded-3 bg-black bg-opacity-25 border border-secondary border-opacity-10">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <span class="text-secondary x-small">Involved in:</span>
-                                        <span
-                                            class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 rounded-pill">
-                                            {{ stats['items'] }} Items
-                                        </span>
-                                    </div>
-                                    <div class="progress mt-2" style="height: 3px; background: rgba(255,255,255,0.05);">
-                                        <div class="progress-bar bg-primary" role="progressbar"
-                                            style="width: {{ [100, (stats['tasks'] * 20)]|min }}%"></div>
-                                    </div>
-                                </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <div>
+                                <div class="fw-bold text-light small">{{ person.username }}</div>
+                                <div class="text-secondary x-small text-uppercase">{{ person.role }}</div>
                             </div>
-                            {% endfor %}
+                            <div class="text-end ms-2">
+                                <div class="text-primary fw-bold small">{{ stats['tasks'] }} Tasks</div>
+                                <div class="text-secondary x-small">{{ stats['items'] }} Items</div>
+                            </div>
+                        </div>
+                        <div class="progress" style="height: 3px; background: rgba(255,255,255,0.05);">
+                            <div class="progress-bar bg-primary" role="progressbar"
+                                style="width: {{ [100, (stats['tasks'] * 20)]|min }}%"></div>
                         </div>
                     </div>
                 </div>
+                {% endfor %}
             </div>
         </div>
+    </div>
 
-        <!-- MAIN AREA: Complete Item List -->
-        <div class="col-xl-9 col-lg-8">
+    <div class="row g-4">
+        <!-- MAIN AREA: Complete Item List (Full Width) -->
+        <div class="col-12">
             <div class="card bg-dark border-secondary border-opacity-25 shadow-lg rounded-4 overflow-hidden">
                 <div class="card-header bg-dark border-secondary border-opacity-25 p-4">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
@@ -72,12 +54,18 @@
                                 {{ items|length }} Items
                             </span>
                         </h5>
-                        <div class="search-box position-relative" style="width: 300px;">
-                            <i
-                                class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-secondary"></i>
-                            <input type="text" id="workSearch"
-                                class="form-control bg-black border-secondary border-opacity-25 rounded-pill ps-5 text-light fs-6"
-                                placeholder="Search Customer, Job ID, or Item...">
+                        <div class="d-flex align-items-center gap-3">
+                            <button class="btn btn-primary btn-sm rounded-pill px-4" data-bs-toggle="modal"
+                                data-bs-target="#addManualTaskModal">
+                                <i class="bi bi-plus-circle me-1"></i> Add Manual Work
+                            </button>
+                            <div class="search-box position-relative" style="width: 300px;">
+                                <i
+                                    class="bi bi-search position-absolute top-50 start-0 translate-middle-y ms-3 text-secondary"></i>
+                                <input type="text" id="workSearch"
+                                    class="form-control bg-black border-secondary border-opacity-25 rounded-pill ps-5 text-light fs-6"
+                                    placeholder="Search Customer, Job ID, or Item...">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -86,12 +74,13 @@
                     <div class="table-responsive">
                         <table class="table table-dark table-hover align-middle mb-0" id="workTable">
                             <thead
-                                class="bg-black bg-opacity-50 text-secondary x-small text-uppercase tracking-wider border-0">
+                                class="bg-dark bg-opacity-75 text-light x-small text-uppercase tracking-wider border-0"
+                                style="border-bottom: 2px solid rgba(255,255,255,0.05) !important;">
                                 <tr>
-                                    <th class="ps-4 py-3">Job ID</th>
+                                    <th class="ps-4 py-3">Token</th>
                                     <th class="py-3">Customer</th>
                                     <th class="py-3">Product / Work</th>
-                                    <th class="py-3">Services</th>
+                                    <th class="py-3">Services (Tasks)</th>
                                     <th class="py-3">Due Date</th>
                                     <th class="py-3">Start Date</th>
                                     <th class="text-end pe-4 py-3">Lead Assignment</th>
@@ -103,8 +92,9 @@
                                     class="{% if not item.technician %}border-start border-4 border-danger border-opacity-50{% endif %}">
                                     <td class="ps-4">
                                         <span
-                                            class="badge bg-black border border-secondary border-opacity-25 text-secondary rounded-pill fw-normal">
-                                            {{ item.order.job_id }}
+                                            class="badge bg-black border border-info border-opacity-50 text-info rounded-pill fw-bold"
+                                            style="min-width: 32px; font-size: 0.85rem;">
+                                            {{ item.order.token or '-' }}
                                         </span>
                                     </td>
                                     <td>
@@ -122,35 +112,171 @@
                                     <td>
                                         <div class="d-flex flex-column gap-2">
                                             {% if item.services %}
+                                            <div class="task-summary-box shadow-sm" style="line-height: 1.6;">
+                                                {% set assignments = item.service_assignments|from_json if
+                                                item.service_assignments else {} %}
+                                                {% set core_svcs = item.services.split(',') if item.services else [] %}
+
+                                                {# Merge all service names from both core list and assignments safely #}
+                                                {% set list_ns = namespace(all=[]) %}
+                                                {% for s in core_svcs %}
+                                                {% set s_clean = s|trim|lower %}
+                                                {% if s_clean and s_clean not in list_ns.all %}
+                                                {% set list_ns.all = list_ns.all + [s_clean] %}
+                                                {% endif %}
+                                                {% endfor %}
+                                                {% for s in assignments.keys() %}
+                                                {% set s_clean = s|trim|lower %}
+                                                {% if s_clean and s_clean not in list_ns.all %}
+                                                {% set list_ns.all = list_ns.all + [s_clean] %}
+                                                {% endif %}
+                                                {% endfor %}
+                                                {% set all_svc_names = list_ns.all %}
+
+                                                {% set bundle_names = ['wash', 're wash', 'packing'] %}
+                                                {% set main_process_key = 'deep clean' %}
+
+                                                {# Use namespace to store our display strings safely #}
+                                                {% set summary_ns = namespace(items=[]) %}
+
+                                                {# Deep Clean Grouping Logic #}
+                                                {% if 'deep clean' in all_svc_names %}
+                                                {% set m_tech = assignments.get('deep clean') %}
+                                                {% set m_str = '<span class="svc-name">deep clean</span>' %}
+                                                {% if m_tech %}
+                                                {% set m_str = m_str ~ ' <span class="tech-name">' ~ m_tech ~ '</span>'
+                                                %}
+                                                {% else %}
+                                                {% set m_str = m_str ~ ' <span class="text-secondary opacity-50">not
+                                                    assigned</span>' %}
+                                                {% endif %}
+
+                                                {# Sub-tasks in parentheses #}
+                                                {% set children_ns = namespace(names=[]) %}
+                                                {% for s in all_svc_names if s in bundle_names %}
+                                                {% set c_tech = assignments.get(s) %}
+                                                {% if c_tech and c_tech != m_tech %}
+                                                {% set children_ns.names = children_ns.names + [s ~ ' ' ~ c_tech] %}
+                                                {% else %}
+                                                {% set children_ns.names = children_ns.names + [s] %}
+                                                {% endif %}
+                                                {% endfor %}
+
+                                                {% if children_ns.names %}
+                                                {% set m_str = m_str ~ ' <span class="text-secondary small">(' ~
+                                                    children_ns.names|join(', ') ~ ')</span>' %}
+                                                {% endif %}
+                                                {% set summary_ns.items = summary_ns.items + [m_str] %}
+                                                {% endif %}
+
+                                                {# Other Tasks (excluding deep clean and bundle if deep clean was shown)
+                                                #}
+                                                {% for s in all_svc_names %}
+                                                {% if s != 'deep clean' and (s not in bundle_names or 'deep clean' not
+                                                in all_svc_names) %}
+                                                {% set i_tech = assignments.get(s) %}
+                                                {% set i_str = '<span class="svc-name">' ~ s ~ '</span>' %}
+                                                {% if i_tech %}
+                                                {% set i_str = i_str ~ ' <span class="tech-name">' ~ i_tech ~ '</span>'
+                                                %}
+                                                {% else %}
+                                                {% set i_str = i_str ~ ' <span class="text-secondary opacity-50">not
+                                                    assigned</span>' %}
+                                                {% endif %}
+                                                {% set summary_ns.items = summary_ns.items + [i_str] %}
+                                                {% endif %}
+                                                {% endfor %}
+
+                                                {{ summary_ns.items|join(' , ')|safe }}
+                                            </div>
+
+                                            <!-- Show Already Assigned Dynamic Tasks Management -->
                                             {% set assignments = item.service_assignments|from_json if
                                             item.service_assignments else {} %}
-                                            {% for svc in item.services.split(',') %}
-                                            {% set s_name = svc|trim %}
+                                            {% for task, tech in assignments.items() %}
+                                            {% if tech and tech != 'UNASSIGN' %}
                                             <div
-                                                class="d-flex align-items-center justify-content-between p-1 rounded-2 border border-secondary border-opacity-10 bg-black bg-opacity-25">
-                                                <span class="x-small text-secondary px-2">
-                                                    {{ s_name }}
-                                                </span>
+                                                class="d-flex align-items-center justify-content-between p-1 rounded-2 border border-secondary border-opacity-10 bg-black bg-opacity-25 mt-1">
+                                                <span class="x-small text-info px-2">{{ task }}</span>
                                                 <form action="{{ url_for('admin.assign_task') }}" method="POST"
                                                     class="m-0">
                                                     <input type="hidden" name="item_id" value="{{ item.id }}">
-                                                    <input type="hidden" name="service_name" value="{{ s_name }}">
+                                                    <input type="hidden" name="service_name" value="{{ task }}">
                                                     <select name="technician"
                                                         class="form-select form-select-sm bg-black text-light border-0 x-small py-0"
                                                         style="width: 110px; min-height: 24px;"
                                                         onchange="this.form.submit()">
                                                         <option value="">Assign..</option>
+                                                        <option value="UNASSIGN" class="text-danger fw-bold">Unassign
+                                                            (Revert)</option>
+                                                        <option value="VENDOR" {% if tech=='VENDOR' %}selected{% endif
+                                                            %}>VENDOR</option>
                                                         {% for person in staff %}
                                                         <option value="{{ person.username }}" {% if
-                                                            assignments.get(s_name)==person.username %}selected{% endif
-                                                            %}>
+                                                            tech==person.username %}selected{% endif %}>
                                                             {{ person.username }}
                                                         </option>
                                                         {% endfor %}
                                                     </select>
                                                 </form>
                                             </div>
+                                            {% endif %}
                                             {% endfor %}
+
+                                            <!-- Add New Task Dropdown -->
+                                            <div class="mt-2 p-1 border-top border-secondary border-opacity-10 pt-2">
+                                                <form action="{{ url_for('admin.assign_task') }}" method="POST"
+                                                    class="d-flex gap-1">
+                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                    <select name="service_name"
+                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                        style="width: 80px;" required>
+                                                        <option value="" selected disabled>+ Task</option>
+                                                        {% for svc in ['wash', 're wash', 'recolor/paint', 'stitching',
+                                                        'patchwork', 'polish', 'packing'] %}
+                                                        <option value="{{ svc }}">{{ svc|title }}</option>
+                                                        {% endfor %}
+                                                    </select>
+                                                    <select name="technician"
+                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                        style="width: 90px;"
+                                                        onchange="if(this.form.service_name.value){this.form.submit()}else{alert('Please select a task first!'); this.value='';}">
+                                                        <option value="" selected disabled>Assign..</option>
+                                                        {% for person in staff %}
+                                                        <option value="{{ person.username }}">{{ person.username }}
+                                                        </option>
+                                                        {% endfor %}
+                                                        <option value="VENDOR">VENDOR</option>
+                                                    </select>
+                                                </form>
+                                            </div>
+
+                                            <!-- Add Bundle (Standard Process) -->
+                                            <div class="mt-1 p-1">
+                                                <form action="{{ url_for('admin.assign_task_bundle') }}" method="POST"
+                                                    class="d-flex gap-1">
+                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
+                                                    <input type="hidden" name="bundle_name" value="standard_process">
+                                                    <div class="d-flex align-items-center bg-dark border border-secondary border-opacity-25 rounded px-2"
+                                                        style="height: 24px;">
+                                                        <span class="x-small text-secondary me-1"
+                                                            title="Adds Wash, Re-Wash, Pack">+ Process</span>
+                                                    </div>
+                                                    <select name="technician"
+                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                        style="width: 90px;" onchange="this.form.submit()">
+                                                        <option value="" selected disabled>Assign Process..</option>
+                                                        <option value="UNASSIGN" class="text-danger">Unassign (Clear)
+                                                        </option>
+                                                        {% for person in staff %}
+                                                        <option value="{{ person.username }}">{{ person.username }}
+                                                        </option>
+                                                        {% endfor %}
+                                                        <option value="VENDOR">VENDOR</option>
+                                                    </select>
+                                                </form>
+                                            </div>
+
                                             {% endif %}
                                         </div>
                                     </td>
@@ -209,6 +335,8 @@
                                                         item.technician==person.username %}selected{% endif %}>{{
                                                         person.username }}</option>
                                                     {% endfor %}
+                                                    <option value="VENDOR" {% if item.technician=='VENDOR' %}selected{%
+                                                        endif %}>VENDOR</option>
                                                 </select>
                                             </div>
                                         </form>
@@ -219,6 +347,268 @@
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MANUAL TASKS SECTION -->
+    {% if manual_tasks %}
+    <div class="card bg-dark border-secondary border-opacity-25 shadow-lg rounded-4 overflow-hidden mt-4">
+        <div class="card-header bg-dark border-secondary border-opacity-25 p-4">
+            <h5 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                <i class="bi bi-truck text-warning"></i> Manual Logistics (Pickups/Deliveries)
+                <span class="badge bg-warning bg-opacity-25 text-warning fs-6 rounded-pill">
+                    {{ manual_tasks|length }} Tasks
+                </span>
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead class="bg-dark bg-opacity-75 text-light x-small text-uppercase border-0"
+                        style="border-bottom: 2px solid rgba(255,255,255,0.05) !important;">
+                        <tr>
+                            <th class="ps-4 py-3">Type</th>
+                            <th class="py-3">Title / Task</th>
+                            <th class="py-3">Customer Info</th>
+                            <th class="py-3">Due</th>
+                            <th class="py-3">Assigned To</th>
+                            <th class="text-end pe-4 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m_task in manual_tasks %}
+                        <tr>
+                            <td class="ps-4">
+                                <span
+                                    class="badge bg-{{ 'warning' if m_task.task_type == 'Pickup' else 'info' }} bg-opacity-10 text-{{ 'warning' if m_task.task_type == 'Pickup' else 'info' }} rounded-pill border border-{{ 'warning' if m_task.task_type == 'Pickup' else 'info' }} border-opacity-25 x-small px-3">
+                                    {{ m_task.task_type|upper }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-light small">{{ m_task.title }}</div>
+                                {% if m_task.description %}<div class="text-secondary x-small">{{ m_task.description }}
+                                </div>{% endif %}
+                            </td>
+                            <td>
+                                <div class="text-light small">{{ m_task.customer_name or '-' }}</div>
+                                <div class="text-secondary x-small">{{ m_task.mobile or '-' }}</div>
+                            </td>
+                            <td>
+                                <div class="text-secondary small">{{ m_task.due_date.strftime('%d %b, %Y') if
+                                    m_task.due_date else 'No Date' }}</div>
+                            </td>
+                            <td>
+                                <div
+                                    class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-2 rounded-pill">
+                                    {{ m_task.assigned_to or 'Unassigned' }}
+                                </div>
+                            </td>
+                            <td class="text-end pe-4">
+                                <button type="button" class="btn btn-link text-info p-0 shadow-none me-3"
+                                    data-bs-toggle="modal" data-bs-target="#editManualTaskModal"
+                                    data-id="{{ m_task.id }}" data-title="{{ m_task.title }}"
+                                    data-type="{{ m_task.task_type }}" data-customer="{{ m_task.customer_name or '' }}"
+                                    data-mobile="{{ m_task.mobile or '' }}"
+                                    data-due="{{ m_task.due_date.strftime('%Y-%m-%d') if m_task.due_date else '' }}"
+                                    data-assigned="{{ m_task.assigned_to or '' }}"
+                                    data-desc="{{ m_task.description or '' }}" onclick="populateEditModal(this)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <form action="{{ url_for('admin.delete_manual_task', task_id=m_task.id) }}"
+                                    method="POST" onsubmit="return confirm('Delete this manual task?')"
+                                    class="d-inline">
+                                    <button type="submit" class="btn btn-link text-danger p-0 shadow-none"><i
+                                            class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Modal for Adding Manual Task -->
+    <div class="modal fade" id="addManualTaskModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border-secondary border-opacity-25 text-light rounded-4 shadow-lg">
+                <div class="modal-header border-secondary border-opacity-10 p-4">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-plus-circle text-primary me-2"></i>Add Manual Work
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <form action="{{ url_for('admin.add_manual_task') }}" method="POST">
+                    <div class="modal-body p-4">
+                        <div class="mb-4">
+                            <label class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Task
+                                Type</label>
+                            <select name="task_type"
+                                class="form-select bg-black text-light border-secondary border-opacity-25 py-2"
+                                required>
+                                <option value="Pickup">Pickup</option>
+                                <option value="Delivery">Delivery</option>
+                                <option value="Inspection">Inspection</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Title
+                                / Subject</label>
+                            <input type="text" name="title"
+                                class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                placeholder="e.g. Pickup from HSR Layout" required>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Customer
+                                    Name</label>
+                                <input type="text" name="customer_name"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    placeholder="Name">
+                            </div>
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Mobile</label>
+                                <input type="text" name="mobile"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    placeholder="Phone">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Due
+                                    Date</label>
+                                <input type="date" name="due_date"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    required>
+                            </div>
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Assign
+                                    To</label>
+                                <select name="assigned_to"
+                                    class="form-select bg-black text-light border-secondary border-opacity-25 py-2"
+                                    required>
+                                    <option value="" disabled selected>Select Staff...</option>
+                                    {% for person in staff %}
+                                    <option value="{{ person.username }}">{{ person.username }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label
+                                class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Optional
+                                Description</label>
+                            <textarea name="description"
+                                class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                rows="3" placeholder="Specific notes or instructions..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-secondary border-opacity-10 p-4">
+                        <button type="button" class="btn btn-dark border-secondary border-opacity-25 px-4"
+                            data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary px-4">Create Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Editing Manual Task -->
+    <div class="modal fade" id="editManualTaskModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border-secondary border-opacity-25 text-light rounded-4 shadow-lg">
+                <div class="modal-header border-secondary border-opacity-10 p-4">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-pencil-square text-info me-2"></i>Edit Manual Work
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <form method="POST">
+                    <div class="modal-body p-4">
+                        <div class="mb-4">
+                            <label class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Task
+                                Type</label>
+                            <select name="task_type"
+                                class="form-select bg-black text-light border-secondary border-opacity-25 py-2"
+                                required>
+                                <option value="Pickup">Pickup</option>
+                                <option value="Delivery">Delivery</option>
+                                <option value="Inspection">Inspection</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Title
+                                / Subject</label>
+                            <input type="text" name="title"
+                                class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                placeholder="e.g. Pickup from HSR Layout" required>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Customer
+                                    Name</label>
+                                <input type="text" name="customer_name"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    placeholder="Name">
+                            </div>
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Mobile</label>
+                                <input type="text" name="mobile"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    placeholder="Phone">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Due
+                                    Date</label>
+                                <input type="date" name="due_date"
+                                    class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                    required>
+                            </div>
+                            <div class="col-md-6">
+                                <label
+                                    class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Assign
+                                    To</label>
+                                <select name="assigned_to"
+                                    class="form-select bg-black text-light border-secondary border-opacity-25 py-2"
+                                    required>
+                                    <option value="" disabled selected>Select Staff...</option>
+                                    {% for person in staff %}
+                                    <option value="{{ person.username }}">{{ person.username }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label
+                                class="form-label text-secondary x-small text-uppercase fw-bold tracking-wider">Optional
+                                Description</label>
+                            <textarea name="description"
+                                class="form-control bg-black text-light border-secondary border-opacity-25 py-2"
+                                rows="3" placeholder="Specific notes or instructions..."></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer border-secondary border-opacity-10 p-4">
+                        <button type="button" class="btn btn-dark border-secondary border-opacity-25 px-4"
+                            data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-info px-4">Update Task</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -234,6 +624,30 @@
             row.style.display = text.includes(val) ? '' : 'none';
         });
     });
+
+    function populateEditModal(btn) {
+        const id = btn.getAttribute('data-id');
+        const title = btn.getAttribute('data-title');
+        const type = btn.getAttribute('data-type');
+        const customer = btn.getAttribute('data-customer');
+        const mobile = btn.getAttribute('data-mobile');
+        const due = btn.getAttribute('data-due');
+        const assigned = btn.getAttribute('data-assigned');
+        const desc = btn.getAttribute('data-desc');
+
+        const form = document.querySelector('#editManualTaskModal form');
+        form.action = `/admin/edit_manual_task/${id}`;
+
+        form.querySelector('[name="title"]').value = title;
+        form.querySelector('[name="task_type"]').value = type;
+        form.querySelector('[name="customer_name"]').value = customer;
+        form.querySelector('[name="mobile"]').value = mobile;
+        form.querySelector('[name="due_date"]').value = due;
+        form.querySelector('[name="description"]').value = desc;
+
+        const assignedSelect = form.querySelector('[name="assigned_to"]');
+        if (assignedSelect) assignedSelect.value = assigned;
+    }
 </script>
 
 <style>
@@ -283,6 +697,43 @@
         border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
         padding-top: 1.25rem;
         padding-bottom: 1.25rem;
+    }
+
+    /* Improved Visibility Classes */
+    .task-summary-box {
+        font-size: 0.75rem;
+        background-color: #1a1f2c;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+        color: #f8fafc;
+    }
+
+    .tech-name {
+        color: #00f2fe;
+        font-weight: 600;
+        margin-left: 2px;
+    }
+
+    .svc-name {
+        color: #ff4b5c;
+        font-weight: 700;
+        text-transform: capitalize;
+    }
+
+    #workTable tbody tr:nth-child(even) {
+        background-color: rgba(255, 255, 255, 0.015);
+    }
+
+    #workTable thead th {
+        color: #f8fafc !important;
+        font-weight: 700;
+    }
+
+    .badge-token {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #38bdf8;
+        color: #38bdf8;
     }
 </style>
 {% endblock %}

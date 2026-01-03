@@ -1,0 +1,64 @@
+
+@admin_bp.route("/assign_task_bundle", methods=["POST"])
+@login_required
+@super_admin_required
+def assign_task_bundle():
+    from models import OrderItem
+    import json
+    
+    item_id = request.form.get("item_id")
+    technician_name = request.form.get("technician")
+    bundle_name = request.form.get("bundle_name")
+    
+    if not item_id or not technician_name or not bundle_name:
+        flash("Missing data for bundle assignment", "danger")
+        return redirect(url_for("admin.work_assign"))
+        
+    try:
+        item = OrderItem.query.get(item_id)
+        if item:
+            current_services = [s.strip() for s in item.services.split(',')] if item.services else []
+            assignments = json.loads(item.service_assignments) if item.service_assignments else {}
+            statuses = json.loads(item.service_statuses) if item.service_statuses else {}
+            
+            services_to_add = []
+            if bundle_name == 'standard_process':
+                 services_to_add = ['wash', 're wash', 'packing']
+            elif bundle_name == 'cleaning_full':
+                 services_to_add = ['deep clean', 'wash', 're wash', 'packing']
+            
+            # 1. Update Services List
+            for s in services_to_add:
+                # Add to text list if not present
+                is_present = False
+                for existing in current_services:
+                    if existing.lower() == s.lower():
+                        is_present = True
+                        break
+                if not is_present:
+                    current_services.append(s)
+                
+                # 2. Assign to Tech
+                assignments[s] = technician_name
+                
+                # 3. Init Status
+                if s not in statuses:
+                    statuses[s] = 'yts'
+            
+            item.services = ",".join(current_services)
+            item.service_assignments = json.dumps(assignments)
+            item.service_statuses = json.dumps(statuses)
+            
+            # Ensure order service_date is set
+            if item.order and not item.order.service_date:
+                from datetime import datetime
+                item.order.service_date = datetime.now()
+            
+            db.session.commit()
+            flash(f"Process assigned to {technician_name} ✅", "success")
+            
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error: {str(e)}", "danger")
+        
+    return redirect(url_for("admin.work_assign"))

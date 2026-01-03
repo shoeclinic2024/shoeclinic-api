@@ -47,13 +47,13 @@
                     <i class="bi bi-file-earmark-pdf"></i>
                 </a>
                 {% else %}
-                <button class="btn btn-outline-secondary btn-sm"
-                    onclick="requestExport('Daily Report ({{ selected_date.strftime('%d-%m-%Y') if selected_date else '' }})', 'Excel')"
+                {% set export_title = 'Daily Report (' + (selected_date.strftime('%d-%m-%Y') if selected_date else '') +
+                ')' %}
+                <button class="btn btn-outline-secondary btn-sm" onclick="requestExport('{{ export_title }}', 'Excel')"
                     title="Request Excel">
                     <i class="bi bi-lock-fill small"></i> <i class="bi bi-file-earmark-spreadsheet"></i>
                 </button>
-                <button class="btn btn-outline-secondary btn-sm"
-                    onclick="requestExport('Daily Report ({{ selected_date.strftime('%d-%m-%Y') if selected_date else '' }})', 'PDF')"
+                <button class="btn btn-outline-secondary btn-sm" onclick="requestExport('{{ export_title }}', 'PDF')"
                     title="Request PDF">
                     <i class="bi bi-lock-fill small"></i> <i class="bi bi-file-earmark-pdf"></i>
                 </button>
@@ -99,9 +99,15 @@
                     <tr>
                         <th class="bg-light text-muted text-uppercase small">Expenses (Approved)</th>
                         <td class="text-danger fw-bold">₹{{ "%.2f"|format(daily.total_expenses) }}</td>
+                        <th class="bg-light text-muted text-uppercase small">Vendor Cost</th>
+                        <td class="text-danger fw-bold">₹{{ "%.2f"|format(daily.total_vendor_cost or 0) }}</td>
+                    </tr>
+                    <tr>
                         <th class="bg-light text-muted text-uppercase small">Net Profit</th>
-                        <td class="fw-bold {% if daily.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        <td colspan="3"
+                            class="fw-bold {% if daily.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
                             ₹{{ "%.2f"|format(daily.net_profit) }}
+                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Vendor Cost)</small>
                         </td>
                     </tr>
                 </tbody>
@@ -126,11 +132,16 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Assigned Items (Target)</td>
-                                <td class="text-end fw-bold">{{ daily.ops.target_assigned }}</td>
+                                <td>Assigned Items</td>
+                                <td class="text-end fw-bold">{{ daily.ops.assigned_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-secondary small me-2"></i>Yet To Start</td>
+                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Items</td>
+                                <td class="text-end fw-bold text-danger">{{ daily.ops.unassigned_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-secondary small me-2"></i>Yet To Start (Assigned)
+                                </td>
                                 <td class="text-end">{{ daily.ops.yts_count }}</td>
                             </tr>
                             <tr>
@@ -146,12 +157,12 @@
                                 <td class="text-end">{{ daily.ops.ready_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Orders</td>
+                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Items</td>
                                 <td class="text-end">{{ daily.ops.billed_granular_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Delivered</td>
-                                <td class="text-end fw-bold">{{ daily.ops.delivered_count }}</td>
+                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Items</td>
+                                <td class="text-end fw-bold">{{ daily.ops.paid_granular_count }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -180,7 +191,16 @@
                             {% set pct = (stats.completed / stats.assigned * 100)|round|int if stats.assigned > 0 else 0
                             %}
                             <tr>
-                                <td class="fw-bold text-dark" style="font-size: 0.9rem;">{{ name }}</td>
+                                <td class="fw-bold text-dark" style="font-size: 0.9rem;">
+                                    {{ name }}
+                                    {% if name == 'VENDOR' %}
+                                    <span
+                                        class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 ms-1"
+                                        style="font-size: 0.65rem;">
+                                        ₹{{ "%.2f"|format(daily.total_vendor_cost or 0) }}
+                                    </span>
+                                    {% endif %}
+                                </td>
                                 <td class="align-middle" style="width: 40%;">
                                     <div class="progress" style="height: 6px;">
                                         <div class="progress-bar {% if pct == 100 %}bg-success{% else %}bg-primary{% endif %}"

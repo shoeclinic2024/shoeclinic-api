@@ -165,13 +165,23 @@
             padding: 24px;
             min-height: 100vh;
             width: 100%;
-            transition: margin-left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             background-color: inherit;
+        }
+
+        /* Large Screen adjustment for Floating Hamburger Button */
+        @media (min-width: 992px) {
+            .main-content:not(.shifted) {
+                padding-left: 80px;
+                /* Shift content to the right to clear the 45px button @ 20px left */
+            }
         }
 
         .main-content.shifted {
             margin-left: 250px;
             width: calc(100% - 250px);
+            padding-left: 24px;
+            /* Reset to standard padding when sidebar pushes content */
         }
 
         /* Notifications / Toasts */
@@ -204,6 +214,38 @@
                 transform: translateX(0);
                 opacity: 1;
             }
+        }
+
+        /* Desktop Sidebar Toggle Button */
+        .desktop-sidebar-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            width: 45px;
+            height: 45px;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border-radius: 12px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .desktop-sidebar-btn:hover {
+            background: rgba(0, 0, 0, 0.6);
+            transform: scale(1.05);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        body.bg-dark .desktop-sidebar-btn,
+        body.bg-gray .desktop-sidebar-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .alert-success {
@@ -874,6 +916,11 @@
         <div style="width: 24px;"></div> <!-- Spacer for center alignment if needed -->
     </div>
 
+    <!-- Desktop Sidebar Toggle (v02) -->
+    <button class="desktop-sidebar-btn d-none d-lg-flex" onclick="showSidebar()" id="desktopToggle">
+        <i class="bi bi-list"></i>
+    </button>
+
     <!-- Backdrop Overlay -->
     <div class="mobile-overlay" onclick="toggleSidebar()" id="mobileOverlay"></div>
 
@@ -895,6 +942,10 @@
             <a href="{{ url_for('admin.admin_panel') }}"
                 class="{% if request.endpoint=='admin_panel' %}active{% endif %}">
                 <i class="bi bi-person-gear"></i> Admin Panel
+            </a>
+            <a href="{{ url_for('admin.work_assign') }}"
+                class="{% if request.endpoint=='admin.work_assign' %}active{% endif %}">
+                <i class="bi bi-clipboard-check"></i> Work Assign
             </a>
 
             {% endif %}
@@ -1008,14 +1059,16 @@
 
 
     <script>
-        // Sidebar hover functionality
+        // Sidebar click and hover functionality
         const sidebar = document.querySelector('.sidebar');
         const mainContent = document.querySelector('.main-content');
+        const desktopToggle = document.getElementById('desktopToggle');
         let sidebarTimeout;
 
         function showSidebar() {
             sidebar.classList.add('visible');
             mainContent.classList.add('shifted');
+            if (desktopToggle) desktopToggle.style.opacity = '0';
             clearTimeout(sidebarTimeout);
         }
 
@@ -1023,28 +1076,24 @@
             sidebarTimeout = setTimeout(() => {
                 sidebar.classList.remove('visible');
                 mainContent.classList.remove('shifted');
+                if (desktopToggle) desktopToggle.style.opacity = '1';
             }, 300);
         }
 
-        document.addEventListener('mousemove', function (e) {
-            // Show sidebar when mouse is within 60px of left edge (increased trigger zone)
-            if (e.clientX < 60) {
-                showSidebar();
-            }
-            // Grace period: Only force hide if mouse is clearly away from the sidebar area (> 260px)
-            // This prevents the "jitter" where moving from x=50 to x=60 closes it before animation completes.
-            else if (e.clientX > 280 && !sidebar.matches(':hover')) {
-                hideSidebar();
-            }
-        });
-
-        sidebar.addEventListener('mouseenter', function () {
-            showSidebar();
-        });
+        // Removed mousemove listener as per request for click-only desktop behavior
 
         sidebar.addEventListener('mouseleave', function () {
             hideSidebar();
         });
+
+        // Toggle logic for the button itself if needed, 
+        // but current request is Click to Show, MouseLeave to Hide
+        if (desktopToggle) {
+            desktopToggle.addEventListener('click', function (e) {
+                e.stopPropagation();
+                showSidebar();
+            });
+        }
 
         // Load theme from localStorage on page load
         document.addEventListener('DOMContentLoaded', function () {
@@ -1287,6 +1336,148 @@
     <!-- jQuery and Bootstrap Bundle -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    {% if session.pop('show_welcome_modal', None) %}
+    <!-- First Time Welcome Greeting -->
+    <div id="welcomeGreeting" class="welcome-overlay">
+        <div class="welcome-content">
+            <div class="welcome-icon">👟✨</div>
+            <h2 class="welcome-title">Hi {{ current_user.username }} (#{{ current_user.id }})!</h2>
+            <p class="welcome-subtitle">Welcome to <strong>The Shoe Clinic</strong></p>
+            <p class="greeting-message">"Have a nice day, let's make magic happen!"</p>
+            <button class="btn btn-lg btn-warning rounded-pill mt-4 px-5 animate-pulse" onclick="closeGreeting()">
+                Let's Get Started!
+            </button>
+        </div>
+    </div>
+
+    <style>
+        .welcome-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+            animation: fadeInWelcome 0.5s ease-out;
+        }
+
+        .welcome-content {
+            background: linear-gradient(145deg, #1e1e1e, #121212);
+            padding: 4rem;
+            border-radius: 30px;
+            text-align: center;
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            max-width: 500px;
+            width: 90%;
+            animation: slideUpWelcome 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .welcome-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            display: inline-block;
+            animation: floatIcon 3s ease-in-out infinite;
+        }
+
+        .welcome-title {
+            font-weight: 800;
+            font-size: 2.2rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #ffffff, #a5a5a5);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .welcome-subtitle {
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 1.5rem;
+        }
+
+        .greeting-message {
+            font-size: 1.4rem;
+            color: #ffc107;
+            font-style: italic;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .animate-pulse {
+            animation: pulse-btn 2s infinite;
+        }
+
+        @keyframes fadeInWelcome {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUpWelcome {
+            from {
+                transform: translateY(100px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes floatIcon {
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0);
+            }
+
+            50% {
+                transform: translateY(-20px) rotate(10deg);
+            }
+        }
+
+        @keyframes pulse-btn {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+            }
+
+            70% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 15px rgba(255, 193, 7, 0);
+            }
+
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(255, 193, 7, 0);
+            }
+        }
+    </style>
+
+    <script>
+        function closeGreeting() {
+            const overlay = document.getElementById('welcomeGreeting');
+            overlay.style.transition = 'all 0.4s ease-in';
+            overlay.style.opacity = '0';
+            overlay.style.transform = 'scale(1.1)';
+            setTimeout(() => {
+                overlay.remove();
+            }, 400);
+        }
+    </script>
+    {% endif %}
 
     <!-- Extra scripts from child templates -->
     {% block extra_js %}{% endblock %}

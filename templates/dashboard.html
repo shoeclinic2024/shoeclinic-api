@@ -4,18 +4,85 @@
 <style>
   /* Table & Dashboard Styles */
   .table-container {
-    overflow-x: auto;
+    overflow: auto;
+    /* Handle both X and Y */
     width: 100%;
     display: block;
     margin-top: 15px;
+    max-height: calc(100vh - 280px);
+    /* Limit height so scrollbar is always visible */
+    border-radius: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    background: #fff;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.02);
+  }
+
+  /* Sticky Header Styling */
+  .table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #212529 !important;
+    box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Sticky Left Columns for Context preservation */
+  .table th:nth-child(1),
+  .table td:nth-child(1),
+  .table th:nth-child(2),
+  .table td:nth-child(2),
+  .table th:nth-child(3),
+  .table td:nth-child(3) {
+    position: sticky;
+    background-color: inherit;
+    z-index: 10;
+  }
+
+  .table th:nth-child(1),
+  .table td:nth-child(1) {
+    left: 0;
+  }
+
+  .table th:nth-child(2),
+  .table td:nth-child(2) {
+    left: 55px;
+  }
+
+  /* Details + Select */
+  .table th:nth-child(3),
+  .table td:nth-child(3) {
+    left: 110px;
+  }
+
+  /* Sl. No */
+
+  /* Ensure sticky header overlap works correctly */
+  .table thead th:nth-child(1),
+  .table thead th:nth-child(2),
+  .table thead th:nth-child(3) {
+    z-index: 30;
+  }
+
+  .table {
+    margin-bottom: 150px !important;
+    /* Room for dropdowns inside scroll area */
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  /* Force dropdowns to appear above table headers/columns */
+  .dropdown-menu {
+    z-index: 1050 !important;
   }
 
   .table th,
   .table td {
-    padding: 0.75rem;
+    padding: 1.0rem 0.75rem;
     vertical-align: middle;
     text-align: left;
     white-space: nowrap;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
+    /* Adaptive horizontal divider */
   }
 
   .expand-button {
@@ -167,7 +234,7 @@
       <input type="number" class="form-control" name="discount_filter" placeholder="Discount"
         value="{{ request.args.get('discount_filter', '') }}" style="width:110px;">
       <select class="form-select" name="outsource_filter" style="width:120px;">
-        <option value="" {% if request.args.get('outsource_filter','')=='' %}selected{% endif %}>Outsource</option>
+        <option value="" {% if request.args.get('outsource_filter','')=='' %}selected{% endif %}>Vendor</option>
         <option value="yes" {% if request.args.get('outsource_filter')=='yes' %}selected{% endif %}>Yes</option>
         <option value="no" {% if request.args.get('outsource_filter')=='no' %}selected{% endif %}>No</option>
       </select>
@@ -183,6 +250,12 @@
       <button type="submit" class="btn btn-primary btn-compact">Apply</button>
       <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary btn-compact">Clear</a>
       <div class="ms-auto d-flex gap-2 align-items-center">
+        {% if current_user.role in ['super_admin', 'admin'] %}
+        <div class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 py-2 px-3 fw-bold">
+          Total Vendor Amt: ₹{{ "%.2f"|format(total_vendor_cost or 0) }}
+        </div>
+        {% endif %}
+
         {% if current_user.role == 'super_admin' %}
         <button type="submit" formaction="{{ url_for('export_dashboard_excel') }}" class="btn btn-success btn-compact">
           <i class="bi bi-file-earmark-excel me-1"></i> Excel
@@ -297,7 +370,8 @@
           <th>Payment</th>
           <th>Payment Status</th>
           <th>Discount</th>
-          <th>Outsource</th>
+          <th>Vendor</th>
+          <th>Vendor Amt</th>
           <th>Count</th>
           {% if current_user.role in ['admin', 'super_admin'] %}
           <th>Actions</th>
@@ -392,13 +466,14 @@
           <td data-label="Payment">{{ order.payment_mode or '' }}</td>
           <td data-label="Payment Status">{{ order.payment_status or '' }}</td>
           <td data-label="Discount">{{ order.discount }}</td>
-          <td data-label="Outsource">{{ order.outsource }}</td>
+          <td data-label="Vendor">{{ order.outsource or '-' }}</td>
+          <td data-label="Vendor Amt">₹{{ "%.2f"|format(order.vendor_amount or 0) }}</td>
           <td data-label="Count">{{ order.item_count }}</td>
           {% if current_user.role in ['admin', 'super_admin'] %}
           <td data-label="Actions">
             <div class="dropdown">
               <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                aria-expanded="false">
+                aria-expanded="false" data-bs-boundary="viewport" data-bs-display="static">
                 Actions
               </button>
               <ul class="dropdown-menu dropdown-menu-end shadow">
@@ -412,6 +487,14 @@
                   <a class="dropdown-item" href="javascript:void(0)"
                     onclick="handleRazorpay('{{ order.id }}', '{{ order.price }}')">
                     <i class="bi bi-credit-card me-2 text-success"></i> Pay and Mark Paid
+                  </a>
+                </li>
+                {% endif %}
+                {% if order.payment_status|lower != 'paid' %}
+                <li>
+                  <a class="dropdown-item" href="javascript:void(0)"
+                    onclick="openManualPayModal('{{ order.id }}', '{{ order.price }}')">
+                    <i class="bi bi-wallet2 me-2 text-primary"></i> Mark Paid (Cash/UPI)
                   </a>
                 </li>
                 {% endif %}
@@ -478,7 +561,8 @@
                             <span class="badge bg-dark rounded-end-0" style="opacity: 0.8;">{{ s_name }}</span>
                             <span
                               class="badge bg-light text-dark border-top border-bottom border-start-0 border-end-0 rounded-start-0 fw-normal">
-                              <i class="bi bi-person-fill small me-1"></i>{{ assignments.get(s_name) or 'Unassigned' }}
+                              <i class="bi bi-person-fill small me-1"></i>{{ assignments.get(s_name) or item.technician
+                              or 'Unassigned' }}
                             </span>
                           </div>
                           {% endfor %}
@@ -543,16 +627,83 @@
       </tbody>
     </table>
   </div>
+  </div>
 </form>
+
+<!-- Manual Payment Modal -->
+<div class="modal fade" id="manualPayModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form action="{{ url_for('admin.mark_order_paid_manual') }}" method="POST">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Record Payment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="order_id" id="manualPayOrderId">
+          <div class="mb-3">
+            <label class="form-label">Amount</label>
+            <input type="number" step="0.01" class="form-control" name="amount" id="manualPayAmount" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Payment Mode</label>
+            <select class="form-select" name="payment_mode" required>
+              <option value="Cash">Cash</option>
+              <option value="UPI">UPI (Manual)</option>
+              <option value="Card">Card</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Note / Transaction ID (Optional)</label>
+            <input type="text" class="form-control" name="note" placeholder="e.g. UPI Ref No">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Mark as Paid</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <style>
   /* Ensure the table is scrollable while keeping icons neat */
   .table-container {
-    overflow-x: auto !important;
+    overflow: auto !important;
     scrollbar-width: thin;
     scrollbar-color: #495057 transparent;
+  }
+
+  /* Theme adjustments for the container */
+  body.bg-dark .table-container {
+    background: #1e293b !important;
+    border-color: #334155 !important;
+  }
+
+  body.bg-gray .table-container {
+    background: #2f2f2f !important;
+    border-color: #424242 !important;
+  }
+
+  /* Ensure sticky backgrounds stay opaque on scroll */
+  body.bg-dark .table td {
+    background-color: #1e293b !important;
+  }
+
+  body.bg-gray .table td {
+    background-color: #2f2f2f !important;
+  }
+
+  body.bg-dark .table tr:nth-of-type(odd) td {
+    background-color: #262f3e !important;
+  }
+
+  body.bg-gray .table tr:nth-of-type(odd) td {
+    background-color: #383838 !important;
   }
 
   .table-container::-webkit-scrollbar {
@@ -730,6 +881,12 @@
     if (confirm(`⚠️ WARNING: Are you sure you want to DELETE ${count} selected orders PERMANENTLY?\n\nThis action cannot be undone.`)) {
       document.getElementById('bulkDeleteForm').submit();
     }
+  }
+
+  function openManualPayModal(orderId, price) {
+    document.getElementById('manualPayOrderId').value = orderId;
+    document.getElementById('manualPayAmount').value = price || '';
+    new bootstrap.Modal(document.getElementById('manualPayModal')).show();
   }
 </script>
 {% endblock %}

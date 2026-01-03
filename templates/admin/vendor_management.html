@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <!-- Back Button -->
+    <a href="{{ url_for('admin.admin_panel') }}" class="btn btn-outline-secondary mb-3">
+        <i class="bi bi-arrow-left-circle"></i> Back to Admin Panel
+    </a>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="display-6 fw-bold mb-0">🤝 Vendor Management System</h2>
+            <p class="text-muted">Monitor all outsourced tasks, costs, and historical vendor performance.</p>
+        </div>
+        <div class="text-end">
+            <div
+                class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-4 py-3 rounded-4 shadow-sm">
+                <div class="small text-uppercase fw-bold opacity-75">Total Vendor Payout</div>
+                <div class="fs-4 fw-bold">₹{{ "%.2f"|format(total_vendor_paid) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-5">
+        <!-- Active Vendor Assignments -->
+        <div class="col-xl-8">
+            <div class="card border-0 shadow-sm rounded-4 h-100 bg-white">
+                <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Active Vendor Assignments</h5>
+                    <span class="badge bg-primary">{{ vendor_active|length }} Jobs</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr class="text-muted small uppercase">
+                                    <th class="ps-4">Job Info</th>
+                                    <th>Customer</th>
+                                    <th>Outsourced Tasks</th>
+                                    <th>Vendor Cost</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if vendor_active %}
+                                {% for entry in vendor_active %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-primary fs-5">{{ entry.item.order.job_id }}</div>
+                                        <div class="small fw-semibold text-dark">{{ entry.item.product_name }}</div>
+                                        <div class="x-small text-muted">Pickup: {{
+                                            entry.item.order.pickup_date|format_date }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold">{{ entry.item.order.customer_name }}</div>
+                                        <div class="small text-muted">{{ entry.item.order.mobile }}</div>
+                                    </td>
+                                    <td>
+                                        {% for t in entry.tasks %}
+                                        {% set t_status = t.status|lower %}
+                                        <div class="d-flex align-items-center mb-1">
+                                            <span
+                                                class="badge bg-{{ 'success' if t_status == 'done' else 'warning' if t_status == 'wip' else 'secondary' }} rounded-circle p-1 me-2"
+                                                style="width: 8px; height: 8px;"></span>
+                                            <span class="small fw-medium">{{ t.name }}</span>
+                                            <span class="ms-1 x-small opacity-75">({{ t.status|upper }})</span>
+                                        </div>
+                                        {% endfor %}
+                                    </td>
+                                    <td>
+                                        <div class="fs-5 fw-bold text-dark">₹{{ "%.2f"|format(entry.vendor_amount) }}
+                                        </div>
+                                        <div class="x-small text-muted">Estimated Cost</div>
+                                    </td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('edit_order', order_id=entry.item.order.id) }}"
+                                            class="btn btn-primary rounded-pill px-3 shadow-sm">
+                                            <i class="bi bi-pencil-square me-1"></i> Manage
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center py-5">
+                                        <div class="opacity-25 fs-1 mb-2">📦</div>
+                                        <div class="text-muted">No active vendor tasks found.</div>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vendor History Sidebar -->
+        <div class="col-xl-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100 bg-white">
+                <div class="card-header bg-secondary text-white py-3">
+                    <h5 class="mb-0">Vendor History Log</h5>
+                </div>
+                <div class="card-body p-0" style="max-height: 800px; overflow-y: auto;">
+                    {% if vendor_history %}
+                    <ul class="list-group list-group-flush">
+                        {% for entry in vendor_history %}
+                        <li class="list-group-item py-4 bg-transparent border-bottom">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <div class="fw-bold fs-6">{{ entry.item.order.job_id }}</div>
+                                    <div class="small text-primary fw-medium">{{ entry.item.order.customer_name }}</div>
+                                </div>
+                                <div class="text-end">
+                                    <div
+                                        class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
+                                        COMPLETED</div>
+                                </div>
+                            </div>
+                            <div class="small text-muted mb-3">{{ entry.item.product_name }}</div>
+
+                            <div class="bg-light rounded-3 p-2 mb-3">
+                                <div class="x-small text-uppercase fw-bold text-muted opacity-75 mb-1">Services Provided
+                                </div>
+                                {% for t in entry.tasks %}
+                                <div class="small fw-medium text-dark"><i
+                                        class="bi bi-check2-circle text-success me-1"></i> {{ t.name }}</div>
+                                {% endfor %}
+                            </div>
+
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div class="small text-muted">
+                                    <i class="bi bi-calendar-check me-1"></i> {{
+                                    entry.item.order.work_finish_date|format_date if entry.item.order.work_finish_date
+                                    else 'N/A' }}
+                                </div>
+                                <div class="fw-bold fs-5 text-success">₹{{ "%.2f"|format(entry.vendor_amount) }}</div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <div class="p-5 text-center text-muted">
+                        <i class="bi bi-clock-history fs-1 opacity-25 d-block mb-3"></i>
+                        No vendor work history recorded yet.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background-color: #f4f6f9;
+    }
+
+    .rounded-4 {
+        border-radius: 1rem !important;
+    }
+
+    .x-small {
+        font-size: 0.7rem;
+    }
+
+    .fs-7 {
+        font-size: 0.8rem;
+    }
+
+    .table thead th {
+        border: none;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    .card-header {
+        border-bottom: none;
+    }
+
+    .hover-shadow:hover {
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Custom scrollbar for history */
+    .card-body::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .card-body::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+
+    .card-body::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 10px;
+    }
+
+    .card-body::-webkit-scrollbar-thumb:hover {
+        background: #bbb;
+    }
+</style>
+{% endblock %}

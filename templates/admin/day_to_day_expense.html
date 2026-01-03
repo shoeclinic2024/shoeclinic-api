@@ -1,5 +1,24 @@
 {% extends "base.html" %}
 
+{% block extra_css %}
+<style>
+    @keyframes spin {
+        from {
+            transform: rotate(0deg);
+        }
+
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .spin-animation {
+        animation: spin 0.8s linear infinite;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid px-4 py-4">
     <!-- Header & Navigation -->
@@ -140,14 +159,12 @@
                     {% if current_user.role == 'super_admin' %}
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0">
                         <li>
-                            <a class="dropdown-item py-2"
-                                href="{{ url_for('admin.export_expenses_excel', filter_type=filter_type, date=selected_date, category=selected_category) }}">
+                            <a class="dropdown-item py-2" href="javascript:void(0)" onclick="submitExport('excel')">
                                 <i class="bi bi-file-earmark-excel me-2 text-success"></i> Excel Report
                             </a>
                         </li>
                         <li>
-                            <a class="dropdown-item py-2"
-                                href="{{ url_for('admin.export_expenses_pdf', filter_type=filter_type, date=selected_date, category=selected_category) }}">
+                            <a class="dropdown-item py-2" href="javascript:void(0)" onclick="submitExport('pdf')">
                                 <i class="bi bi-file-earmark-pdf me-2 text-danger"></i> PDF Report
                             </a>
                         </li>
@@ -204,7 +221,9 @@
                                 <div class="btn-group">
                                     <button class="btn btn-sm btn-light text-primary" type="button"
                                         data-id="{{ expense.id }}" data-title="{{ expense.title }}"
-                                        data-amount="{{ expense.amount }}" data-category="{{ expense.category }}"
+                                        data-amount="{{ expense.amount }}"
+                                        data-real_amount="{{ expense.real_amount or expense.amount or 0 }}"
+                                        data-category="{{ expense.category }}"
                                         data-date="{{ expense.expense_date.strftime('%Y-%m-%d') }}"
                                         data-desc="{{ expense.description or '' }}" onclick="openEditModal(this)">
                                         <i class="bi bi-pencil"></i>
@@ -276,8 +295,9 @@
                     <input type="date" id="graphEndDate" class="form-control form-control-sm" style="width: 140px;">
                 </div>
 
-                <button type="button" class="btn btn-primary btn-sm rounded-pill px-3" onclick="fetchChartData()">
-                    <i class="bi bi-arrow-clockwise me-1"></i> Update
+                <button type="button" id="btnUpdateChart" class="btn btn-primary btn-sm rounded-pill px-3"
+                    onclick="fetchChartData()">
+                    <i id="updateIcon" class="bi bi-arrow-clockwise me-1"></i> Update
                 </button>
             </form>
         </div>
@@ -378,18 +398,23 @@
                     </div>
                     <div class="row">
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold text-muted">AMOUNT</label>
+                            <label class="form-label small fw-bold text-muted">ACTUAL VALUE (₹)</label>
                             <input type="number" step="0.01" name="amount" id="editAmount" class="form-control"
                                 required>
                         </div>
                         <div class="col-6 mb-3">
-                            <label class="form-label small fw-bold text-muted">DATE</label>
-                            <input type="date" name="expense_date" id="editDate" class="form-control" required>
+                            <label class="form-label small fw-bold text-muted">APPROVED VALUE (₹)</label>
+                            <input type="number" step="0.01" name="real_amount" id="editRealAmount" class="form-control"
+                                required>
                         </div>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted">DATE</label>
+                        <input type="date" name="expense_date" id="editDate" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">CATEGORY</label>
-                        <select name="category" id="editCategory" class="form-select">
+                        <select name="category" id="editCategory" class="form-select" required>
                             {% for cat in categories %}
                             <option value="{{ cat }}">{{ cat }}</option>
                             {% endfor %}
@@ -429,6 +454,7 @@
         const id = btn.dataset.id;
         const title = btn.dataset.title;
         const amount = btn.dataset.amount;
+        const real_amount = btn.dataset.real_amount;
         const category = btn.dataset.category;
         const date = btn.dataset.date;
         const desc = btn.dataset.desc;
@@ -437,6 +463,7 @@
 
         document.getElementById('editTitle').value = title;
         document.getElementById('editAmount').value = amount;
+        document.getElementById('editRealAmount').value = real_amount;
         document.getElementById('editCategory').value = category;
         document.getElementById('editDate').value = date;
         document.getElementById('editDesc').value = desc;
@@ -467,6 +494,13 @@
     }
 
     async function fetchChartData() {
+        const btn = document.getElementById('btnUpdateChart');
+        const icon = document.getElementById('updateIcon');
+
+        // Loading State
+        btn.disabled = true;
+        icon.classList.add('spin-animation');
+
         const type = document.getElementById('graphFilterType').value;
         const category = document.getElementById('graphCategory').value;
         let url = `/admin/expense_chart_data?filter_type=${type}&category=${category}`;
@@ -491,6 +525,10 @@
             renderCharts(data, type);
         } catch (error) {
             console.error('Error loading chart data:', error);
+        } finally {
+            // Restore State
+            btn.disabled = false;
+            icon.classList.remove('spin-animation');
         }
     }
 
@@ -511,6 +549,9 @@
         }
         // If 'range', labels are already strings like '20 Dec' or 'Dec 2025' from backend
 
+        const textColor = window.getComputedStyle(document.body).color || '#333';
+        const isDark = textColor !== 'rgb(51, 51, 51)' && textColor !== '#333';
+
         timeChartInstance = new Chart(timeCtx, {
             type: 'line',
             data: {
@@ -520,7 +561,9 @@
                     data: data.by_time.data,
                     backgroundColor: 'rgba(13, 110, 253, 0.1)',
                     borderColor: '#0d6efd',
-                    borderWidth: 2,
+                    borderWidth: 3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#0d6efd',
                     fill: true,
                     tension: 0.4
                 }]
@@ -530,8 +573,15 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, grid: { borderDash: [2, 4] } },
-                    x: { grid: { display: false } }
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)', borderDash: [2, 4] },
+                        ticks: { color: textColor, font: { weight: 'bold' } }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: textColor, font: { weight: 'bold' } }
+                    }
                 }
             }
         });
@@ -554,8 +604,9 @@
                         '#0dcaf0', // Cyan
                         '#20c997'  // Teal
                     ],
-                    borderWidth: 0,
-                    hoverOffset: 10
+                    borderWidth: 2,
+                    borderColor: '#fff',
+                    hoverOffset: 15
                 }]
             },
             options: {
@@ -563,8 +614,15 @@
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
+                        display: true,
                         position: 'bottom',
-                        labels: { boxWidth: 10, usePointStyle: true, padding: 20 }
+                        labels: {
+                            color: textColor,
+                            font: { weight: 'bold', size: 11 },
+                            boxWidth: 10,
+                            usePointStyle: true,
+                            padding: 20
+                        }
                     }
                 }
             }
@@ -573,5 +631,75 @@
 
     // Initial load
     document.addEventListener('DOMContentLoaded', fetchChartData);
+    function submitExport(format) {
+        const filter_type = document.getElementById('filterType').value;
+        const category = document.querySelector('select[name="category"]').value;
+
+        let date = '';
+        if (filter_type === 'date') date = document.querySelector('input[name="date_date"]').value;
+        else if (filter_type === 'month') date = document.querySelector('input[name="date_month"]').value;
+        else if (filter_type === 'year') date = document.querySelector('select[name="date_year"]').value;
+
+        const start_date = document.querySelector('input[name="start_date"]').value;
+        const end_date = document.querySelector('input[name="end_date"]').value;
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = format === 'excel' ? "/admin/export_expenses_excel" : "/admin/export_expenses_pdf";
+
+        const addInput = (name, value) => {
+            if (!value) return;
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            form.appendChild(input);
+        };
+
+        addInput('filter_type', filter_type);
+        addInput('category', category);
+        addInput('date', date);
+        addInput('start_date', start_date);
+        addInput('end_date', end_date);
+
+        const getChartImage = (chart) => {
+            if (!chart) return null;
+
+            // 1. Store original colors
+            const origXColor = chart.options.scales?.x?.ticks?.color;
+            const origYColor = chart.options.scales?.y?.ticks?.color;
+            const origLegendColor = chart.options.plugins?.legend?.labels?.color;
+
+            // 2. Set to Black for Export
+            if (chart.options.scales?.x?.ticks) chart.options.scales.x.ticks.color = '#000000';
+            if (chart.options.scales?.y?.ticks) chart.options.scales.y.ticks.color = '#000000';
+            if (chart.options.plugins?.legend?.labels) chart.options.plugins.legend.labels.color = '#000000';
+            chart.update('none');
+
+            // 3. Capture
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = chart.width;
+            tempCanvas.height = chart.height;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(chart.canvas, 0, 0);
+            const dataURL = tempCanvas.toDataURL('image/png');
+
+            // 4. Restore original colors
+            if (chart.options.scales?.x?.ticks) chart.options.scales.x.ticks.color = origXColor;
+            if (chart.options.scales?.y?.ticks) chart.options.scales.y.ticks.color = origYColor;
+            if (chart.options.plugins?.legend?.labels) chart.options.plugins.legend.labels.color = origLegendColor;
+            chart.update('none');
+
+            return dataURL;
+        };
+
+        if (timeChartInstance) {
+            addInput('time_chart', getChartImage(timeChartInstance));
+        }
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
+    }
 </script>
 {% endblock %}

@@ -34,6 +34,13 @@
         'url': 'admin.manage_users'
         },
         {
+        'icon': 'bi-person-badge-fill',
+        'color': 'success',
+        'title': 'Staff Management',
+        'desc': 'Add staff details, salary types & rates.',
+        'url': 'admin.manage_staff'
+        },
+        {
         'icon': 'bi-shield-lock',
         'color': 'danger',
         'title': 'Security Settings' if current_user.role == 'super_admin' else 'Manage Password',
@@ -56,6 +63,13 @@
         'desc': 'Assign daily work.',
         'url': 'admin.work_assign',
         'super_admin_only': True
+        },
+        {
+        'icon': 'bi-safe2-fill',
+        'color': 'success',
+        'title': 'Cash Management',
+        'desc': 'Track cash in hand, collection and deposits.',
+        'url': 'admin.cash_management'
         },
         {
         'icon': 'bi-cash-coin',
@@ -102,6 +116,13 @@
         'title': 'Notifications',
         'desc': 'View approval status and system alerts.',
         'url': 'admin.notifications'
+        },
+        {
+        'icon': 'bi-shop',
+        'color': 'danger',
+        'title': 'Vendor Management',
+        'desc': 'Track outsourced work, costs and history.',
+        'url': 'admin.vendor_management'
         },
 
         ] %}

@@ -99,9 +99,15 @@
                     <tr>
                         <th class="bg-light text-muted text-uppercase small">Expenses (Approved)</th>
                         <td class="text-danger fw-bold">₹{{ "%.2f"|format(yearly.total_expenses) }}</td>
+                        <th class="bg-light text-muted text-uppercase small">Vendor Cost</th>
+                        <td class="text-danger fw-bold">₹{{ "%.2f"|format(yearly.total_vendor_cost or 0) }}</td>
+                    </tr>
+                    <tr>
                         <th class="bg-light text-muted text-uppercase small">Net Profit</th>
-                        <td class="fw-bold {% if yearly.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        <td colspan="3"
+                            class="fw-bold {% if yearly.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
                             ₹{{ "%.2f"|format(yearly.net_profit) }}
+                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Vendor Cost)</small>
                         </td>
                     </tr>
                 </tbody>
@@ -126,11 +132,16 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Assigned Items (Target)</td>
-                                <td class="text-end fw-bold">{{ yearly.ops.target_assigned }}</td>
+                                <td>Assigned Items</td>
+                                <td class="text-end fw-bold">{{ yearly.ops.assigned_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-secondary small me-2"></i>Yet To Start</td>
+                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Items</td>
+                                <td class="text-end fw-bold text-danger">{{ yearly.ops.unassigned_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><i class="bi bi-circle-fill text-secondary small me-2"></i>Yet To Start (Assigned)
+                                </td>
                                 <td class="text-end">{{ yearly.ops.yts_count }}</td>
                             </tr>
                             <tr>
@@ -146,12 +157,12 @@
                                 <td class="text-end">{{ yearly.ops.ready_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Orders</td>
+                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Items</td>
                                 <td class="text-end">{{ yearly.ops.billed_granular_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Delivered</td>
-                                <td class="text-end fw-bold">{{ yearly.ops.delivered_count }}</td>
+                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Items</td>
+                                <td class="text-end fw-bold">{{ yearly.ops.paid_granular_count }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -180,7 +191,16 @@
                             {% set pct = (stats.completed / stats.assigned * 100)|round|int if stats.assigned > 0 else 0
                             %}
                             <tr>
-                                <td class="fw-bold text-dark" style="font-size: 0.9rem;">{{ name }}</td>
+                                <td class="fw-bold text-dark" style="font-size: 0.9rem;">
+                                    {{ name }}
+                                    {% if name == 'VENDOR' %}
+                                    <span
+                                        class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-10 ms-1"
+                                        style="font-size: 0.65rem;">
+                                        ₹{{ "%.2f"|format(yearly.total_vendor_cost or 0) }}
+                                    </span>
+                                    {% endif %}
+                                </td>
                                 <td class="align-middle" style="width: 40%;">
                                     <div class="progress" style="height: 6px;">
                                         <div class="progress-bar {% if pct == 100 %}bg-success{% else %}bg-primary{% endif %}"

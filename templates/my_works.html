@@ -59,6 +59,74 @@
         </div>
     </div>
 
+    <!-- Manual/Logistics Tasks Section -->
+    {% if manual_tasks %}
+    <h5 class="fw-bold mb-4 d-flex align-items-center text-warning">
+        <i class="bi bi-truck me-2"></i> My Manual Tasks (Pickups/Deliveries)
+    </h5>
+    <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-5 bg-dark">
+        <div class="table-responsive">
+            <table class="table table-dark table-hover align-middle mb-0">
+                <thead>
+                    <tr class="text-white text-uppercase small" style="letter-spacing: 0.5px;">
+                        <th class="ps-4 py-3">Type</th>
+                        <th class="py-3">Title & Desc</th>
+                        <th class="py-3">Customer</th>
+                        <th class="py-3">Due Date</th>
+                        <th class="py-3">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in manual_tasks %}
+                    <tr>
+                        <td class="ps-4">
+                            <span
+                                class="badge bg-{{ 'warning' if m.task_type == 'Pickup' else 'info' }} bg-opacity-10 text-{{ 'warning' if m.task_type == 'Pickup' else 'info' }} border border-{{ 'warning' if m.task_type == 'Pickup' else 'info' }} border-opacity-25 rounded-pill px-3">
+                                {{ m.task_type|upper }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="fw-bold text-light">{{ m.title }}</div>
+                            {% if m.description %}
+                            <div class="small text-secondary">{{ m.description }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="text-light">{{ m.customer_name or '-' }}</div>
+                            <div class="small text-muted">{{ m.mobile or '-' }}</div>
+                        </td>
+                        <td>
+                            {% if m.due_date %}
+                            <div class="{{ 'text-danger' if m.due_date.date() < today_date else 'text-light' }}">
+                                {{ m.due_date.strftime('%d %b %Y') }}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('update_manual_task_status') }}" method="POST">
+                                <input type="hidden" name="task_id" value="{{ m.id }}">
+                                <select name="status"
+                                    class="form-select form-select-sm bg-black text-{{ 'success' if m.status == 'done' else ('warning' if m.status == 'wip' else 'light') }} border-{{ 'success' if m.status == 'done' else ('warning' if m.status == 'wip' else 'secondary') }} border-opacity-25 rounded-pill x-small py-1 ps-3 pe-4"
+                                    style="width: 130px; cursor: pointer;" onchange="this.form.submit()">
+                                    <option value="yts" class="text-light" {% if m.status=='yts' %}selected{% endif %}>
+                                        PENDING</option>
+                                    <option value="wip" class="text-warning" {% if m.status=='wip' %}selected{% endif
+                                        %}>IN PROGRESS</option>
+                                    <option value="done" class="text-success" {% if m.status=='done' %}selected{% endif
+                                        %}>COMPLETED</option>
+                                </select>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Task Assignment Table -->
     <h5 class="fw-bold mb-4 d-flex align-items-center">
         <i class="bi bi-layers-half text-primary me-2"></i> Assigned Items & Services
@@ -69,11 +137,9 @@
             <table class="table table-hover align-middle mb-0">
                 <thead class="bg-dark text-white">
                     <tr>
-                        <th class="ps-4 py-3">Job Info</th>
-                        <th>Product & Lead</th>
-                        <th>My Task (Service)</th>
-                        <th>Current Status</th>
-                        <th class="text-center pe-4">Update Status</th>
+                        <th class="ps-4 py-3" style="width: 20%;">Token Info</th>
+                        <th style="width: 25%;">Product & Lead</th>
+                        <th style="width: 55%;">My Tasks & Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -81,78 +147,169 @@
                     {% for item in items %}
                     {% set assignments = item.service_assignments|from_json %}
                     {% set statuses = item.service_statuses|from_json %}
-                    {% set my_services = [] %}
+                    {% set work_ns = namespace(my_services=[], visible_services=[]) %}
 
                     {# Identify which services belong to this user #}
                     {% if item.services %}
                     {% for s in item.services.split(',') %}
                     {% set s_name = s|trim %}
-                    {% if assignments.get(s_name) == current_user.username or item.technician ==
-                    current_user.username
-                    %}
-                    {% set _ = my_services.append(s_name) %}
+                    {% if assignments.get(s_name) == current_user.username or (item.technician == current_user.username
+                    and not assignments.get(s_name)) %}
+                    {% set work_ns.my_services = work_ns.my_services + [s_name] %}
                     {% endif %}
                     {% endfor %}
                     {% endif %}
 
-                    {% for s_name in my_services %}
-                    {% if statuses.get(s_name) != 'ready to deliver' %}
-                    <tr class="{% if statuses.get(s_name) == 'done' %}opacity-75 bg-light{% endif %}">
-                        <td class="ps-4">
-                            <span class="badge bg-light text-dark border mb-1">{{ item.order.job_id
-                                }}</span><br>
-                            <small class="text-muted">Cust: {{ item.order.customer_name }}</small>
-                        </td>
-                        <td>
-                            <div class="fw-bold fs-6">{{ item.product_name or 'Item' }}</div>
-                            <small class="text-muted">Lead: {{ item.technician or '-' }}</small>
-                        </td>
-                        <td>
-                            <span
-                                class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 fw-semibold">
-                                {{ s_name }}
-                            </span>
-                        </td>
-                        <td>
-                            <span class="badge rounded-pill bg-{{ statuses.get(s_name)|status_color }} px-3">
-                                {{ statuses.get(s_name)|default('yts')|upper }}
-                            </span>
-                        </td>
-                        <td class="text-center pe-4">
-                            <form action="{{ url_for('update_task_status') }}" method="POST"
-                                class="d-flex gap-1 justify-content-center">
-                                <input type="hidden" name="item_id" value="{{ item.id }}">
-                                <input type="hidden" name="service_name" value="{{ s_name }}">
+                    {% for task, user in assignments.items() %}
+                    {% if user == current_user.username and task not in work_ns.my_services %}
+                    {% set work_ns.my_services = work_ns.my_services + [task] %}
+                    {% endif %}
+                    {% endfor %}
 
-                                <button type="submit" name="new_status" value="yts"
-                                    class="btn btn-sm btn-outline-secondary rounded-pill {% if statuses.get(s_name) == 'yts' %}active{% endif %}"
-                                    title="YTS">
-                                    YTS
-                                </button>
-                                <button type="submit" name="new_status" value="wip"
-                                    class="btn btn-sm btn-outline-warning rounded-pill {% if statuses.get(s_name) == 'wip' %}active{% endif %}"
-                                    title="WIP">
-                                    WIP
-                                </button>
-                                <button type="submit" name="new_status" value="done"
-                                    class="btn btn-sm btn-outline-success rounded-pill {% if statuses.get(s_name) == 'done' %}active{% endif %}"
-                                    title="DONE">
-                                    DONE
-                                </button>
-                                <button type="submit" name="new_status" value="ready to deliver"
-                                    class="btn btn-sm btn-outline-info rounded-pill {% if statuses.get(s_name) == 'ready to deliver' %}active{% endif %}"
-                                    title="READY">
-                                    READY
-                                </button>
-                            </form>
+                    {% if item.technician == current_user.username and not work_ns.my_services %}
+                    {% set work_ns.my_services = work_ns.my_services + ['Supervision'] %}
+                    {% endif %}
+
+                    {# Filter out 'done' and 'ready to deliver' tasks to check visibility #}
+                    {% for s in work_ns.my_services %}
+                    {% if statuses.get(s) not in ['done', 'ready to deliver', 'completed'] %}
+                    {% set work_ns.visible_services = work_ns.visible_services + [s] %}
+                    {% endif %}
+                    {% endfor %}
+
+                    {% set my_services = work_ns.my_services %}
+                    {% set visible_services = work_ns.visible_services %}
+
+                    {% if visible_services %}
+                    <tr>
+                        <td class="ps-4 align-top pt-3">
+                            <span class="badge bg-light text-dark border mb-1 fs-6">T: {{ item.order.token or '-'
+                                }}</span><br>
+                            <div class="fw-bold text-dark mt-1">{{ item.order.customer_name }}</div>
+                            <small class="text-muted"><i class="bi bi-telephone me-1"></i>{{ item.order.mobile
+                                }}</small>
+                        </td>
+                        <td class="align-top pt-3">
+                            <div class="fw-bold fs-6 text-dark">{{ item.product_name or 'Item' }}</div>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                {% if item.technician == current_user.username %}
+                                <span class="badge bg-warning text-dark border border-warning border-opacity-25"
+                                    style="font-size: 0.7rem;">👑 LEAD</span>
+                                {% endif %}
+                                <small class="text-muted">Lead: {{ item.technician or '-' }}</small>
+                            </div>
+
+                            <!-- Lead Oversight: See what others are doing on this item -->
+                            {% if item.technician == current_user.username %}
+                            <div class="mt-3 pt-2 border-top border-secondary border-opacity-10">
+                                <small class="text-muted d-block mb-1"
+                                    style="font-size: 0.6rem; letter-spacing: 0.05rem; text-transform: uppercase; opacity: 0.5;">Team
+                                    Progress:</small>
+                                {% set other_found = false %}
+                                {% for s_task, s_tech in assignments.items() %}
+                                {% if s_tech and s_tech != current_user.username %}
+                                {% set other_found = true %}
+                                <div class="d-flex align-items-center gap-2 mb-1"
+                                    style="font-size: 0.75rem; opacity: 0.6;">
+                                    <span class="text-info fw-bold">{{ s_tech }}</span>
+                                    <span class="text-secondary small">⇢</span>
+                                    <span class="text-light" style="font-size: 0.7rem;">{{ s_task }}</span>
+                                    <span
+                                        class="badge rounded-pill bg-{{ statuses.get(s_task)|status_color }} py-0 px-2"
+                                        style="font-size: 0.55rem;">
+                                        {{ statuses.get(s_task)|default('yts')|upper }}
+                                    </span>
+                                </div>
+                                {% endif %}
+                                {% endfor %}
+
+                                {# Check item-level tech if not in assignments #}
+                                {% if item.technician and item.technician != current_user.username and not other_found
+                                %}
+                                <div class="d-flex align-items-center gap-2 mb-1"
+                                    style="font-size: 0.75rem; opacity: 0.6;">
+                                    <span class="text-info fw-bold">{{ item.technician }}</span>
+                                    <span class="text-secondary small">⇢</span>
+                                    <span class="text-light" style="font-size: 0.7rem;">Main Task</span>
+                                    <span class="badge rounded-pill bg-{{ item.status|status_color }} py-0 px-2"
+                                        style="font-size: 0.55rem;">
+                                        {{ item.status|default('yts')|upper }}
+                                    </span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="py-3">
+                            <div class="d-flex flex-column gap-2">
+                                {% set sub_tasks = ['wash', 're wash', 'packing'] %}
+                                {% set ns = namespace(has_deep_clean=false) %}
+                                {% for v in visible_services %}{% if v.lower() == 'deep clean' %}{% set
+                                ns.has_deep_clean = true %}{% endif %}{% endfor %}
+
+                                {% for s_name in visible_services %}
+                                {% set is_sub = s_name.lower() in sub_tasks and ns.has_deep_clean %}
+                                <div
+                                    class="d-flex flex-wrap align-items-center justify-content-between p-2 rounded-3 border shadow-sm {% if is_sub %}ms-4 border-start-0 border-top-0 border-end-0 rounded-0 bg-light bg-opacity-10{% else %}bg-white{% endif %} mb-1">
+                                    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+                                        {% if is_sub %}
+                                        <i class="bi bi-arrow-return-right text-info ms-1 me-1"></i>
+                                        {% endif %}
+
+                                        {% if s_name == 'Supervision' %}
+                                        <span
+                                            class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-2 py-2">
+                                            👀 Supervision
+                                        </span>
+                                        {% else %}
+                                        <span
+                                            class="badge bg-{{ 'info' if is_sub else 'primary' }} bg-opacity-10 text-{{ 'info' if is_sub else 'primary' }} border border-{{ 'info' if is_sub else 'primary' }} border-opacity-25 px-2 py-2"
+                                            style="font-size: 0.85rem;">
+                                            {{ s_name }}
+                                        </span>
+                                        {% endif %}
+
+                                        <!-- Current Status Indicator -->
+                                        <span
+                                            class="badge rounded-pill bg-{{ statuses.get(s_name)|status_color }} px-2 ml-2">
+                                            {{ statuses.get(s_name)|default('yts')|upper }}
+                                        </span>
+                                    </div>
+
+                                    <div class="ms-auto">
+                                        {% if s_name.lower() != 'deep clean' %}
+                                        <form action="{{ url_for('update_task_status') }}" method="POST"
+                                            class="d-flex gap-1 m-0">
+                                            <input type="hidden" name="item_id" value="{{ item.id }}">
+                                            <input type="hidden" name="service_name" value="{{ s_name }}">
+
+                                            <button type="submit" name="new_status" value="yts"
+                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if statuses.get(s_name) == 'yts' %}active{% endif %}"
+                                                style="font-size: 0.7rem;" title="YTS">YTS</button>
+                                            <button type="submit" name="new_status" value="wip"
+                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if statuses.get(s_name) == 'wip' %}active{% endif %}"
+                                                style="font-size: 0.7rem;" title="WIP">WIP</button>
+                                            <button type="submit" name="new_status" value="done"
+                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if statuses.get(s_name) == 'done' %}active{% endif %}"
+                                                style="font-size: 0.7rem;" title="DONE">DONE</button>
+                                            <button type="submit" name="new_status" value="ready to deliver"
+                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if statuses.get(s_name) == 'ready to deliver' %}active{% endif %}"
+                                                style="font-size: 0.7rem;" title="READY">READY</button>
+                                        </form>
+                                        {% else %}
+                                        <span class="x-small text-muted italic">Auto-updated by components</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </td>
                     </tr>
                     {% endif %}
                     {% endfor %}
-                    {% endfor %}
                     {% else %}
                     <tr>
-                        <td colspan="5" class="py-5 text-center text-muted">
+                        <td colspan="3" class="py-5 text-center text-muted">
                             <i class="bi bi-emoji-sunglasses fs-1 d-block mb-3"></i>
                             <h5 class="fw-normal">No tasks assigned to you right now!</h5>
                         </td>
@@ -163,56 +320,77 @@
         </div>
     </div>
 
-    <!-- Recently Completed Work (Dropdown) -->
-    <div class="accordion" id="completedWorkAccordion">
-        <div class="accordion-item shadow-sm border-0 rounded-4 overflow-hidden mb-5">
-            <h2 class="accordion-header" id="headingCompleted">
-                <button class="accordion-button collapsed bg-white fw-bold py-3" type="button" data-bs-toggle="collapse"
-                    data-bs-target="#collapseCompleted" aria-expanded="false" aria-controls="collapseCompleted">
-                    <i class="bi bi-check2-all text-success me-2"></i> Recently Completed Work (Ready/Billed Today)
-                    <span class="badge bg-success ms-2 rounded-pill">{{ completed_items|length }}</span>
+    <!-- Unified Work History & Planning -->
+    <div class="accordion mb-5 shadow-sm rounded-4 overflow-hidden border border-secondary border-opacity-25"
+        id="workArchiveAccordion">
+        <div class="accordion-item border-0 bg-dark">
+            <h2 class="accordion-header" id="headingArchive">
+                <button class="accordion-button collapsed bg-dark text-light fw-bold py-3 shadow-none" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#collapseArchive" aria-expanded="false"
+                    aria-controls="collapseArchive">
+                    <div class="d-flex align-items-center w-100 me-3">
+                        <i class="bi bi-clock-history text-info me-2"></i>
+                        <span>Work Planning & History</span>
+                        <div class="ms-auto d-flex gap-2">
+                            <span
+                                class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill small">
+                                Upcoming: {{ upcoming_items|length }}
+                            </span>
+                            <span
+                                class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill small">
+                                Recent: {{ completed_items|length }}
+                            </span>
+                        </div>
+                    </div>
                 </button>
             </h2>
-            <div id="collapseCompleted" class="accordion-collapse collapse" aria-labelledby="headingCompleted"
-                data-bs-parent="#completedWorkAccordion">
-                <div class="accordion-body p-0">
-                    {% if completed_items %}
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="bg-light text-secondary text-uppercase small">
+            <div id="collapseArchive" class="accordion-collapse collapse" aria-labelledby="headingArchive"
+                data-bs-parent="#workArchiveAccordion">
+                <div class="accordion-body p-0 border-top border-secondary border-opacity-25">
+
+                    <!-- Section 1: Upcoming -->
+                    <div class="p-3 bg-black bg-opacity-25 border-bottom border-secondary border-opacity-25">
+                        <h6 class="fw-bold mb-0 text-info d-flex align-items-center">
+                            <i class="bi bi-calendar-event me-2"></i> Upcoming Work (Future Assignments)
+                        </h6>
+                    </div>
+                    {% if upcoming_items %}
+                    <div class="table-responsive bg-transparent">
+                        <table class="table table-dark table-hover align-middle mb-0">
+                            <thead class="bg-black bg-opacity-50 text-secondary text-uppercase x-small">
                                 <tr>
-                                    <th class="border-0 ps-4">Job Details</th>
+                                    <th class="border-0 ps-4">Token & Product</th>
                                     <th class="border-0">Customer</th>
-                                    <th class="border-0">Service</th>
-                                    <th class="border-0">Finished Date/Time</th>
-                                    <th class="border-0">Status</th>
+                                    <th class="border-0">Start Date</th>
+                                    <th class="border-0">Tasks</th>
                                 </tr>
                             </thead>
                             <tbody class="border-top-0">
-                                {% for item in completed_items %}
-                                <tr>
+                                {% for item in upcoming_items %}
+                                <tr class="bg-transparent">
                                     <td class="ps-4">
-                                        <div class="fw-bold text-primary">{{ item.order.job_id or item.order_id }}</div>
-                                        <div class="small text-muted">{{ item.item_name }}</div>
+                                        <div class="fw-bold text-light">T: {{ item.order.token or '-' }}</div>
+                                        <div class="small text-muted">{{ item.product_name }}</div>
                                     </td>
                                     <td>
-                                        <div class="fw-semibold">{{ item.order.customer_name }}</div>
+                                        <div class="fw-semibold text-light">{{ item.order.customer_name }}</div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-light text-dark fw-normal border">
-                                            {{ item.services or 'Full Item' }}
+                                        {% if item.order.assignment_start_date %}
+                                        <span
+                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 px-2 py-1 rounded-pill x-small">
+                                            {{ item.order.assignment_start_date.strftime('%d %b %Y') }}
                                         </span>
+                                        {% else %}
+                                        <span
+                                            class="badge bg-secondary bg-opacity-10 text-muted border border-secondary border-opacity-25 px-2 py-1 rounded-pill x-small">
+                                            Not Scheduled
+                                        </span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         <span class="small text-muted">
-                                            {{ item.order.work_finish_date.strftime('%d %b %Y, %I:%M %p') if
-                                            item.order.work_finish_date else 'Today' }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span
-                                            class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
-                                            {{ (item.status or 'Completed')|upper }}
+                                            {{ item.services }}
                                         </span>
                                     </td>
                                 </tr>
@@ -221,15 +399,186 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="p-5 text-center text-muted">
-                        <i class="bi bi-check-circle fs-1 mb-3 d-block text-secondary opacity-25"></i>
-                        No completed tasks found for today.
+                    <div class="p-4 text-center text-muted bg-transparent">
+                        <small>No future tasks found.</small>
+                    </div>
+                    {% endif %}
+
+                    <!-- Section 2: Recently Completed -->
+                    <div
+                        class="p-3 bg-black bg-opacity-25 border-top border-bottom border-secondary border-opacity-25 mt-0">
+                        <h6 class="fw-bold mb-0 text-success d-flex align-items-center">
+                            <i class="bi bi-check2-all me-2"></i> Recently Completed (Billed Today)
+                        </h6>
+                    </div>
+                    {% if history_entries %}
+                    <div class="table-responsive bg-transparent">
+                        <table class="table table-dark table-hover align-middle mb-0">
+                            <thead class="bg-black bg-opacity-50 text-secondary text-uppercase x-small">
+                                <tr>
+                                    <th class="border-0 ps-4">Job Details</th>
+                                    <th class="border-0">Customer</th>
+                                    <th class="border-0">Finished Task</th>
+                                    <th class="border-0">Time</th>
+                                    <th class="border-0">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="border-top-0">
+                                {% for entry in history_entries %}
+                                <tr class="bg-transparent">
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-info">{{ entry.job_id }}</div>
+                                        <div class="small text-muted mb-1">{{ entry.product }}</div>
+                                        <!-- Granular Task Redmarks -->
+                                        <div class="d-flex flex-wrap gap-1">
+                                            {% for t in entry.tasks %}
+                                            <span
+                                                class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 py-0 px-2"
+                                                style="font-size: 0.6rem; letter-spacing: 0.02rem;">
+                                                ✓ {{ t }}
+                                            </span>
+                                            {% endfor %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-semibold text-light">{{ entry.customer }}</div>
+                                        {% if entry.is_lead %}
+                                        <div class="x-small text-warning opacity-75" style="font-size: 0.65rem;">Lead
+                                            Tech</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill px-2 x-small">
+                                            {{ "Full Item Completed" if entry.is_full_done else "Partially Done" }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="small text-muted x-small">
+                                            {{ entry.time.strftime('%d %b %Y, %I:%M %p') if entry.time is not string
+                                            else entry.time }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span
+                                            class="badge bg-{{ entry.status|status_color }} bg-opacity-10 text-{{ entry.status|status_color }} border border-{{ entry.status|status_color }} border-opacity-25 rounded-pill x-small">
+                                            {{ entry.status|upper }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="p-4 text-center text-muted bg-transparent mb-0">
+                        <small>No completed tasks found for today.</small>
+                    </div>
+                    {% endif %}
+
+                    <!-- Section 3: Vendor Management (Admin Only) -->
+                    {% if current_user.role in ['super_admin', 'admin'] %}
+                    <div
+                        class="p-3 bg-black bg-opacity-25 border-top border-bottom border-secondary border-opacity-25 mt-0">
+                        <h6 class="fw-bold mb-0 text-danger d-flex align-items-center">
+                            <i class="bi bi-shop me-2"></i> Vendor Management (Outsourced Work)
+                        </h6>
+                    </div>
+                    <div class="row g-0">
+                        <!-- Active Vendor Works -->
+                        <div class="col-lg-7 border-end border-secondary border-opacity-25">
+                            <div class="p-3">
+                                <h6 class="text-muted text-uppercase x-small fw-bold mb-3">Active Assignments</h6>
+                                <div class="table-responsive bg-transparent">
+                                    <table class="table table-dark table-hover align-middle mb-0">
+                                        <thead class="bg-black bg-opacity-50 text-secondary text-uppercase x-small">
+                                            <tr>
+                                                <th class="border-0 ps-4">Job Info</th>
+                                                <th class="border-0">Outsourced Tasks</th>
+                                                <th class="border-0">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="border-top-0">
+                                            {% if vendor_active %}
+                                            {% for entry in vendor_active %}
+                                            <tr class="bg-transparent">
+                                                <td class="ps-4">
+                                                    <div class="fw-bold text-primary">{{ entry.item.order.job_id }}
+                                                    </div>
+                                                    <div class="small text-muted">{{ entry.item.product_name }}</div>
+                                                </td>
+                                                <td>
+                                                    {% for t in entry.tasks %}
+                                                    <span
+                                                        class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 small mb-1">
+                                                        {{ t.name }} ({{ t.status|upper }})
+                                                    </span>
+                                                    {% endfor %}
+                                                </td>
+                                                <td>
+                                                    <a href="{{ url_for('edit_order', order_id=entry.item.order.id) }}"
+                                                        class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                        style="font-size: 0.7rem;">
+                                                        Manage
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                            {% endfor %}
+                                            {% else %}
+                                            <tr class="bg-transparent">
+                                                <td colspan="3" class="text-center py-4 text-muted small">No active
+                                                    vendor tasks.</td>
+                                            </tr>
+                                            {% endif %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Vendor History -->
+                        <div class="col-lg-5">
+                            <div class="p-3">
+                                <h6 class="text-muted text-uppercase x-small fw-bold mb-3">Recent Vendor History</h6>
+                                <div style="max-height: 400px; overflow-y: auto;">
+                                    {% if vendor_history %}
+                                    <ul class="list-group list-group-flush">
+                                        {% for entry in vendor_history %}
+                                        <li
+                                            class="list-group-item bg-transparent py-2 border-secondary border-opacity-10">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <div class="fw-bold small text-light">{{ entry.item.order.job_id }}
+                                                        - {{ entry.item.order.customer_name }}</div>
+                                                    <div class="x-small text-muted">{{ entry.item.product_name }}</div>
+                                                    <div class="mt-1">
+                                                        {% for t in entry.tasks %}
+                                                        <span class="x-small text-success">✓ {{ t.name }}</span>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                                <div class="text-end">
+                                                    <div
+                                                        class="x-small text-success border border-success border-opacity-25 bg-success bg-opacity-10 px-2 rounded-pill">
+                                                        Paid</div>
+                                                </div>
+                                            </div>
+                                        </li>
+                                        {% endfor %}
+                                    </ul>
+                                    {% else %}
+                                    <div class="text-center text-muted small py-4">No recent vendor history.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
+
 </div>
 
 <style>
@@ -257,6 +606,28 @@
     .btn-sm {
         font-size: 0.75rem;
         padding: 0.25rem 0.6rem;
+    }
+
+    .status-btn {
+        color: rgba(255, 255, 255, 0.4) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: transparent !important;
+        transition: all 0.2s ease-in-out;
+    }
+
+    .status-btn:hover {
+        color: #fff !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+    }
+
+    .status-btn.active {
+        background-color: #ffc107 !important;
+        /* Amber/Yellow */
+        color: #000 !important;
+        border-color: #ffc107 !important;
+        font-weight: bold !important;
+        box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
     }
 
     .opacity-75 {
