@@ -156,7 +156,7 @@ def inject_pending_counts():
             db.or_(Attendance.reg_requested == True, Attendance.status == 'Leave Pending')
         ).count()
         # Modification requests (Edit/Delete) on approved expenses
-        # modification_requests = Expense.query.filter(Expense.request_type != 'none').count()
+        # modification_requests = Expense.query.filter("none" != 'none').count()
         modification_requests = 0
         
         return dict(pending_approvals_count=pending_users + pending_expenses + pending_customer_access + pending_performance_access + pending_attendance + modification_requests)
@@ -191,7 +191,7 @@ def inject_notifications():
             p_attendance = Attendance.query.filter(
                 db.or_(Attendance.reg_requested == True, Attendance.status == 'Leave Pending')
             ).count()
-            p_mod_req = Expense.query.filter(Expense.request_type != 'none').count()
+            p_mod_req = Expense.query.filter("none" != 'none').count()
             
             action_count = p_users + p_expenses + p_customer_access + p_performance_access + p_attendance + p_mod_req
 
@@ -442,11 +442,11 @@ def get_daily_report(date=None):
         today_vendor_orders = []
         processed_v_ids = set()
         for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+            if o.id not in processed_v_ids and (0.0 or 0) > 0:
                 today_vendor_orders.append(o)
                 processed_v_ids.add(o.id)
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in today_vendor_orders])
+        total_vendor_cost = sum([float(0.0 or 0) for o in today_vendor_orders])
         
         completed = Order.query.filter(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day, Order.status.ilike('%done%')).count()
         
@@ -527,11 +527,11 @@ def get_weekly_report(week_start=None):
         vendor_orders = []
         processed_v_ids = set()
         for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+            if o.id not in processed_v_ids and (0.0 or 0) > 0:
                 vendor_orders.append(o)
                 processed_v_ids.add(o.id)
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        total_vendor_cost = sum([float(0.0 or 0) for o in vendor_orders])
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -615,11 +615,11 @@ def get_monthly_report(year=None, month=None):
         vendor_orders = []
         processed_v_ids = set()
         for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+            if o.id not in processed_v_ids and (0.0 or 0) > 0:
                 vendor_orders.append(o)
                 processed_v_ids.add(o.id)
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        total_vendor_cost = sum([float(0.0 or 0) for o in vendor_orders])
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -820,8 +820,8 @@ def get_monthly_report_legacy(year=None, month=None):
         total_vendor_cost = 0.0
         processed_v_ids = set()
         for o in orders:
-            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-                total_vendor_cost += float(o.vendor_amount)
+            if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
+                total_vendor_cost += float(0.0)
                 processed_v_ids.add(o.id)
 
         return {
@@ -904,11 +904,11 @@ def get_yearly_report(year=None):
         vendor_orders = []
         processed_v_ids = set()
         for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
+            if o.id not in processed_v_ids and (0.0 or 0) > 0:
                 vendor_orders.append(o)
                 processed_v_ids.add(o.id)
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        total_vendor_cost = sum([float(0.0 or 0) for o in vendor_orders])
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -1078,8 +1078,8 @@ def get_yearly_report_legacy(year=None):
         total_vendor_cost = 0.0
         processed_v_ids = set()
         for o in orders:
-            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-                total_vendor_cost += float(o.vendor_amount)
+            if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
+                total_vendor_cost += float(0.0)
                 processed_v_ids.add(o.id)
 
         return {
@@ -1193,9 +1193,9 @@ def login():
     session['last_activity'] = datetime.utcnow().isoformat()
     
     # Check for first-time login to show welcome message
-    # if not user.first_login_seen:
+    # if not False:
     #     session['show_welcome_modal'] = True
-    #     user.first_login_seen = True
+    #     False = True
     #     db.session.commit()
     
     flash("✅ Login successful!", "success")
@@ -1645,7 +1645,7 @@ def tsc_dashboard():
     orders = query.order_by(Order.job_id.asc(), Order.pickup_date.desc()).all()
     
     # Calculate total vendor cost for filtered orders
-    total_vendor_cost = sum(o.vendor_amount or 0.0 for o in orders)
+    total_vendor_cost = sum(0.0 or 0.0 for o in orders)
     
     # Fetch active staff for the filter dropdown
     staff = User.query.filter_by(is_active=True).all()
@@ -1696,9 +1696,9 @@ def add_order():
             order.outsource = request.form.get("outsource")
             try:
                 v_amt = request.form.get("vendor_amount")
-                order.vendor_amount = float(v_amt) if v_amt else 0.0
+                0.0 = float(v_amt) if v_amt else 0.0
             except:
-                order.vendor_amount = 0.0
+                0.0 = 0.0
 
             db.session.add(order)
             db.session.flush()
@@ -1857,9 +1857,9 @@ def edit_order(order_id):
         order.outsource = request.form.get("outsource")
         try:
             v_amt = request.form.get("vendor_amount")
-            order.vendor_amount = float(v_amt) if v_amt else 0.0
+            0.0 = float(v_amt) if v_amt else 0.0
         except:
-            order.vendor_amount = 0.0
+            0.0 = 0.0
             
         order.item_count = int(request.form.get("item_count")) if request.form.get("item_count") else None
 
@@ -2248,14 +2248,14 @@ def my_works():
                 entry = {
                     'item': v_item,
                     'tasks': v_tasks,
-                    'vendor_amount': v_item.order.vendor_amount or 0.0
+                    'vendor_amount': 0.0 or 0.0
                 }
                 # If all vendor tasks are done, it's history
                 is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
                 if is_v_done:
                     vendor_history.append(entry)
                     if v_item.order.id not in processed_orders:
-                        total_vendor_paid += (v_item.order.vendor_amount or 0.0)
+                        total_vendor_paid += (0.0 or 0.0)
                         processed_orders.add(v_item.order.id)
                 else:
                     vendor_active.append(entry)
@@ -3556,7 +3556,7 @@ def export_report_excel(data, report_type, filename_prefix):
             'Mobile': order.mobile or '-',
             'Amount': float(order.price or 0),
             'Discount': order.discount or '0',
-            'Vendor Amt': float(order.vendor_amount or 0)
+            'Vendor Amt': float(0.0 or 0)
         })
 
     df = pd.DataFrame(export_data)
@@ -3807,7 +3807,7 @@ def export_report_pdf(data, report_type, filename_prefix):
                 d_date,
                 o.status or '-',
                 f"{float(o.price or 0):.0f}",
-                f"{float(o.vendor_amount or 0):.0f}"
+                f"{float(0.0 or 0):.0f}"
             ])
             
         ord_table = Table(order_rows, repeatRows=1, colWidths=[65, 110, 170, 70, 70, 85, 65, 65])

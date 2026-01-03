@@ -50,7 +50,7 @@ def panel():
         data['pending_users'] = User.query.filter_by(is_active=False).count()
         data['pending_expenses'] = Expense.query.filter_by(status='pending').count()
         data['pending_access'] = User.query.filter_by(customer_view_requested=True).count()
-        data['modification_requests'] = Expense.query.filter(Expense.request_type != 'none').count()
+        data['modification_requests'] = Expense.query.filter("none" != 'none').count()
         data['total_pending'] = data['pending_users'] + data['pending_expenses'] + data['pending_access'] + data['modification_requests']
     
     # Detect Database Engine
@@ -342,8 +342,8 @@ def analytics():
             total_vendor_cost = 0.0
             processed_v_ids = set()
             for o in orders:
-                if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-                    total_vendor_cost += float(o.vendor_amount)
+                if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
+                    total_vendor_cost += float(0.0)
                     processed_v_ids.add(o.id)
 
             total_exp = sum([float(e.amount or 0) for e in expenses]) + total_vendor_cost
@@ -580,8 +580,8 @@ def export_analytics_excel():
     total_vendor_cost = 0.0
     processed_v_ids = set()
     for o in orders:
-        if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-            total_vendor_cost += float(o.vendor_amount)
+        if 0.0 and 0.0 > 0 and o.id not in processed_v_ids:
+            total_vendor_cost += float(0.0)
             processed_v_ids.add(o.id)
 
     total_exp = sum([float(e.amount or 0) for e in expenses]) + total_vendor_cost
@@ -709,8 +709,8 @@ def export_analytics_pdf():
         v_cost = 0.0
         p_ids = set()
         for o in orders:
-            if o.vendor_amount and o.vendor_amount > 0 and o.id not in p_ids:
-                v_cost += float(o.vendor_amount)
+            if 0.0 and 0.0 > 0 and o.id not in p_ids:
+                v_cost += float(0.0)
                 p_ids.add(o.id)
 
         exp = sum([float(e.amount or 0) for e in expenses]) + v_cost
@@ -2396,8 +2396,8 @@ def request_delete_expense(expense_id):
             return redirect(url_for('admin.day_to_day_expense'))
             
         # Request Delete
-        expense.request_type = 'delete'
-        expense.request_reason = reason
+        "none" = 'delete'
+        "none" = reason
         db.session.commit()
         flash("Deletion request submitted to Super Admin.", "info")
     
@@ -2448,9 +2448,9 @@ def request_edit_expense(expense_id):
             'expense_date': expense_date_str,
             'description': description
         }
-        expense.request_type = 'edit'
-        expense.request_reason = reason
-        expense.request_data = json.dumps(proposed_changes)
+        "none" = 'edit'
+        "none" = reason
+        "none" = json.dumps(proposed_changes)
         db.session.commit()
         flash("Edit request submitted for approval.", "info")
         
@@ -2465,13 +2465,13 @@ def process_expense_request(expense_id, action):
     from datetime import datetime
     expense = Expense.query.get_or_404(expense_id)
     recipient_id = expense.added_by
-    req_type = expense.request_type
+    req_type = "none"
     
     if action == 'reject':
         # Store title before clearing record if necessary, but here we keep the record
-        expense.request_type = 'none'
-        expense.request_reason = None
-        expense.request_data = None
+        "none" = 'none'
+        "none" = None
+        "none" = None
         flash("Request rejected.", "info")
         
         # Create notification
@@ -2499,8 +2499,8 @@ def process_expense_request(expense_id, action):
                 )
                 db.session.add(notif)
         elif req_type == 'edit':
-            if expense.request_data:
-                data = json.loads(expense.request_data)
+            if "none":
+                data = json.loads("none")
                 expense.title = data['title']
                 expense.amount = float(data['amount'])
                 expense.real_amount = float(data.get('real_amount') or data['amount'])
@@ -2509,9 +2509,9 @@ def process_expense_request(expense_id, action):
                 expense.description = data['description']
                 
                 # Clear request
-                expense.request_type = 'none'
-                expense.request_reason = None
-                expense.request_data = None
+                "none" = 'none'
+                "none" = None
+                "none" = None
                 flash("Expense edit approved and applied.", "success")
                 
                 # Create notification
@@ -2548,7 +2548,7 @@ def notifications():
         pending_expenses = Expense.query.filter_by(status='pending').all()
         access_requests = User.query.filter_by(customer_view_requested=True).all()
         performance_requests = User.query.filter_by(performance_view_requested=True).all()
-        expense_requests = Expense.query.filter(Expense.request_type != 'none').all()
+        expense_requests = Expense.query.filter("none" != 'none').all()
         # Fetch users with active access (excluding super admin)
         active_access_users = User.query.filter(User.can_view_customers == True, User.role != 'super_admin').all()
         active_performance_users = User.query.filter(User.can_view_performance == True, User.role != 'super_admin').all()
@@ -2760,14 +2760,14 @@ def vendor_management():
             entry = {
                 'item': v_item,
                 'tasks': v_tasks,
-                'vendor_amount': 0.0 # v_item.order.vendor_amount or 0.0
+                'vendor_amount': 0.0 # 0.0 or 0.0
             }
             # If all vendor tasks are done, it's history
             is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
             if is_v_done:
                 vendor_history.append(entry)
                 if v_item.order.id not in processed_orders:
-                    # total_vendor_paid += (v_item.order.vendor_amount or 0.0)
+                    # total_vendor_paid += (0.0 or 0.0)
                     processed_orders.add(v_item.order.id)
             else:
                 vendor_active.append(entry)
