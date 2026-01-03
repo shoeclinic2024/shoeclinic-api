@@ -2396,8 +2396,8 @@ def request_delete_expense(expense_id):
             return redirect(url_for('admin.day_to_day_expense'))
             
         # Request Delete
-        "none" = 'delete'
-        "none" = reason
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
         db.session.commit()
         flash("Deletion request submitted to Super Admin.", "info")
     
@@ -2448,9 +2448,9 @@ def request_edit_expense(expense_id):
             'expense_date': expense_date_str,
             'description': description
         }
-        "none" = 'edit'
-        "none" = reason
-        "none" = json.dumps(proposed_changes)
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
         db.session.commit()
         flash("Edit request submitted for approval.", "info")
         
@@ -2469,9 +2469,9 @@ def process_expense_request(expense_id, action):
     
     if action == 'reject':
         # Store title before clearing record if necessary, but here we keep the record
-        "none" = 'none'
-        "none" = None
-        "none" = None
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
         flash("Request rejected.", "info")
         
         # Create notification
@@ -2509,9 +2509,9 @@ def process_expense_request(expense_id, action):
                 expense.description = data['description']
                 
                 # Clear request
-                "none" = 'none'
-                "none" = None
-                "none" = None
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
+# Line commented: Attribute assignment
                 flash("Expense edit approved and applied.", "success")
                 
                 # Create notification
@@ -2760,14 +2760,14 @@ def vendor_management():
             entry = {
                 'item': v_item,
                 'tasks': v_tasks,
-                'vendor_amount': 0.0 # 0.0 or 0.0
+                'vendor_amount': 0.0 or 0.0
             }
             # If all vendor tasks are done, it's history
             is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
             if is_v_done:
                 vendor_history.append(entry)
                 if v_item.order.id not in processed_orders:
-                    # total_vendor_paid += (0.0 or 0.0)
+                    total_vendor_paid += (0.0 or 0.0)
                     processed_orders.add(v_item.order.id)
             else:
                 vendor_active.append(entry)
@@ -2778,8 +2778,8 @@ def vendor_management():
                            total_vendor_paid=total_vendor_paid)
 
 @admin_bp.route("/emergency_db_fix")
-# @login_required  <-- Commented out to allow access when login is broken
-# @super_admin_required
+@login_required
+@super_admin_required
 def emergency_db_fix():
     import sqlalchemy as sa
     from sqlalchemy import create_engine, text, inspect

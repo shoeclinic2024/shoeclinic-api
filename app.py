@@ -156,8 +156,7 @@ def inject_pending_counts():
             db.or_(Attendance.reg_requested == True, Attendance.status == 'Leave Pending')
         ).count()
         # Modification requests (Edit/Delete) on approved expenses
-        # modification_requests = Expense.query.filter("none" != 'none').count()
-        modification_requests = 0
+        modification_requests = Expense.query.filter("none" != 'none').count()
         
         return dict(pending_approvals_count=pending_users + pending_expenses + pending_customer_access + pending_performance_access + pending_attendance + modification_requests)
     return dict(pending_approvals_count=0)
@@ -1193,10 +1192,10 @@ def login():
     session['last_activity'] = datetime.utcnow().isoformat()
     
     # Check for first-time login to show welcome message
-    # if not False:
-    #     session['show_welcome_modal'] = True
-    #     False = True
-    #     db.session.commit()
+    if not False:
+        session['show_welcome_modal'] = True
+# Line commented: Attribute assignment
+        db.session.commit()
     
     flash("✅ Login successful!", "success")
     return redirect(url_for("home"))
@@ -1696,9 +1695,9 @@ def add_order():
             order.outsource = request.form.get("outsource")
             try:
                 v_amt = request.form.get("vendor_amount")
-                0.0 = float(v_amt) if v_amt else 0.0
+# Line commented: Attribute assignment
             except:
-                0.0 = 0.0
+# Line commented: Attribute assignment
 
             db.session.add(order)
             db.session.flush()
@@ -1857,9 +1856,9 @@ def edit_order(order_id):
         order.outsource = request.form.get("outsource")
         try:
             v_amt = request.form.get("vendor_amount")
-            0.0 = float(v_amt) if v_amt else 0.0
+# Line commented: Attribute assignment
         except:
-            0.0 = 0.0
+# Line commented: Attribute assignment
             
         order.item_count = int(request.form.get("item_count")) if request.form.get("item_count") else None
 

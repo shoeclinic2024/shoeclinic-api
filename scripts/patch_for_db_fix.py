@@ -4,22 +4,14 @@ import os
 files_to_patch = ['e:/app_v02/app.py', 'e:/app_v02/admin.py']
 
 replacements = [
-    (r'\bExpense\.request_type\b', '"none"'),
-    (r'\bExpense\.request_reason\b', '"none"'),
-    (r'\bExpense\.request_data\b', '"none"'),
-    (r'\bexpense\.request_type\b', '"none"'),
-    (r'\bexpense\.request_reason\b', '"none"'),
-    (r'\bexpense\.request_data\b', '"none"'),
-    (r'\bv_item\.order\.vendor_amount\b', '0.0'),
-    (r'\border\.vendor_amount\b', '0.0'),
-    (r'\bo\.vendor_amount\b', '0.0'),
-    (r'\bcurrent_user\.first_login_seen\b', 'False'),
-    (r'\buser\.first_login_seen\b', 'False'),
-    # Assignments (Greedy matching to comment out whole line)
-    (r'.*expense\.request_type\s*=.*', '# Attribute assignment removed'),
-    (r'.*expense\.request_reason\s*=.*', '# Attribute assignment removed'),
-    (r'.*expense\.request_data\s*=.*', '# Attribute assignment removed'),
-    (r'.*order\.vendor_amount\s*=.*', '# Attribute assignment removed'),
+    # 1. First, comment out any line that performs an assignment to these attributes
+    # We use a broad match for any line containing 'attribute ='
+    (r'.*\b(expense|order|user|current_user|v_item\.order)\.(request_type|request_reason|request_data|vendor_amount|first_login_seen)\s*=.*', '# Line commented: Attribute assignment'),
+    
+    # 2. Then, replace attribute access in expressions (getters)
+    (r'\b(Expense|expense)\.(request_type|request_reason|request_data)\b', '"none"'),
+    (r'\b(order|o|v_item\.order)\.vendor_amount\b', '0.0'),
+    (r'\b(user|current_user)\.first_login_seen\b', 'False'),
 ]
 
 for file_path in files_to_patch:
@@ -32,6 +24,7 @@ for file_path in files_to_patch:
         content = f.read()
     
     new_content = content
+    # We process each pattern on the whole content
     for pattern, replacement in replacements:
         new_content = re.sub(pattern, replacement, new_content)
     
