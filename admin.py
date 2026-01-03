@@ -1094,7 +1094,7 @@ def assign_task():
                                 del assignments[s]
                             if s in statuses:
                                 del statuses[s]
-                        flash(f"Service(s) cleared Γ£à", "info")
+                        flash(f"Service(s) cleared ✅", "info")
                     else:
                         # Assign Logic
                         services_to_assign = [service_name]
@@ -1105,7 +1105,7 @@ def assign_task():
                             assignments[s] = technician_name
                             if s not in statuses:
                                 statuses[s] = 'yts'
-                        flash(f"Assigned to {technician_name} Γ£à", "success")
+                        flash(f"Assigned to {technician_name} ✅", "success")
                         
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
@@ -1119,7 +1119,7 @@ def assign_task():
                     # We ONLY update the item-level technician now.
                     # We do NOT automatically assign this person to every individual service anymore.
                     item.technician = technician_name
-                    flash(f"Main Lead updated to {technician_name} Γ£à", "success")
+                    flash(f"Main Lead updated to {technician_name} ✅", "success")
                     
                     # Ensure order service_date is set
                     if item.order and not item.order.service_date:
@@ -1150,7 +1150,7 @@ def assign_task():
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
                 db.session.commit()
-                flash(f"Whole Order {order.job_id} assigned to {technician_name} Γ£à", "success")
+                flash(f"Whole Order {order.job_id} assigned to {technician_name} ✅", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error assigning task: {str(e)}", "danger")
@@ -1234,9 +1234,9 @@ def assign_task_bundle():
             db.session.commit()
             
             if technician_name == 'UNASSIGN':
-                flash(f"Process unassigned (cleared) Γ£à", "info")
+                flash(f"Process unassigned (cleared) ✅", "info")
             else:
-                flash(f"Process assigned to {technician_name} Γ£à", "success")
+                flash(f"Process assigned to {technician_name} ✅", "success")
             
     except Exception as e:
         db.session.rollback()
@@ -1539,7 +1539,7 @@ def add_expense():
             db.session.commit()
             
             if status == 'approved':
-                flash("Expense added and approved! Γ£à", "success")
+                flash("Expense added and approved! ✅", "success")
             else:
                 flash("Expense submitted for Super Admin approval. ΓÅ│", "info")
             
@@ -2172,7 +2172,7 @@ def approve_performance_access(user_id):
     # Create notification
     notif = Notification(
         user_id=user.id,
-        title="Performance Monitor Access Granted ≡ƒôè",
+        title="Performance Monitor Access Granted 📊",
         message=f"Admin has granted you {expiry_msg} access to the Performance Monitor.",
         link=url_for('admin.performance_monitor')
     )
@@ -2192,7 +2192,7 @@ def reject_performance_access(user_id):
     # Create notification
     notif = Notification(
         user_id=user.id,
-        title="Performance Access Rejected Γ¥î",
+        title="Performance Access Rejected ❌",
         message="Your request for Performance Monitor access was rejected by Super Admin.",
         link=url_for('admin_panel')
     )
@@ -2235,7 +2235,7 @@ def approve_customer_access(user_id):
     # Create notification
     notif = Notification(
         user_id=user.id,
-        title="Database Access Granted ≡ƒù¥∩╕Å",
+        title="Database Access Granted 🗒️",
         message=f"Admin has granted you {expiry_msg} access to the Customer Database (Export: {'Enabled' if export_perm else 'Disabled'}).",
         link=url_for('admin.customer_database')
     )
@@ -2257,7 +2257,7 @@ def reject_customer_access(user_id):
     # Create notification
     notif = Notification(
         user_id=user.id,
-        title="Database Access Rejected Γ¥î",
+        title="Database Access Rejected ❌",
         message="Your request for Customer Database access was rejected by Super Admin.",
         link=url_for('admin_panel')
     )
@@ -2295,14 +2295,14 @@ def approve_user(user_id):
     # Create notification
     notif = Notification(
         user_id=user.id,
-        title="Account Approved Γ£à",
+        title="Account Approved ✅",
         message="Your account has been approved by Super Admin. You can now use all features.",
         link=url_for('home')
     )
     db.session.add(notif)
     db.session.commit()
     
-    flash(f"User {user.username} approved successfully! Γ£à", "success")
+    flash(f"User {user.username} approved successfully! ✅", "success")
     if 'manage_users' in (request.referrer or ''):
         return redirect(url_for('admin.manage_users'))
     return redirect(url_for('admin.notifications'))
@@ -2339,14 +2339,14 @@ def approve_expense(expense_id):
     if expense.added_by:
         notif = Notification(
             user_id=expense.added_by,
-            title="Expense Approved Γ£à",
+            title="Expense Approved ✅",
             message=f"Your expense '{expense.title}' for Γé╣{expense.amount:,.2f} has been approved.",
             link=url_for('admin.day_to_day_expense')
         )
         db.session.add(notif)
         
     db.session.commit()
-    flash(f"Expense '{expense.title}' approved and reflected in reports! Γ£à", "success")
+    flash(f"Expense '{expense.title}' approved and reflected in reports! ✅", "success")
     if 'manage_users' in (request.referrer or ''):
         return redirect(url_for('admin.manage_users'))
     return redirect(url_for('admin.notifications'))
@@ -2366,14 +2366,14 @@ def reject_expense(expense_id):
     if recipient_id:
         notif = Notification(
             user_id=recipient_id,
-            title="Expense Rejected Γ¥î",
+            title="Expense Rejected ❌",
             message=f"Your expense '{title}' for Γé╣{amount:,.2f} has been rejected and removed.",
             link=url_for('admin.day_to_day_expense')
         )
         db.session.add(notif)
         
     db.session.commit()
-    flash(f"Expense rejected and deleted. Γ¥î", "warning")
+    flash(f"Expense rejected and deleted. ❌", "warning")
     if 'manage_users' in (request.referrer or ''):
         return redirect(url_for('admin.manage_users'))
     return redirect(url_for('admin.notifications'))
@@ -2478,7 +2478,7 @@ def process_expense_request(expense_id, action):
         if recipient_id:
             notif = Notification(
                 user_id=recipient_id,
-                title="Expense Request Rejected Γ¥î",
+                title="Expense Request Rejected ❌",
                 message=f"Your request to {req_type} expense '{expense.title}' was rejected by Super Admin.",
                 link=url_for('admin.day_to_day_expense')
             )
@@ -2493,7 +2493,7 @@ def process_expense_request(expense_id, action):
             if recipient_id:
                 notif = Notification(
                     user_id=recipient_id,
-                    title="Expense Deletion Approved Γ£à",
+                    title="Expense Deletion Approved ✅",
                     message=f"Your request to delete expense '{title_deleted}' was approved.",
                     link=url_for('admin.day_to_day_expense')
                 )
@@ -2518,7 +2518,7 @@ def process_expense_request(expense_id, action):
                 if recipient_id:
                     notif = Notification(
                         user_id=recipient_id,
-                        title="Expense Edit Approved Γ£à",
+                        title="Expense Edit Approved ✅",
                         message=f"Your request to edit expense '{expense.title}' was approved.",
                         link=url_for('admin.day_to_day_expense')
                     )
