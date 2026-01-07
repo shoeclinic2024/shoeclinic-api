@@ -25,6 +25,12 @@
                             <div>
                                 <div class="fw-bold text-light small">{{ person.username }}</div>
                                 <div class="text-secondary x-small text-uppercase">{{ person.role }}</div>
+                                {% set person_leave = leave_status.get(person.username, {'on_leave': False}) %}
+                                {% if person_leave.on_leave %}
+                                <span class="badge bg-danger text-white x-small mt-1">
+                                    <i class="bi bi-calendar-x me-1"></i>ON LEAVE
+                                </span>
+                                {% endif %}
                             </div>
                             <div class="text-end ms-2">
                                 <div class="text-primary fw-bold small">{{ stats['tasks'] }} Tasks</div>
@@ -83,6 +89,7 @@
                                     <th class="py-3">Services (Tasks)</th>
                                     <th class="py-3">Due Date</th>
                                     <th class="py-3">Start Date</th>
+                                    <th class="py-3">Vendor</th>
                                     <th class="text-end pe-4 py-3">Lead Assignment</th>
                                 </tr>
                             </thead>
@@ -141,24 +148,38 @@
 
                                                 {# Deep Clean Grouping Logic #}
                                                 {% if 'deep clean' in all_svc_names %}
-                                                {% set m_tech = assignments.get('deep clean') %}
+                                                {# Use item.technician as Main Lead, FALLBACK to deep clean technician
+                                                if main is missing #}
+                                                {% set m_tech = item.technician %}
                                                 {% set m_str = '<span class="svc-name">deep clean</span>' %}
                                                 {% if m_tech %}
                                                 {% set m_str = m_str ~ ' <span class="tech-name">' ~ m_tech ~ '</span>'
                                                 %}
                                                 {% else %}
-                                                {% set m_str = m_str ~ ' <span class="text-secondary opacity-50">not
-                                                    assigned</span>' %}
+                                                {% set m_str = m_str ~ ' <span
+                                                    class="text-danger fw-bold">UNASSIGNED</span>' %}
                                                 {% endif %}
 
-                                                {# Sub-tasks in parentheses #}
+                                                {# Sub-tasks in parentheses with status indicators #}
                                                 {% set children_ns = namespace(names=[]) %}
+                                                {% set statuses = item.service_statuses|from_json if
+                                                item.service_statuses else {} %}
                                                 {% for s in all_svc_names if s in bundle_names %}
                                                 {% set c_tech = assignments.get(s) %}
+                                                {% set c_status = statuses.get(s, 'yts')|lower %}
+                                                {% set status_icon = '✓' if c_status in ['done', 'ready to deliver']
+                                                else ('⏳' if c_status == 'wip' else '○') %}
+                                                {% set status_color = 'text-success' if c_status in ['done', 'ready to
+                                                deliver'] else ('text-warning' if c_status == 'wip' else
+                                                'text-secondary') %}
                                                 {% if c_tech and c_tech != m_tech %}
-                                                {% set children_ns.names = children_ns.names + [s ~ ' ' ~ c_tech] %}
+                                                {% set children_ns.names = children_ns.names + ['<span
+                                                    class="' ~ status_color ~ '">' ~ status_icon ~ ' ' ~ s ~ ' ' ~
+                                                    c_tech ~ '</span>'] %}
                                                 {% else %}
-                                                {% set children_ns.names = children_ns.names + [s] %}
+                                                {% set children_ns.names = children_ns.names + ['<span
+                                                    class="' ~ status_color ~ '">' ~ status_icon ~ ' ' ~ s ~ '</span>']
+                                                %}
                                                 {% endif %}
                                                 {% endfor %}
 
@@ -172,7 +193,8 @@
                                                 {# Other Tasks (excluding deep clean and bundle if deep clean was shown)
                                                 #}
                                                 {% for s in all_svc_names %}
-                                                {% if s != 'deep clean' and (s not in bundle_names or 'deep clean' not
+                                                {% if s|lower != 'deep clean' and (s not in bundle_names or 'deep clean'
+                                                not
                                                 in all_svc_names) %}
                                                 {% set i_tech = assignments.get(s) %}
                                                 {% set i_str = '<span class="svc-name">' ~ s ~ '</span>' %}
@@ -180,7 +202,7 @@
                                                 {% set i_str = i_str ~ ' <span class="tech-name">' ~ i_tech ~ '</span>'
                                                 %}
                                                 {% else %}
-                                                {% set i_str = i_str ~ ' <span class="text-secondary opacity-50">not
+                                                {% set i_str = i_str ~ ' <span class="text-danger fw-bold">not
                                                     assigned</span>' %}
                                                 {% endif %}
                                                 {% set summary_ns.items = summary_ns.items + [i_str] %}
@@ -194,7 +216,8 @@
                                             {% set assignments = item.service_assignments|from_json if
                                             item.service_assignments else {} %}
                                             {% for task, tech in assignments.items() %}
-                                            {% if tech and tech != 'UNASSIGN' %}
+                                            {# Hide 'deep clean' row as it is tied to the Lead drop-down #}
+                                            {% if tech and tech != 'UNASSIGN' and task|lower != 'deep clean' %}
                                             <div
                                                 class="d-flex align-items-center justify-content-between p-1 rounded-2 border border-secondary border-opacity-10 bg-black bg-opacity-25 mt-1">
                                                 <span class="x-small text-info px-2">{{ task }}</span>
@@ -205,16 +228,21 @@
                                                     <select name="technician"
                                                         class="form-select form-select-sm bg-black text-light border-0 x-small py-0"
                                                         style="width: 110px; min-height: 24px;"
-                                                        onchange="this.form.submit()">
+                                                        onchange="if(confirmLeave(this)){this.form.submit()}else{location.reload()}">
                                                         <option value="">Assign..</option>
                                                         <option value="UNASSIGN" class="text-danger fw-bold">Unassign
                                                             (Revert)</option>
                                                         <option value="VENDOR" {% if tech=='VENDOR' %}selected{% endif
-                                                            %}>VENDOR</option>
+                                                            %}>
+                                                            VENDOR</option>
                                                         {% for person in staff %}
+                                                        {% set is_on_leave = leave_status.get(person.username,
+                                                        {}).get('on_leave', False) %}
                                                         <option value="{{ person.username }}" {% if
-                                                            tech==person.username %}selected{% endif %}>
-                                                            {{ person.username }}
+                                                            tech==person.username %}selected{% endif %}
+                                                            class="{% if is_on_leave %}text-danger{% endif %}">
+                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
+                                                            %}
                                                         </option>
                                                         {% endfor %}
                                                     </select>
@@ -240,10 +268,15 @@
                                                     <select name="technician"
                                                         class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
                                                         style="width: 90px;"
-                                                        onchange="if(this.form.service_name.value){this.form.submit()}else{alert('Please select a task first!'); this.value='';}">
+                                                        onchange="if(this.form.service_name.value){ if(confirmLeave(this)){this.form.submit()}else{this.value=''} }else{alert('Please select a task first!'); this.value='';}">
                                                         <option value="" selected disabled>Assign..</option>
                                                         {% for person in staff %}
-                                                        <option value="{{ person.username }}">{{ person.username }}
+                                                        {% set is_on_leave = leave_status.get(person.username,
+                                                        {}).get('on_leave', False) %}
+                                                        <option value="{{ person.username }}"
+                                                            class="{% if is_on_leave %}text-danger{% endif %}">
+                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
+                                                            %}
                                                         </option>
                                                         {% endfor %}
                                                         <option value="VENDOR">VENDOR</option>
@@ -264,12 +297,18 @@
                                                     </div>
                                                     <select name="technician"
                                                         class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
-                                                        style="width: 90px;" onchange="this.form.submit()">
+                                                        style="width: 90px;"
+                                                        onchange="if(confirmLeave(this)){this.form.submit()}else{this.value=''}">
                                                         <option value="" selected disabled>Assign Process..</option>
                                                         <option value="UNASSIGN" class="text-danger">Unassign (Clear)
                                                         </option>
                                                         {% for person in staff %}
-                                                        <option value="{{ person.username }}">{{ person.username }}
+                                                        {% set is_on_leave = leave_status.get(person.username,
+                                                        {}).get('on_leave', False) %}
+                                                        <option value="{{ person.username }}"
+                                                            class="{% if is_on_leave %}text-danger{% endif %}">
+                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
+                                                            %}
                                                         </option>
                                                         {% endfor %}
                                                         <option value="VENDOR">VENDOR</option>
@@ -319,6 +358,26 @@
                                         </div>
                                         {% endif %}
                                     </td>
+                                    <td>
+                                        <div class="d-flex flex-column gap-1">
+                                            <select
+                                                class="form-select form-select-sm bg-black text-light border-secondary border-opacity-25 x-small py-0"
+                                                style="width: 100px;"
+                                                onchange="updateVendorInfo('{{ item.order.id }}', this.value, document.getElementById('v_amt_{{ item.order.id }}').value)">
+                                                <option value="" {% if not item.order.outsource %}selected{% endif %}>
+                                                    Decide..</option>
+                                                <option value="Yes" {% if item.order.outsource=='Yes' %}selected{% endif
+                                                    %}>Yes</option>
+                                                <option value="Internal" {% if item.order.outsource=='Internal'
+                                                    %}selected{% endif %}>Internal</option>
+                                            </select>
+                                            <input type="number" step="0.01" id="v_amt_{{ item.order.id }}"
+                                                class="form-control form-control-sm bg-black text-light border-secondary border-opacity-25 x-small py-0"
+                                                style="width: 100px;" placeholder="Amt"
+                                                value="{{ item.order.vendor_amount or '' }}"
+                                                onblur="updateVendorInfo('{{ item.order.id }}', this.previousElementSibling.value, this.value)">
+                                        </div>
+                                    </td>
                                     <td class="text-end pe-4">
                                         <form action="{{ url_for('admin.assign_task') }}" method="POST"
                                             class="d-inline-block">
@@ -328,12 +387,16 @@
                                                 <select name="technician"
                                                     class="form-select bg-black text-light border-0 shadow-none ps-3 small"
                                                     style="width: 150px; cursor: pointer;"
-                                                    onchange="this.form.submit()">
+                                                    onchange="if(confirmLeave(this)){this.form.submit()}else{location.reload()}">
                                                     <option value="">Main Lead...</option>
                                                     {% for person in staff %}
+                                                    {% set is_on_leave = leave_status.get(person.username,
+                                                    {}).get('on_leave', False) %}
                                                     <option value="{{ person.username }}" {% if
-                                                        item.technician==person.username %}selected{% endif %}>{{
-                                                        person.username }}</option>
+                                                        item.technician==person.username %}selected{% endif %}
+                                                        class="{% if is_on_leave %}text-danger{% endif %}">
+                                                        {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif %}
+                                                    </option>
                                                     {% endfor %}
                                                     <option value="VENDOR" {% if item.technician=='VENDOR' %}selected{%
                                                         endif %}>VENDOR</option>
@@ -648,6 +711,33 @@
         const assignedSelect = form.querySelector('[name="assigned_to"]');
         if (assignedSelect) assignedSelect.value = assigned;
     }
+
+    function updateVendorInfo(orderId, outsource, amount) {
+        const formData = new FormData();
+        formData.append('order_id', orderId);
+        formData.append('outsource', outsource);
+        formData.append('vendor_amount', amount);
+
+        fetch('/admin/update_order_vendor', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Show a quick success indicator if possible, or just log
+                    console.log("Vendor info updated for order " + orderId);
+                    // Optionally show the toast if we want explicit feedback
+                    // showSuccessToast("Vendor info updated!");
+                } else {
+                    alert("Error: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("Failed to update vendor info");
+            });
+    }
 </script>
 
 <style>
@@ -736,4 +826,20 @@
         color: #38bdf8;
     }
 </style>
+
+<script>
+    const LEAVE_DATA = {{ leave_status| tojson | safe }};
+
+    function confirmLeave(select) {
+        const username = select.value;
+        if (!username || username === 'UNASSIGN' || username === 'VENDOR') return true;
+
+        if (LEAVE_DATA[username] && LEAVE_DATA[username].on_leave) {
+            const info = LEAVE_DATA[username];
+            const msg = `⚠️ WARNING: ${username} is on leave (${info.status}) for ${info.date}.\n\nAre you EXTREMELY SURE you want to assign this work to them?`;
+            return confirm(msg);
+        }
+        return true;
+    }
+</script>
 {% endblock %}

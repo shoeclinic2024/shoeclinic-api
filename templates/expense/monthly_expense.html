@@ -23,10 +23,10 @@
         <div class="card-body">
           <h6 class="card-title">Frequent Expense</h6>
           {% if frequent_expense and frequent_count >= 2 %}
-            <div class="fw-bold">{{ frequent_expense }}</div>
-            <small class="text-muted">{{ frequent_count }} times</small>
+          <div class="fw-bold">{{ frequent_expense }}</div>
+          <small class="text-muted">{{ frequent_count }} times</small>
           {% else %}
-            <div class="text-muted">No frequent item</div>
+          <div class="text-muted">No frequent item</div>
           {% endif %}
         </div>
       </div>
@@ -36,16 +36,19 @@
         <div class="card-body">
           <h6 class="card-title">Highest Single Expense</h6>
           {% if highest_expense %}
-            <div class="fw-bold">₹{{ "%.2f"|format(highest_expense.expense) }}</div>
-            <small class="text-muted">{{ highest_expense.description }} • {{ highest_expense.date.strftime('%Y-%m-%d') }}</small>
+          <div class="fw-bold">₹{{ "%.2f"|format(highest_expense.expense) }}</div>
+          <small class="text-muted">{{ highest_expense.description }} • {{ highest_expense.date.strftime('%Y-%m-%d') if
+            highest_expense.date else '-'
+            }}</small>
           {% else %}
-            <div class="text-muted">No data</div>
+          <div class="text-muted">No data</div>
           {% endif %}
         </div>
       </div>
     </div>
     <div class="col-md-3 text-end">
-      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#quickAddModal">Quick Add</button>
+      <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#quickAddModal">Quick
+        Add</button>
     </div>
   </div>
 
@@ -73,11 +76,17 @@
       <h6 class="card-title">Recent Transactions</h6>
       <div class="table-responsive">
         <table class="table table-sm">
-          <thead><tr><th>Date</th><th>Description</th><th class="text-end">Expense</th></tr></thead>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Description</th>
+              <th class="text-end">Expense</th>
+            </tr>
+          </thead>
           <tbody>
             {% for e in recent_expenses %}
             <tr>
-              <td>{{ e.date.strftime('%Y-%m-%d') }}</td>
+              <td>{{ e.date.strftime('%Y-%m-%d') if e.date else '-' }}</td>
               <td>{{ e.description or '—' }}</td>
               <td class="text-end">₹{{ "%.2f"|format(e.expense) }}</td>
             </tr>
@@ -125,36 +134,36 @@
 <!-- Charts -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const labels = {{ monthly_labels|tojson }};
-const values = {{ monthly_values|tojson }};
-const topLabels = {{ top_labels|tojson }};
-const topValues = {{ top_values|tojson }};
+  const labels = {{ monthly_labels| tojson }};
+  const values = {{ monthly_values| tojson }};
+  const topLabels = {{ top_labels| tojson }};
+  const topValues = {{ top_values| tojson }};
 
-const ctx = document.getElementById('trendChart').getContext('2d');
-new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels,
-    datasets: [{
-      label: 'Expense',
-      data: values,
-      borderColor: '#007bff',
-      backgroundColor: 'rgba(0,123,255,0.08)',
-      tension: 0.3,
-      fill: true
-    }]
-  },
-  options: { responsive: true, plugins:{legend:{display:false}} }
-});
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Expense',
+        data: values,
+        borderColor: '#007bff',
+        backgroundColor: 'rgba(0,123,255,0.08)',
+        tension: 0.3,
+        fill: true
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+  });
 
-const ctx2 = document.getElementById('categoryChart').getContext('2d');
-new Chart(ctx2, {
-  type: 'pie',
-  data: {
-    labels: topLabels,
-    datasets: [{ data: topValues, backgroundColor: ['#0d6efd','#198754','#ffc107','#dc3545','#0dcaf0','#6f42c1'] }]
-  },
-  options: { responsive:true, plugins:{legend:{position:'right'}} }
-});
+  const ctx2 = document.getElementById('categoryChart').getContext('2d');
+  new Chart(ctx2, {
+    type: 'pie',
+    data: {
+      labels: topLabels,
+      datasets: [{ data: topValues, backgroundColor: ['#0d6efd', '#198754', '#ffc107', '#dc3545', '#0dcaf0', '#6f42c1'] }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'right' } } }
+  });
 </script>
 {% endblock %}

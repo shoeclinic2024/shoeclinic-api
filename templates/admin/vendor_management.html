@@ -10,24 +10,29 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h2 class="display-6 fw-bold mb-0">🤝 Vendor Management System</h2>
-            <p class="text-muted">Monitor all outsourced tasks, costs, and historical vendor performance.</p>
+            <p class="text-muted">Monitor outsourced tasks, manage payments, and track monthly financial reports.</p>
         </div>
-        <div class="text-end">
+        <div class="d-flex gap-3">
             <div
                 class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 px-4 py-3 rounded-4 shadow-sm">
                 <div class="small text-uppercase fw-bold opacity-75">Total Vendor Payout</div>
                 <div class="fs-4 fw-bold">₹{{ "%.2f"|format(total_vendor_paid) }}</div>
             </div>
+            <div
+                class="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-25 px-4 py-3 rounded-4 shadow-sm">
+                <div class="small text-uppercase fw-bold opacity-75">Total Pending Balance</div>
+                <div class="fs-4 fw-bold">₹{{ "%.2f"|format(total_pending) }}</div>
+            </div>
         </div>
     </div>
 
+    <!-- Active Assignments (Left/Main) -->
     <div class="row g-4 mb-5">
-        <!-- Active Vendor Assignments -->
         <div class="col-xl-8">
             <div class="card border-0 shadow-sm rounded-4 h-100 bg-white">
                 <div class="card-header bg-dark text-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Active Vendor Assignments</h5>
-                    <span class="badge bg-primary">{{ vendor_active|length }} Jobs</span>
+                    <h5 class="mb-0">Active Vendor Assignments & Payments</h5>
+                    <span class="badge bg-light text-dark">{{ vendor_active|length }} items</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -36,9 +41,9 @@
                                 <tr class="text-muted small uppercase">
                                     <th class="ps-4">Job Info</th>
                                     <th>Customer</th>
-                                    <th>Outsourced Tasks</th>
+                                    <th>Tasks Status</th>
                                     <th>Vendor Cost</th>
-                                    <th class="text-center">Action</th>
+                                    <th class="text-end pe-4">Actions / Payment</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -48,8 +53,8 @@
                                     <td class="ps-4">
                                         <div class="fw-bold text-primary fs-5">{{ entry.item.order.job_id }}</div>
                                         <div class="small fw-semibold text-dark">{{ entry.item.product_name }}</div>
-                                        <div class="x-small text-muted">Pickup: {{
-                                            entry.item.order.pickup_date|format_date }}</div>
+                                        <div class="x-small text-muted">Created: {{ entry.item.created_at|format_date }}
+                                        </div>
                                     </td>
                                     <td>
                                         <div class="fw-semibold">{{ entry.item.order.customer_name }}</div>
@@ -57,26 +62,77 @@
                                     </td>
                                     <td>
                                         {% for t in entry.tasks %}
-                                        {% set t_status = t.status|lower %}
                                         <div class="d-flex align-items-center mb-1">
-                                            <span
-                                                class="badge bg-{{ 'success' if t_status == 'done' else 'warning' if t_status == 'wip' else 'secondary' }} rounded-circle p-1 me-2"
-                                                style="width: 8px; height: 8px;"></span>
-                                            <span class="small fw-medium">{{ t.name }}</span>
-                                            <span class="ms-1 x-small opacity-75">({{ t.status|upper }})</span>
+                                            <form action="{{ url_for('update_task_status') }}" method="POST"
+                                                class="d-flex align-items-center w-100 gap-2">
+                                                <input type="hidden" name="item_id" value="{{ entry.item.id }}">
+                                                <input type="hidden" name="service_name" value="{{ t.name }}">
+                                                <input type="hidden" name="redirect_to" value="vendor_management">
+
+                                                <div class="dropdown">
+                                                    <button
+                                                        class="btn btn-sm py-0 px-2 rounded-pill dropdown-toggle 
+                                                        {% if t.status == 'done' %}btn-success{% elif t.status == 'ready to deliver' %}btn-info{% elif t.status == 'wip' %}btn-warning{% else %}btn-secondary{% endif %}"
+                                                        type="button" data-bs-toggle="dropdown" aria-expanded="false"
+                                                        style="font-size: 0.75rem;">
+                                                        {{ t.name }}: {{ t.status|upper }}
+                                                    </button>
+                                                    <ul class="dropdown-menu shadow-sm">
+                                                        <li><button class="dropdown-item small" type="submit"
+                                                                name="new_status" value="yts"><span
+                                                                    class="badge bg-secondary me-2">YTS</span> Yet to
+                                                                Start</button></li>
+                                                        <li><button class="dropdown-item small" type="submit"
+                                                                name="new_status" value="wip"><span
+                                                                    class="badge bg-warning me-2">WIP</span> In
+                                                                Progress</button></li>
+                                                        <li><button class="dropdown-item small" type="submit"
+                                                                name="new_status" value="done"><span
+                                                                    class="badge bg-success me-2">DONE</span> Work
+                                                                Finished</button></li>
+                                                        <li><button class="dropdown-item small" type="submit"
+                                                                name="new_status" value="ready to deliver"><span
+                                                                    class="badge bg-info me-2">READY</span> Ready to
+                                                                Deliver</button></li>
+                                                    </ul>
+                                                </div>
+                                            </form>
                                         </div>
                                         {% endfor %}
                                     </td>
                                     <td>
-                                        <div class="fs-5 fw-bold text-dark">₹{{ "%.2f"|format(entry.vendor_amount) }}
+                                        <div class="d-flex flex-column align-items-start">
+                                            <div class="fw-bold text-dark mb-1">₹{{ "%.0f"|format(entry.vendor_amount)
+                                                }}</div>
+                                            {% if entry.is_paid %}
+                                            <span
+                                                class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">PAID</span>
+                                            {% else %}
+                                            <span
+                                                class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill">PENDING</span>
+                                            {% endif %}
                                         </div>
-                                        <div class="x-small text-muted">Estimated Cost</div>
                                     </td>
-                                    <td class="text-center">
+                                    <td class="text-end pe-4">
+                                        {% if not entry.is_paid %}
+                                        <form action="{{ url_for('admin.pay_vendor_item') }}" method="POST"
+                                            onsubmit="return confirm('Confirm payment for this item?');">
+                                            <input type="hidden" name="item_id" value="{{ entry.item.id }}">
+                                            <div class="input-group input-group-sm justify-content-end">
+                                                <span class="input-group-text bg-white border-end-0">₹</span>
+                                                <input type="number" name="amount" value="{{ entry.vendor_amount }}"
+                                                    class="form-control form-control-sm border-start-0"
+                                                    style="max-width: 80px;" min="0" step="1">
+                                                <button type="submit" class="btn btn-success btn-sm"><i
+                                                        class="bi bi-wallet2 me-1"></i> Pay</button>
+                                            </div>
+                                        </form>
+                                        {% else %}
+                                        <div class="small text-muted mb-1">Paid on {{ entry.paid_date.strftime('%d-%b')
+                                            }}</div>
                                         <a href="{{ url_for('edit_order', order_id=entry.item.order.id) }}"
-                                            class="btn btn-primary rounded-pill px-3 shadow-sm">
-                                            <i class="bi bi-pencil-square me-1"></i> Manage
-                                        </a>
+                                            class="btn btn-sm btn-outline-primary py-0">View Order</a>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -95,56 +151,80 @@
             </div>
         </div>
 
-        <!-- Vendor History Sidebar -->
+        <!-- Financial Reports Sidebar (Right) -->
         <div class="col-xl-4">
             <div class="card border-0 shadow-sm rounded-4 h-100 bg-white">
                 <div class="card-header bg-secondary text-white py-3">
-                    <h5 class="mb-0">Vendor History Log</h5>
+                    <h5 class="mb-0"><i class="bi bi-bar-chart-fill me-2"></i> Financial Report</h5>
                 </div>
                 <div class="card-body p-0" style="max-height: 800px; overflow-y: auto;">
-                    {% if vendor_history %}
-                    <ul class="list-group list-group-flush">
-                        {% for entry in vendor_history %}
-                        <li class="list-group-item py-4 bg-transparent border-bottom">
-                            <div class="d-flex justify-content-between align-items-start mb-2">
-                                <div>
-                                    <div class="fw-bold fs-6">{{ entry.item.order.job_id }}</div>
-                                    <div class="small text-primary fw-medium">{{ entry.item.order.customer_name }}</div>
-                                </div>
-                                <div class="text-end">
-                                    <div
-                                        class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1">
-                                        COMPLETED</div>
+                    {% if report_data %}
+                    <div class="accordion accordion-flush" id="reportAccordion">
+                        {% for month_data in report_data %}
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed py-3" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#collapse{{ loop.index }}">
+                                    <div class="d-flex justify-content-between w-100 pe-3">
+                                        <div class="fw-bold">{{ month_data.month }}</div>
+                                        <div class="text-end">
+                                            <div class="small fw-bold text-dark">₹{{ "%.0f"|format(month_data.total) }}
+                                                Total</div>
+                                            <div class="x-small text-muted">
+                                                <span class="text-success">Pd: ₹{{ "%.0f"|format(month_data.paid)
+                                                    }}</span> |
+                                                <span class="text-danger">Pen: ₹{{ "%.0f"|format(month_data.pending)
+                                                    }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="collapse{{ loop.index }}" class="accordion-collapse collapse"
+                                data-bs-parent="#reportAccordion">
+                                <div class="accordion-body bg-light small">
+                                    <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                        <span>Month Total Work:</span>
+                                        <span class="fw-bold">₹{{ "%.2f"|format(month_data.total) }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-success">Paid Amount:</span>
+                                        <span class="fw-bold text-success">₹{{ "%.2f"|format(month_data.paid) }}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-danger">Pending Balance:</span>
+                                        <span class="fw-bold text-danger">₹{{ "%.2f"|format(month_data.pending)
+                                            }}</span>
+                                    </div>
+                                    <div class="mt-3 text-center">
+                                        <div class="badge bg-secondary">Period: {{ month_data.key }}</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="small text-muted mb-3">{{ entry.item.product_name }}</div>
-
-                            <div class="bg-light rounded-3 p-2 mb-3">
-                                <div class="x-small text-uppercase fw-bold text-muted opacity-75 mb-1">Services Provided
-                                </div>
-                                {% for t in entry.tasks %}
-                                <div class="small fw-medium text-dark"><i
-                                        class="bi bi-check2-circle text-success me-1"></i> {{ t.name }}</div>
-                                {% endfor %}
-                            </div>
-
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div class="small text-muted">
-                                    <i class="bi bi-calendar-check me-1"></i> {{
-                                    entry.item.order.work_finish_date|format_date if entry.item.order.work_finish_date
-                                    else 'N/A' }}
-                                </div>
-                                <div class="fw-bold fs-5 text-success">₹{{ "%.2f"|format(entry.vendor_amount) }}</div>
-                            </div>
-                        </li>
+                        </div>
                         {% endfor %}
-                    </ul>
+                    </div>
                     {% else %}
                     <div class="p-5 text-center text-muted">
-                        <i class="bi bi-clock-history fs-1 opacity-25 d-block mb-3"></i>
-                        No vendor work history recorded yet.
+                        <i class="bi bi-file-earmark-spreadsheet fs-1 opacity-25 d-block mb-3"></i>
+                        No financial data history available.
                     </div>
                     {% endif %}
+                </div>
+            </div>
+
+            <!-- Quick Tip -->
+            <div class="card border-0 shadow-sm rounded-4 mt-4 bg-primary bg-opacity-10 text-primary">
+                <div class="card-body">
+                    <div class="d-flex">
+                        <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                        <div>
+                            <h6 class="fw-bold mb-1">Payment & Reporting</h6>
+                            <p class="small mb-0">Payments marked here are automatically added to
+                                <strong>Expenses</strong>. Pending balances carry over implicitly as unpaid items remain
+                                in the active list.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -164,10 +244,6 @@
         font-size: 0.7rem;
     }
 
-    .fs-7 {
-        font-size: 0.8rem;
-    }
-
     .table thead th {
         border: none;
         font-weight: 700;
@@ -178,11 +254,6 @@
         border-bottom: none;
     }
 
-    .hover-shadow:hover {
-        box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Custom scrollbar for history */
     .card-body::-webkit-scrollbar {
         width: 6px;
     }
@@ -196,8 +267,9 @@
         border-radius: 10px;
     }
 
-    .card-body::-webkit-scrollbar-thumb:hover {
-        background: #bbb;
+    .accordion-button:not(.collapsed) {
+        background-color: #e9ecef;
+        color: #000;
     }
 </style>
 {% endblock %}

@@ -8,7 +8,7 @@
             <h3 class="fw-bold mb-1"><i class="bi bi-person-check-fill text-primary me-2"></i>
                 {% if current_user.role == 'super_admin' %}Attendance Portal{% else %}My Attendance{% endif %}
             </h3>
-            <p class="text-muted mb-0">Today is {{ today.strftime('%d %B, %Y') }}</p>
+            <p class="text-muted mb-0">Today is {{ today.strftime('%d %B, %Y') if today else '-' }}</p>
         </div>
         {% if current_user.role == 'super_admin' %}
         <a href="{{ url_for('attendance_manage') }}" class="btn btn-dark rounded-pill px-4">
@@ -47,7 +47,8 @@
                     <div class="mb-4">
                         <div class="badge bg-success bg-opacity-10 text-success px-3 py-2 rounded-pill mb-3">
                             <i class="bi bi-check-circle-fill me-1"></i> Checked In at {{
-                            today_attendance.check_in.strftime('%H:%M') }}
+                            today_attendance.check_in.strftime('%H:%M') if (today_attendance and
+                            today_attendance.check_in) else '-' }}
                         </div>
                         <h5 class="text-muted">Current Shift: Active</h5>
                     </div>
@@ -61,8 +62,9 @@
                     <div class="py-5">
                         <div class="h1 text-success mb-3"><i class="bi bi-check-all"></i></div>
                         <h4 class="fw-bold">Shift Completed</h4>
-                        <p class="text-muted">In: {{ today_attendance.check_in.strftime('%H:%M') }} | Out: {{
-                            today_attendance.check_out.strftime('%H:%M') }}</p>
+                        <p class="text-muted">In: {{ today_attendance.check_in.strftime('%H:%M') if
+                            today_attendance.check_in else '-' }} | Out: {{
+                            today_attendance.check_out.strftime('%H:%M') if today_attendance.check_out else '-' }}</p>
                         <div class="badge bg-success rounded-pill px-4 py-2">{{ today_attendance.status }}</div>
                     </div>
                     {% endif %}
@@ -130,7 +132,7 @@
                                             </td>
                                             {% endif %}
                                             <td class="{% if current_user.role != 'super_admin' %}ps-4{% endif %}">{{
-                                                att.date.strftime('%d %b, %Y') }}</td>
+                                                att.date.strftime('%d %b, %Y') if att.date else '-' }}</td>
                                             <td>{{ att.check_in.strftime('%H:%M') if att.check_in else '-' }}</td>
                                             <td>{{ att.check_out.strftime('%H:%M') if att.check_out else '-' }}</td>
                                             <td>
@@ -153,7 +155,7 @@
                                                 <button class="btn btn-sm btn-outline-primary rounded-pill px-3"
                                                     data-bs-toggle="modal" data-bs-target="#regRequestModal"
                                                     data-bs-id="{{ att.id }}"
-                                                    data-bs-date="{{ att.date.strftime('%Y-%m-%d') }}">
+                                                    data-bs-date="{{ att.date.strftime('%Y-%m-%d') if att.date else '' }}">
                                                     Request Reg.
                                                 </button>
                                                 {% elif att.reg_requested %}
@@ -196,7 +198,7 @@
                                             </td>
                                             {% endif %}
                                             <td class="{% if current_user.role != 'super_admin' %}ps-4{% endif %}">{{
-                                                att.date.strftime('%d %b, %Y') }}</td>
+                                                att.date.strftime('%d %b, %Y') if att.date else '-' }}</td>
                                             <td>Leave</td>
                                             <td class="text-muted small">{{ att.note or '-' }}</td>
                                             <td>
@@ -242,7 +244,7 @@
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted text-uppercase">Select Date</label>
                         <input type="date" name="leave_date" class="form-control border-0 bg-light shadow-none"
-                            value="{{ today.strftime('%Y-%m-%d') }}" required>
+                            value="{{ today.strftime('%Y-%m-%d') if today else '' }}" required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted text-uppercase">Reason / Note</label>

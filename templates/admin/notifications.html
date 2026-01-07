@@ -75,7 +75,7 @@
                         <div>
                             <h5 class="mb-1 fw-bold">{{ expense.title }}</h5>
                             <p class="mb-0 text-muted">Amount: <strong>₹{{ expense.amount }}</strong> | Date: {{
-                                expense.expense_date.strftime('%d %b') }}</p>
+                                expense.expense_date.strftime('%d %b') if expense.expense_date else '-' }}</p>
                             <small class="text-muted">By: {{ expense.added_by_user.username if expense.added_by_user
                                 else 'Unknown' }}</small>
                         </div>
@@ -229,7 +229,8 @@
                             <p class="mb-0 text-muted small">
                                 <i class="bi bi-clock-history"></i> Expires:
                                 {% if user.customer_access_expiry %}
-                                {{ (user.customer_access_expiry|ist).strftime('%d-%b %I:%M %p') }}
+                                {{ (user.customer_access_expiry|ist).strftime('%d-%b %I:%M %p') if
+                                user.customer_access_expiry else 'Indefinite' }}
                                 {% else %}
                                 Indefinite
                                 {% endif %}
@@ -266,7 +267,8 @@
                             <p class="mb-0 text-muted small">
                                 <i class="bi bi-clock-history"></i> Expires:
                                 {% if user.performance_access_expiry %}
-                                {{ (user.performance_access_expiry|ist).strftime('%d-%b %I:%M %p') }}
+                                {{ (user.performance_access_expiry|ist).strftime('%d-%b %I:%M %p') if
+                                user.performance_access_expiry else 'Indefinite' }}
                                 {% else %}
                                 Indefinite
                                 {% endif %}
@@ -316,7 +318,8 @@
                                 <div class="text-dark"><strong>Amount:</strong> ₹{{ "{:,.2f}".format(data.amount|float)
                                     }}</div>
                                 {% endif %}
-                                {% if data.expense_date != req.expense_date.strftime('%Y-%m-%d') %}
+                                {% if data.proposed_date != (req.expense_date.strftime('%Y-%m-%d') if req.expense_date
+                                else '') %}
                                 <div class="text-dark"><strong>Date:</strong> {{ data.expense_date }}</div>
                                 {% endif %}
                                 {% if data.category != req.category %}
@@ -361,6 +364,7 @@
                         <div>
                             <h5 class="mb-1 fw-bold">{{ leave.user.username }}</h5>
                             <p class="mb-1 text-muted">Requested leave for <strong>{{ leave.date.strftime('%d %b, %Y')
+                                    if leave.date else '-'
                                     }}</strong></p>
                             <small class="text-muted fst-italic">"{{ leave.note or 'No reason provided' }}"</small>
                         </div>
@@ -408,7 +412,7 @@
                             </p>
                             <div class="d-flex align-items-center gap-3">
                                 <span class="text-muted small"><i class="bi bi-clock me-1"></i> {{
-                                    n.created_at.strftime('%d %b %Y, %I:%M %p') }}</span>
+                                    n.created_at.strftime('%d %b %Y, %I:%M %p') if n.created_at else '-' }}</span>
                                 {% if n.link %}
                                 <a href="{{ n.link }}" class="btn btn-link btn-sm p-0 text-decoration-none fw-bold">View
                                     details <i class="bi bi-arrow-right"></i></a>

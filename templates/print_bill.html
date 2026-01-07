@@ -107,28 +107,27 @@
                 <form method="POST" class="d-flex gap-2 align-items-center">
                   <input type="hidden" name="order_id" value="{{ o.id }}">
 
-                  {% if o.status in ['ready to deliver', 'ready'] and o.payment_status|lower != 'paid' %}
-                  <select name="payment_mode" class="form-select form-select-sm rounded-pill" style="min-width: 100px;">
-                    <option value="" disabled selected>Pay Mode</option>
-                    <option value="Cash">Cash</option>
-                    <option value="UPI">UPI</option>
-                    <option value="Card">Card</option>
-                  </select>
-                  {% endif %}
-
-                  {% if o.status in ['ready to deliver', 'ready', 'billed', 'delivered'] %}
-                  <button type="submit"
-                    class="btn btn-{{ 'success' if o.status == 'billed' else 'primary' }} btn-sm px-2">
-                    <i class="bi bi-printer"></i> {{ 'Re-print' if o.status == 'billed' else 'Print' }}
+                  {% if o.status in ['ready to deliver', 'ready', 'billed', 'delivered', 'Paid', 'paid'] %}
+                  {% set is_finished = o.status in ['billed', 'delivered', 'Paid', 'paid'] %}
+                  {% if is_finished %}
+                  <button type="submit" class="btn btn-success btn-sm px-3 rounded-pill">
+                    <i class="bi bi-printer me-1"></i> Re-print
                   </button>
                   {% else %}
-                  <button type="button" class="btn btn-secondary btn-sm px-2 opacity-50" disabled
+                  <button type="button" class="btn btn-primary btn-sm px-3 rounded-pill"
+                    onclick="openPaymentModal('{{ o.id }}', '{{ o.price or 0 }}', '{{ o.job_id }}')">
+                    <i class="bi bi-printer me-1"></i> Print Bill
+                  </button>
+                  {% endif %}
+                  {% else %}
+                  <button type="button" class="btn btn-secondary btn-sm px-3 rounded-pill opacity-50" disabled
                     title="Only available for Ready to Deliver">
-                    <i class="bi bi-hourglass-split"></i> Wait
+                    <i class="bi bi-hourglass-split me-1"></i> Wait
                   </button>
                   {% endif %}
                 </form>
-                <a href="{{ url_for('view_bill', order_id=o.id) }}" class="btn btn-outline-info btn-sm px-2">
+                <a href="{{ url_for('view_bill', order_id=o.id) }}"
+                  class="btn btn-outline-info btn-sm px-2 rounded-circle" title="View Bill">
                   <i class="bi bi-eye"></i>
                 </a>
               </div>
@@ -147,4 +146,90 @@
     {% endif %}
   </div>
 </div>
+
+<!-- Payment Confirmation Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius: 15px; background: #1a1d21; color: white;">
+      <form method="POST" action="{{ url_for('print_bill') }}">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold text-primary">Confirm Payment</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-4">
+          <input type="hidden" name="order_id" id="modalOrderId">
+
+          <div class="text-center mb-4">
+            <h6 class="text-muted small text-uppercase mb-2">Order #<span id="modalJobId" class="text-white"></span>
+            </h6>
+            <h2 class="fw-bold text-success mb-0">₹ <span id="modalAmount"></span></h2>
+          </div>
+
+          <div class="mb-4">
+            <label class="small fw-bold text-muted mb-2 d-block text-uppercase" style="letter-spacing: 1px;">Select
+              Payment Mode</label>
+            <div class="row g-2">
+              <div class="col-6">
+                <input type="radio" class="btn-check" name="payment_mode" id="pay_cash" value="Cash" checked>
+                <label class="btn btn-outline-light w-100 py-3 border-secondary" for="pay_cash">
+                  <i class="bi bi-cash-stack d-block mb-1 fs-4"></i> Cash
+                </label>
+              </div>
+              <div class="col-6">
+                <input type="radio" class="btn-check" name="payment_mode" id="pay_upi" value="UPI">
+                <label class="btn btn-outline-light w-100 py-3 border-secondary" for="pay_upi">
+                  <i class="bi bi-qr-code-scan d-block mb-1 fs-4"></i> UPI / GPay
+                </label>
+              </div>
+              <div class="col-6">
+                <input type="radio" class="btn-check" name="payment_mode" id="pay_card" value="Card">
+                <label class="btn btn-outline-light w-100 py-3 border-secondary" for="pay_card">
+                  <i class="bi bi-credit-card d-block mb-1 fs-4"></i> Card
+                </label>
+              </div>
+              <div class="col-6">
+                <input type="radio" class="btn-check" name="payment_mode" id="pay_billed" value="billed">
+                <label class="btn btn-outline-light w-100 py-3 border-secondary" for="pay_billed">
+                  <i class="bi bi-receipt d-block mb-1 fs-4"></i> Just Bill
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-dark p-3 rounded-3 mb-2 bg-opacity-50 border border-secondary border-opacity-25">
+            <p class="small text-muted mb-0">
+              <i class="bi bi-info-circle me-1"></i>
+              <strong>Cash:</strong> Marks as PAID.
+              <br><strong>Digital (UPI/Card):</strong> Marks as BILLED (Awaiting Payment).
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-link text-muted text-decoration-none"
+            data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary px-4 rounded-pill">Confirm & Print</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openPaymentModal(orderId, amount, jobId) {
+    document.getElementById('modalOrderId').value = orderId;
+    document.getElementById('modalAmount').textContent = parseFloat(amount).toFixed(2);
+    document.getElementById('modalJobId').textContent = jobId;
+
+    var myModal = new bootstrap.Modal(document.getElementById('paymentModal'));
+    myModal.show();
+  }
+</script>
+
+<style>
+  .btn-check:checked+.btn-outline-light {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: white;
+  }
+</style>
 {% endblock %}

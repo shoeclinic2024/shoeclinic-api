@@ -948,12 +948,20 @@
                 <i class="bi bi-clipboard-check"></i> Work Assign
             </a>
 
+            <a href="{{ url_for('admin.vendor_management') }}"
+                class="{% if request.endpoint=='admin.vendor_management' %}active{% endif %}">
+                <i class="bi bi-shop"></i> Vendor Mgmt
+            </a>
             {% endif %}
 
 
 
-            <a href="{{ url_for('my_works') }}" class="{% if request.endpoint=='my_works' %}active{% endif %}">
-                <i class="bi bi-tools"></i> My Works
+            <a href="{{ url_for('my_works') }}"
+                class="{% if request.endpoint=='my_works' %}active{% endif %} d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-tools"></i> My Works</span>
+                {% if my_work_total_count and my_work_total_count > 0 %}
+                <span class="badge bg-danger rounded-pill">{{ my_work_total_count }}</span>
+                {% endif %}
             </a>
 
             <a href="{{ url_for('attendance') }}" class="{% if request.endpoint=='attendance'%}active{% endif %}">

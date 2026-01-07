@@ -266,7 +266,7 @@
                                                 <td class="text-center text-info">₹{{
                                                     "%.2f"|format(monthly.total_vendor_cost) }}</td>
                                                 <td class="text-center text-info">₹{{
-                                                    "%.2f"|format(monthly.total_vendor_cost) }}</td>
+                                                    "%.2f"|format(monthly.vendor_paid) }}</td>
                                             </tr>
                                             <tr class="table-secondary fw-bold">
                                                 <td class="ps-3">Total Exp</td>
@@ -275,7 +275,7 @@
                                                     }}
                                                 </td>
                                                 <td class="text-center">₹{{ "%.0f"|format(monthly.total_expenses_real +
-                                                    monthly.total_vendor_cost)
+                                                    monthly.vendor_paid)
                                                     }}
                                                 </td>
                                             </tr>
@@ -506,7 +506,7 @@
                                                     "%.2f"|format(yearly.total_vendor_cost) }}
                                                 </td>
                                                 <td class="text-center text-info">₹{{
-                                                    "%.2f"|format(yearly.total_vendor_cost) }}
+                                                    "%.2f"|format(yearly.vendor_paid) }}
                                                 </td>
                                             </tr>
                                             <tr class="table-secondary fw-bold">
@@ -516,7 +516,7 @@
                                                     }}
                                                 </td>
                                                 <td class="text-center">₹{{ "%.0f"|format(yearly.total_expenses_real +
-                                                    yearly.total_vendor_cost) }}
+                                                    yearly.vendor_paid) }}
                                                 </td>
                                             </tr>
                                         </tbody>

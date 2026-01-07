@@ -20,6 +20,12 @@
                 <button onclick="window.print()" class="btn btn-primary">
                     <i class="bi bi-printer"></i> Print Bill
                 </button>
+                {% if order.payment_status|lower != 'paid' %}
+                <button type="button" class="btn btn-warning text-dark fw-bold" data-bs-toggle="modal"
+                    data-bs-target="#manualPaymentModal">
+                    <i class="bi bi-wallet2"></i> Mark Paid (Manual)
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -66,7 +72,7 @@
                     <p class="small text-muted mb-0" style="font-size: 0.7rem;">{{ order.place or 'Walk-in Customer' }}
                     </p>
                     <p class="small text-muted mb-0 mt-1" style="font-size: 0.7rem;">Date: {{
-                        order.pickup_date.strftime('%d %b, %Y') }}</p>
+                        order.pickup_date.strftime('%d %b, %Y') if order.pickup_date else '-' }}</p>
                 </div>
             </div>
 
@@ -92,7 +98,32 @@
                                 <div class="fw-bold text-dark small">{{ item.product_name }}</div>
                                 <div class="text-muted mt-0" style="font-size: 0.65rem;">
                                     {% if item.services %}
-                                    {{ item.services }}
+                                    {% set svc_list = item.services.split(',') %}
+                                    {% set svc_prices = (item.service_prices or '{}')|from_json %}
+                                    {% set svc_discounts = (item.service_discounts or '{}')|from_json %}
+                                    {% set has_deep_clean = false %}
+                                    {% for s in svc_list %}{% if s|trim|lower == 'deep clean' %}{% set has_deep_clean =
+                                    true %}{% endif %}{% endfor %}
+
+                                    {% set displayed_svcs = [] %}
+                                    {% for s in svc_list %}
+                                    {% set s_name = s|trim %}
+                                    {% if not (has_deep_clean and s_name|lower in ['wash', 're wash', 're-wash',
+                                    'packing']) %}
+                                    {% set _ = displayed_svcs.append(s_name) %}
+                                    {% endif %}
+                                    {% endfor %}
+
+                                    {% for s_name in displayed_svcs %}
+                                    <span>{{ s_name }}
+                                        {% set s_price = svc_prices.get(s_name) %}
+                                        {% set s_disc = svc_discounts.get(s_name) %}
+                                        {% if s_price is not none %}(₹{{ "%.0f"|format(s_price) }}){% endif %}
+                                        {% if s_disc and s_disc > 0 %}<span class="text-danger"> -₹{{
+                                            "%.0f"|format(s_disc) }}</span>{% endif %}
+                                        {% if not loop.last %}, {% endif %}
+                                    </span>
+                                    {% endfor %}
                                     {% else %}
                                     -
                                     {% endif %}
@@ -130,7 +161,7 @@
                 </div>
             </div>
 
-            <div class="row align-items-center mt-3 d-print-none">
+            <div class="row align-items-center mt-3">
                 <div class="col-6 text-center border-end">
                     <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data={{ order.job_id }}"
                         alt="Receipt QR" class="img-thumbnail border-0 bg-light" style="width: 50px;">
@@ -169,151 +200,217 @@
         </div>
     </div>
 </div>
-</div>
 
-<style>
-    @media print {
-        @page {
-            margin: 5mm;
-            /* Reduced page margins */
-            size: A4 portrait;
+<!-- Manual Payment Modal -->
+<div class="modal fade" id="manualPaymentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 15px; background: #f8f9fa;">
+            <form method="POST" action="{{ url_for('print_bill') }}">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold text-primary">Record Manual Payment</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body py-4">
+                    <input type="hidden" name="order_id" value="{{ order.id }}">
+
+                    <div class="text-center mb-4">
+                        <h6 class="text-muted small text-uppercase mb-1">Due Amount</h6>
+                        <h2 class="fw-bold text-dark mb-0">₹ {{ "%.2f"|format(order.price) }}</h2>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Payment Mode</label>
+                        <select name="payment_mode" class="form-select border-0 shadow-sm" required
+                            style="background: white !important; color: black !important;">
+                            <option value="Cash">Cash</option>
+                            <option value="UPI">UPI / GPay / PhonePe</option>
+                            <option value="Card">Card</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                        </select>
+                    </div>
+
+                    <div class="p-3 rounded-3 bg-white border border-light">
+                        <p class="small text-muted mb-0">
+                            <i class="bi bi-shield-check text-success me-1"></i>
+                            <strong>Cash:</strong> Records as PAID.
+                            <br><strong>Digital:</strong> Records as BILLED (Pending).
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary px-4 rounded-pill">Confirm Payment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        @media print {
+            @page {
+                margin: 5mm;
+                /* Reduced page margins */
+                size: A4 portrait;
+            }
+
+            body {
+                background: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 10pt;
+                /* Explicit font size for print */
+            }
+
+            .container {
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+
+            .bill-container {
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Force single page content */
+            .p-print-2 {
+                padding: 5mm !important;
+            }
+
+            /* Tighten spacing for print */
+            .mb-print-2 {
+                margin-bottom: 5mm !important;
+            }
+
+            .mb-print-1 {
+                margin-bottom: 2mm !important;
+            }
+
+            .py-print-1 {
+                padding-top: 2mm !important;
+                padding-bottom: 2mm !important;
+            }
+
+            .mt-print-0 {
+                margin-top: 0 !important;
+            }
+
+            .btn,
+            .d-print-none,
+            .navbar,
+            .footer,
+            header,
+            footer {
+                display: none !important;
+            }
+
+            /* Adjust table for compactness */
+            table {
+                width: 100% !important;
+            }
+
+            .table-sm th,
+            .table-sm td {
+                padding-top: 2px !important;
+                padding-bottom: 2px !important;
+            }
+        }
+    </style>
+    <script>
+        function getBillMessage() {
+            const shopName = "THE SHOE CLINIC";
+            const jobId = "{{ order.job_id }}";
+            const customer = "{{ order.customer_name }}";
+            const total = "₹ {{ '%.2f'|format(order.price) }}";
+
+            let message = `*${shopName} - Digital Receipt*\n\n`;
+            message += `*Invoice:* ${jobId}\n`;
+            message += `*Customer:* ${customer}\n`;
+            message += `*Date:* {{ order.pickup_date.strftime('%d-%b-%Y') if order.pickup_date else '-' }}\n\n`;
+
+            message += `*Items:*\n`;
+            {% for item in order.items %}
+            {% set svc_list = (item.services or '').split(',') %}
+            {% set svc_prices = (item.service_prices or '{}')| from_json %}
+            {% set has_deep_clean = false %}
+            {% for s in svc_list %} {% if s | trim | lower == 'deep clean' %} {% set has_deep_clean = true %} {% endif %} {% endfor %}
+
+            {% set displayed_svcs = [] %}
+            {% for s in svc_list %}
+            {% set s_name = s | trim %}
+            {% if s_name %}
+            {% if not(has_deep_clean and s_name | lower in ['wash', 're wash', 're-wash', 'packing']) %}
+            {% set s_p = svc_prices.get(s_name) %}
+            {% if s_p is not none %}
+            {% set _ = displayed_svcs.append(s_name ~ ' (₹' ~ "%.0f" | format(s_p) ~ ')') %}
+            {% else %}
+            {% if svc_list | length == 1 and item.price %}
+            {% set _ = displayed_svcs.append(s_name ~ ' (₹' ~ "%.0f" | format(item.price) ~ ')') %}
+            {% else %}
+            {% set _ = displayed_svcs.append(s_name) %}
+            {% endif %}
+            {% endif %}
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+            message += `- {{ item.product_name }}: ({{ displayed_svcs|join(', ') if displayed_svcs else '-' }}) | ₹{{ "%.2f"|format(item.price or 0) }}\n`;
+            {% endfor %}
+
+            message += `\n*Grand Total: ${total}*\n\n`;
+
+            {% if payment_link and order.payment_status | lower != 'paid' %}
+            message += `🔗 *PAY ONLINE:* {{ payment_link }}\n`;
+            message += `(Safe payment via Razorpay. Supports UPI, QR, Card)\n\n`;
+            {% endif %}
+
+            message += `Thank you for choosing The Shoe Clinic! ✨\n`;
+            message += `Visit us again for exceptional care.`;
+
+            return message;
         }
 
-        body {
-            background: white !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 10pt;
-            /* Explicit font size for print */
+        function sendWhatsApp() {
+            const mobile = "{{ order.mobile }}".replace(/\D/g, '');
+            // Add country code if missing (assumes India +91)
+            const formattedMobile = mobile.length === 10 ? '91' + mobile : mobile;
+            const message = encodeURIComponent(getBillMessage());
+
+            // Use api.whatsapp.com for better reliability with unsaved numbers
+            const waUrl = `https://api.whatsapp.com/send?phone=${formattedMobile}&text=${message}`;
+            window.open(waUrl, '_blank');
         }
 
-        .container {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0 !important;
-            margin: 0 !important;
+        function copyToClipboard() {
+            const message = getBillMessage();
+            navigator.clipboard.writeText(message).then(() => {
+                alert("Digital receipt copied to clipboard! You can now paste it directly into WhatsApp.");
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = message;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                alert("Digital receipt copied to clipboard!");
+            });
         }
 
-        .bill-container {
-            border: none !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
+        function sendSMS() {
+            const mobile = "{{ order.mobile }}".replace(/\D/g, '');
+            const message = encodeURIComponent(getBillMessage());
+            // For iOS/Android browser support
+            const smsUrl = /iPhone|iPad|iPod/i.test(navigator.userAgent) ?
+                `sms:${mobile}&body=${message}` :
+                `sms:${mobile}?body=${message}`;
+            window.location.href = smsUrl;
         }
-
-        /* Force single page content */
-        .p-print-2 {
-            padding: 5mm !important;
-        }
-
-        /* Tighten spacing for print */
-        .mb-print-2 {
-            margin-bottom: 5mm !important;
-        }
-
-        .mb-print-1 {
-            margin-bottom: 2mm !important;
-        }
-
-        .py-print-1 {
-            padding-top: 2mm !important;
-            padding-bottom: 2mm !important;
-        }
-
-        .mt-print-0 {
-            margin-top: 0 !important;
-        }
-
-        .btn,
-        .d-print-none,
-        .navbar,
-        .footer,
-        header,
-        footer {
-            display: none !important;
-        }
-
-        /* Adjust table for compactness */
-        table {
-            width: 100% !important;
-        }
-
-        .table-sm th,
-        .table-sm td {
-            padding-top: 2px !important;
-            padding-bottom: 2px !important;
-        }
-    }
-</style>
-<script>
-    function getBillMessage() {
-        const shopName = "THE SHOE CLINIC";
-        const jobId = "{{ order.job_id }}";
-        const customer = "{{ order.customer_name }}";
-        const total = "₹ {{ '%.2f'|format(order.price) }}";
-
-        let message = `*${shopName} - Digital Receipt*\n\n`;
-        message += `*Invoice:* ${jobId}\n`;
-        message += `*Customer:* ${customer}\n`;
-        message += `*Date:* {{ order.pickup_date.strftime('%d-%b-%Y') }}\n\n`;
-
-        message += `*Items:*\n`;
-        {% for item in order.items %}
-        message += `- {{ item.product_name }}: ({{ item.services or '-' }})\n`;
-        {% endfor %}
-
-        message += `\n*Grand Total: ${total}*\n\n`;
-
-        {% if payment_link and order.payment_status | lower != 'paid' %}
-        message += `🔗 *PAY ONLINE:* {{ payment_link }}\n`;
-        message += `(Safe payment via Razorpay. Supports UPI, QR, Card)\n\n`;
-        {% endif %}
-
-        message += `Thank you for choosing The Shoe Clinic! ✨\n`;
-        message += `Visit us again for exceptional care.`;
-
-        return message;
-    }
-
-    function sendWhatsApp() {
-        const mobile = "{{ order.mobile }}".replace(/\D/g, '');
-        // Add country code if missing (assumes India +91)
-        const formattedMobile = mobile.length === 10 ? '91' + mobile : mobile;
-        const message = encodeURIComponent(getBillMessage());
-
-        // Use api.whatsapp.com for better reliability with unsaved numbers
-        const waUrl = `https://api.whatsapp.com/send?phone=${formattedMobile}&text=${message}`;
-        window.open(waUrl, '_blank');
-    }
-
-    function copyToClipboard() {
-        const message = getBillMessage();
-        navigator.clipboard.writeText(message).then(() => {
-            alert("Digital receipt copied to clipboard! You can now paste it directly into WhatsApp.");
-        }).catch(err => {
-            console.error('Could not copy text: ', err);
-            // Fallback for older browsers
-            const textArea = document.createElement("textarea");
-            textArea.value = message;
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textArea);
-            alert("Digital receipt copied to clipboard!");
-        });
-    }
-
-    function sendSMS() {
-        const mobile = "{{ order.mobile }}".replace(/\D/g, '');
-        const message = encodeURIComponent(getBillMessage());
-        // For iOS/Android browser support
-        const smsUrl = /iPhone|iPad|iPod/i.test(navigator.userAgent) ?
-            `sms:${mobile}&body=${message}` :
-            `sms:${mobile}?body=${message}`;
-        window.location.href = smsUrl;
-    }
-</script>
-{% endblock %}
+    </script>
+    {% endblock %}

@@ -87,9 +87,17 @@ class OrderItem(db.Model):
     service_assignments = db.Column(db.Text) 
     # Stores a JSON mapping of service name to status (yts, wip, done, etc.)
     service_statuses = db.Column(db.Text)
+    # Stores a JSON mapping of service name to its price
+    service_prices = db.Column(db.Text)
+    # Stores a JSON mapping of service name to its discount
+    service_discounts = db.Column(db.Text)
     status = db.Column(db.String(50), default='yts')
     defects = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.now)
+    # Vendor Management Fields
+    vendor_amount = db.Column(db.Float, default=0.0)
+    is_vendor_paid = db.Column(db.Boolean, default=False)
+    vendor_paid_date = db.Column(db.DateTime, nullable=True)
 
 # --- Expense Model ---
 class Expense(db.Model):

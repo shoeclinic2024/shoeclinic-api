@@ -60,7 +60,43 @@
                                     <span class="fw-bold">{{ loop.index }}. {{ item.product_name or 'Item' }}</span>
                                 </div>
                                 <div class="ps-3">
-                                    <small class="text-muted d-block">{{ item.services }}</small>
+                                    {% if item.services %}
+                                    {% set svc_list = item.services.split(',') %}
+                                    {% set svc_prices = (item.service_prices or '{}')|from_json %}
+                                    {% set svc_discounts = (item.service_discounts or '{}')|from_json %}
+                                    {% set has_deep_clean = false %}
+                                    {% for s in svc_list %}{% if s|trim|lower == 'deep clean' %}{% set has_deep_clean =
+                                    true %}{% endif %}{% endfor %}
+
+                                    {% set displayed_parts = [] %}
+                                    {% for s in svc_list %}
+                                    {% set s_name = s|trim %}
+                                    {% if s_name %}
+                                    {% if not (has_deep_clean and s_name|lower in ['wash', 're wash', 're-wash',
+                                    'packing']) %}
+                                    {% set p = svc_prices.get(s_name) %}
+                                    {% set d = svc_discounts.get(s_name) %}
+                                    {% set part = s_name %}
+
+                                    {% if p is not none %}
+                                    {% set part = part ~ ' (₹' ~ "%.0f"|format(p|float) ~ ')' %}
+                                    {% elif svc_list|length == 1 and item.price %}
+                                    {% set part = part ~ ' (₹' ~ "%.0f"|format(item.price|float) ~ ')' %}
+                                    {% endif %}
+
+                                    {% if d and d|float > 0 %}
+                                    {% set part = part ~ ' <span class="text-danger small">-₹' ~ "%.0f"|format(d|float)
+                                        ~ '</span>' %}
+                                    {% endif %}
+
+                                    {% set _ = displayed_parts.append(part) %}
+                                    {% endif %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    <small class="text-muted d-block">{{ displayed_parts|join(', ')|safe }}</small>
+                                    {% else %}
+                                    <small class="text-muted d-block">-</small>
+                                    {% endif %}
                                     {% if item.defects %}
                                     <div class="mt-1 p-2 bg-warning-subtle rounded-2 border border-warning-subtle"
                                         style="background-color: #fff3cd !important;">

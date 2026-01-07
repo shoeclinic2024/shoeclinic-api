@@ -1,129 +1,457 @@
-<!DOCTYPE html>
-<html>
+{% extends 'base.html' %}
 
-<head>
-    <title>Edit Order - THE SHOE CLINIC</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-
-<body class="bg-light p-5">
-    <div class="container">
-        <h3 class="mb-4">Edit Order</h3>
-        <form method="POST" class="row g-3">
-
-            <div class="col-md-12 mb-2">
-                <label>Assign Technician</label>
-                <select name="technician" class="form-select">
-                    <option value="">Unassigned</option>
-                    {% for person in staff %}
-                    <option value="{{ person.username }}" {% if order.technician==person.username %}selected{% endif %}>
-                        {{ person.username }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label>Job ID</label>
-                <input type="text" name="job_id" class="form-control" value="{{ order.job_id }}">
-            </div>
-            <div class="col-md-4">
-                <label>Token</label>
-                <input type="text" name="token" class="form-control" value="{{ order.token or '' }}">
-            </div>
-            <div class="col-md-4">
-                <label>Customer Name</label>
-                <input type="text" name="customer_name" class="form-control" value="{{ order.customer_name }}">
-            </div>
-            <div class="col-md-6">
-                <label>Pickup Date</label>
-                <input type="date" name="pickup_date" class="form-control"
-                    value="{{ order.pickup_date.strftime('%Y-%m-%d') if order.pickup_date }}">
-            </div>
-            <div class="col-md-4">
-                <label>Service Date (Start)</label>
-                <input type="date" name="service_date" class="form-control"
-                    value="{{ order.service_date.strftime('%Y-%m-%d') if order.service_date }}">
-            </div>
-            <div class="col-md-4">
-                <label>Work Finish Date</label>
-                <input type="date" name="work_finish_date" class="form-control"
-                    value="{{ order.work_finish_date.strftime('%Y-%m-%d') if order.work_finish_date }}">
-            </div>
-            <div class="col-md-4">
-                <label>Drop Date</label>
-                <input type="date" name="drop_date" class="form-control"
-                    value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}">
-            </div>
-            <div class="col-md-6">
-                <label>Place</label>
-                <input type="text" name="place" class="form-control" value="{{ order.place }}">
-            </div>
-            <div class="col-md-6">
-                <label>Service Note</label>
-                <input type="text" name="service_note" class="form-control" value="{{ order.service_note or '' }}">
-            </div>
-
-            <!-- Status -->
-            <div class="col-md-6">
-                <label>Status</label>
-                <select name="status" class="form-select">
-                    <option value="yts" {% if order.status=='yts' %}selected{% endif %}>YTS</option>
-                    <option value="wip" {% if order.status=='wip' %}selected{% endif %}>WIP</option>
-                    <option value="re wash" {% if order.status=='re wash' %}selected{% endif %}>Re Wash</option>
-                    <option value="done" {% if order.status=='done' %}selected{% endif %}>Ready to Deliver</option>
-                </select>
-            </div>
-
-            <!-- Rework Fields -->
-            <div class="col-md-6">
-                <label>Re Work Status</label>
-                <select name="re_work_status" class="form-select">
-                    <option value="yts" {% if order.re_work_status=='yts' %}selected{% endif %}>YTS</option>
-                    <option value="wip" {% if order.re_work_status=='wip' %}selected{% endif %}>WIP</option>
-                    <option value="done" {% if order.re_work_status=='done' %}selected{% endif %}>DONE</option>
-                </select>
-            </div>
-            <div class="col-md-6">
-                <label>Re Work Count</label>
-                <input type="number" name="re_work_count" class="form-control" value="{{ order.re_work_count or '' }}">
-            </div>
-            <div class="col-md-6">
-                <label>Re Work Token</label>
-                <input type="text" name="re_work_token" class="form-control" value="{{ order.re_work_token or '' }}">
-            </div>
-            <div class="col-md-6">
-                <label>Re Work Date</label>
-                <input type="date" name="re_work_date" class="form-control"
-                    value="{{ order.re_work_date.strftime('%Y-%m-%d') if order.re_work_date }}">
-            </div>
-
-            <!-- Other Info -->
-            <div class="col-md-6"><label>Mobile</label><input type="text" name="mobile" class="form-control"
-                    value="{{ order.mobile }}"></div>
-            <div class="col-md-6"><label>Product Name</label><input type="text" name="product_name" class="form-control"
-                    value="{{ order.product_name or '' }}"></div>
-
-            <div class="col-md-6"><label>Price</label><input type="number" step="0.01" name="price" class="form-control"
-                    value="{{ order.price or '' }}"></div>
-            <div class="col-md-6"><label>Payment Mode</label><input type="text" name="payment_mode" class="form-control"
-                    value="{{ order.payment_mode or '' }}"></div>
-            <div class="col-md-6"><label>Payment Status</label><input type="text" name="payment_status"
-                    class="form-control" value="{{ order.payment_status or '' }}"></div>
-            <div class="col-md-6"><label>Offer/Discount</label><input type="text" name="discount" class="form-control"
-                    value="{{ order.discount or '' }}"></div>
-            <div class="col-md-6"><label>Vendor Status</label><input type="text" name="outsource" class="form-control"
-                    value="{{ order.outsource or '' }}"></div>
-            <div class="col-md-6"><label>Vendor Amount</label><input type="number" step="0.01" name="vendor_amount"
-                    class="form-control" value="{{ order.vendor_amount or '' }}"></div>
-            <div class="col-md-6"><label>Item Count</label><input type="number" name="item_count" class="form-control"
-                    value="{{ order.item_count or '' }}"></div>
-
-            <!-- Submit -->
-            <div class="col-12">
-                <button type="submit" class="btn btn-success">Update</button>
-                <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary ms-2">Cancel</a>
-            </div>
-        </form>
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Edit Order: {{ order.job_id }}</h2>
+        <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
     </div>
-</body>
 
-</html>
+    <form method="post">
+        <!-- Order Details Section -->
+        <div class="card mb-4 border-primary border-opacity-25 shadow-sm">
+            <div class="card-header bg-primary text-white">Basic Order Info</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Job ID *</label>
+                        <input type="text" class="form-control" name="job_id" value="{{ order.job_id }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Token</label>
+                        <input type="text" class="form-control" name="token" value="{{ order.token or '' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Customer Name *</label>
+                        <input type="text" class="form-control" name="customer_name" value="{{ order.customer_name }}"
+                            required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Pickup Date *</label>
+                        <input type="date" class="form-control" name="pickup_date"
+                            value="{{ order.pickup_date.strftime('%Y-%m-%d') if order.pickup_date }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Drop Date *</label>
+                        <input type="date" class="form-control" name="drop_date"
+                            value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Mobile Number *</label>
+                        <input type="text" class="form-control" name="mobile" value="{{ order.mobile or '' }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Place *</label>
+                        <input type="text" class="form-control" name="place" value="{{ order.place or '' }}" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Order Status</label>
+                        <select class="form-select" name="status" required>
+                            <option value="yts" {% if order.status=='yts' %}selected{% endif %}>yts</option>
+                            <option value="wip" {% if order.status=='wip' %}selected{% endif %}>wip</option>
+                            <option value="re wash" {% if order.status=='re wash' %}selected{% endif %}>re wash</option>
+                            <option value="done" {% if order.status=='done' %}selected{% endif %}>done</option>
+                            <option value="pack pend" {% if order.status=='pack pend' %}selected{% endif %}>pack pend
+                            </option>
+                            <option value="ready to deliver" {% if order.status=='ready to deliver' %}selected{% endif
+                                %}>ready to deliver</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Main Lead</label>
+                        <select class="form-select" name="technician">
+                            <option value="">Unassigned</option>
+                            {% for person in staff %}
+                            <option value="{{ person.username }}" {% if order.technician==person.username %}selected{%
+                                endif %}>{{ person.username }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Service Start Date</label>
+                        <input type="date" class="form-control" name="service_date"
+                            value="{{ order.service_date.strftime('%Y-%m-%d') if order.service_date }}">
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Payment Mode</label>
+                        <select class="form-select" name="payment_mode">
+                            <option value="" {% if not order.payment_mode %}selected{% endif %}>Unpaid / Pending
+                            </option>
+                            <option value="Cash" {% if order.payment_mode=='Cash' %}selected{% endif %}>Cash</option>
+                            <option value="UPI" {% if order.payment_mode=='UPI' %}selected{% endif %}>UPI</option>
+                            <option value="Card" {% if order.payment_mode=='Card' %}selected{% endif %}>Card</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Payment Status</label>
+                        <select class="form-select" name="payment_status">
+                            <option value="Pending" {% if order.payment_status=='Pending' %}selected{% endif %}>Pending
+                            </option>
+                            <option value="Paid" {% if order.payment_status=='Paid' %}selected{% endif %}>Paid</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Vendor Status</label>
+                        <select class="form-select" name="outsource">
+                            <option value="" {% if not order.outsource %}selected{% endif %}>Not Decided</option>
+                            <option value="Yes" {% if order.outsource=='Yes' %}selected{% endif %}>Yes</option>
+                            <option value="Internal" {% if order.outsource=='Internal' %}selected{% endif %}>Internal
+                            </option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items & Services Section -->
+        <div class="card mb-4 border-info border-opacity-25 shadow-sm">
+            <div class="card-header bg-info text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="fw-bold">Itemized Breakdown</span>
+                        <span class="ms-3 badge bg-light text-dark">Items: <span id="itemCount">{{ order.items|length
+                                }}</span></span>
+                        <span class="ms-2 badge bg-success">Order Total: ₹<span id="totalAmount">{{ order.price or 0
+                                }}</span></span>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-sm btn-light" onclick="addNewItem()">+ Add Item</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-body">
+                <div id="items-container">
+                    {% for item in order.items %}
+                    {% set i = loop.index %}
+                    <div class="item-block mb-4" data-item-id="{{ i }}">
+                        <div class="card border-secondary border-opacity-25 shadow-sm">
+                            <div class="card-header bg-secondary bg-opacity-10 py-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <h6 class="mb-0 text-secondary">Item #<span class="item-number">{{ i }}</span></h6>
+                                    <button type="button" class="btn btn-sm btn-outline-danger border-0"
+                                        onclick="removeItem(this)">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label small fw-bold">Product Name</label>
+                                        <input type="text" class="form-control" name="items[{{ i }}][product_name]"
+                                            value="{{ item.product_name or '' }}" required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Item Status</label>
+                                        <select class="form-select form-select-sm" name="items[{{ i }}][status]">
+                                            <option value="yts" {% if item.status=='yts' %}selected{% endif %}>yts
+                                            </option>
+                                            <option value="wip" {% if item.status=='wip' %}selected{% endif %}>wip
+                                            </option>
+                                            <option value="done" {% if item.status=='done' %}selected{% endif %}>done
+                                            </option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="services-container px-3 py-2 bg-light rounded-2">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="small fw-bold text-muted">Services & Pricing</label>
+                                        <button type="button" class="btn btn-sm btn-outline-primary py-0"
+                                            onclick="addServiceToItem(this)">+ Service</button>
+                                    </div>
+
+                                    {% set svc_list = item.services.split(',') if item.services else [] %}
+                                    {% set svc_prices = (item.service_prices or '{}')|from_json %}
+                                    {% set svc_discounts = (item.service_discounts or '{}')|from_json %}
+
+                                    {% if svc_list %}
+                                    {% for svc in svc_list %}
+                                    <div class="service-row row gx-2 mb-2">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control form-control-sm"
+                                                name="items[{{ i }}][services][]" value="{{ svc|trim }}"
+                                                placeholder="Service" required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="number" class="form-control service-price"
+                                                    name="items[{{ i }}][service_prices][]"
+                                                    value="{{ svc_prices.get(svc|trim) or 0 }}" required
+                                                    onchange="calculateTotals()">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text text-danger">-</span>
+                                                <input type="number" class="form-control service-discount"
+                                                    name="items[{{ i }}][service_discounts][]"
+                                                    value="{{ svc_discounts.get(svc|trim) or 0 }}"
+                                                    onchange="calculateTotals()">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-sm text-danger"
+                                                onclick="removeService(this)">×</button>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                    {% else %}
+                                    {# Add one empty row if no services exist #}
+                                    <div class="service-row row gx-2 mb-2">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control form-control-sm"
+                                                name="items[{{ i }}][services][]" value="" placeholder="Service"
+                                                required>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="number" class="form-control service-price"
+                                                    name="items[{{ i }}][service_prices][]" value="0" required
+                                                    onchange="calculateTotals()">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text text-danger">-</span>
+                                                <input type="number" class="form-control service-discount"
+                                                    name="items[{{ i }}][service_discounts][]" value="0"
+                                                    onchange="calculateTotals()">
+                                            </div>
+                                        </div>
+                                        <div class="col-md-1">
+                                            <button type="button" class="btn btn-sm text-danger"
+                                                onclick="removeService(this)">×</button>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="mt-2">
+                                    <label class="form-label small text-muted">Defects / Condition</label>
+                                    <textarea class="form-control form-control-sm" name="items[{{ i }}][defects]"
+                                        rows="1">{{ item.defects or '' }}</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="alert alert-secondary d-flex justify-content-between align-items-center mt-3">
+                    <span class="fw-bold">Estimated Total (Calculated):</span>
+                    <span class="h5 mb-0 text-primary">₹<span id="calcTotal">{{ order.price or 0 }}</span></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4 border-warning border-opacity-25 shadow-sm">
+            <div class="card-header bg-warning-subtle text-warning-emphasis">Rework & History Info</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small">Rework Status</label>
+                        <select name="re_work_status" class="form-select">
+                            <option value="yts" {% if order.re_work_status=='yts' %}selected{% endif %}>YTS</option>
+                            <option value="wip" {% if order.re_work_status=='wip' %}selected{% endif %}>WIP</option>
+                            <option value="done" {% if order.re_work_status=='done' %}selected{% endif %}>DONE</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Rework Count</label>
+                        <input type="number" name="re_work_count" class="form-control"
+                            value="{{ order.re_work_count or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Rework Token</label>
+                        <input type="text" name="re_work_token" class="form-control"
+                            value="{{ order.re_work_token or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small">Rework Date</label>
+                        <input type="date" name="re_work_date" class="form-control"
+                            value="{{ order.re_work_date.strftime('%Y-%m-%d') if order.re_work_date }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small">Service Note (Internal)</label>
+                        <textarea name="service_note" class="form-control"
+                            rows="2">{{ order.service_note or '' }}</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mb-5 pb-5">
+            <button type="submit" class="btn btn-success btn-lg px-5 shadow-lg">
+                <i class="bi bi-check-circle me-2"></i> Update Order
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    let itemCounter = {{ order.items| length or 0 }};
+
+    function addNewItem() {
+        itemCounter++;
+        const container = document.getElementById('items-container');
+        const newItem = document.createElement('div');
+        newItem.className = 'item-block mb-4';
+        newItem.dataset.itemId = itemCounter;
+
+        newItem.innerHTML = `
+        <div class="card border-secondary border-opacity-25 shadow-sm">
+            <div class="card-header bg-secondary bg-opacity-10 py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-secondary">Item #<span class="item-number">${itemCounter}</span></h6>
+                    <button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeItem(this)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label small fw-bold">Product Name</label>
+                        <input type="text" class="form-control" name="items[${itemCounter}][product_name]" placeholder="Enter product name" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Item Status</label>
+                        <select class="form-select form-select-sm" name="items[${itemCounter}][status]">
+                            <option value="yts">yts</option>
+                            <option value="wip">wip</option>
+                            <option value="done">done</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="services-container px-3 py-2 bg-light rounded-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="small fw-bold text-muted">Services & Pricing</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="addServiceToItem(this)">+ Service</button>
+                    </div>
+                    <div class="service-row row gx-2 mb-2">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control form-control-sm" name="items[${itemCounter}][services][]" placeholder="Service" required>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">₹</span>
+                                <input type="number" class="form-control service-price" name="items[${itemCounter}][service_prices][]" value="0" required onchange="calculateTotals()">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text text-danger">-</span>
+                                <input type="number" class="form-control service-discount" name="items[${itemCounter}][service_discounts][]" value="0" onchange="calculateTotals()">
+                            </div>
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-sm text-danger" onclick="removeService(this)">×</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <label class="form-label small text-muted">Defects / Condition</label>
+                    <textarea class="form-control form-control-sm" name="items[${itemCounter}][defects]" rows="1" placeholder="Note any defects..."></textarea>
+                </div>
+            </div>
+        </div>`;
+        container.appendChild(newItem);
+        renumberItems();
+        calculateTotals();
+    }
+
+    function addServiceToItem(button) {
+        const itemBlock = button.closest('.item-block');
+        const id = itemBlock.dataset.itemId;
+        const container = itemBlock.querySelector('.services-container');
+
+        const row = document.createElement('div');
+        row.className = 'service-row row gx-2 mb-2';
+        row.innerHTML = `
+            <div class="col-md-5">
+                <input type="text" class="form-control form-control-sm" name="items[${id}][services][]" placeholder="Service" required>
+            </div>
+            <div class="col-md-3">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text">₹</span>
+                    <input type="number" class="form-control service-price" name="items[${id}][service_prices][]" value="0" required onchange="calculateTotals()">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text text-danger">-</span>
+                    <input type="number" class="form-control service-discount" name="items[${id}][service_discounts][]" value="0" onchange="calculateTotals()">
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-sm text-danger" onclick="removeService(this)">×</button>
+            </div>`;
+        container.appendChild(row);
+        calculateTotals();
+    }
+
+    function removeService(btn) {
+        const row = btn.closest('.service-row');
+        const container = row.parentElement;
+        if (container.querySelectorAll('.service-row').length > 1) {
+            row.remove();
+            calculateTotals();
+        } else {
+            alert("At least one service is required.");
+        }
+    }
+
+    function removeItem(btn) {
+        const block = btn.closest('.item-block');
+        if (document.querySelectorAll('.item-block').length > 1) {
+            if (confirm("Remove this entire item?")) {
+                block.remove();
+                renumberItems();
+                calculateTotals();
+            }
+        } else {
+            alert("Order must have at least one item.");
+        }
+    }
+
+    function renumberItems() {
+        document.querySelectorAll('.item-block').forEach((block, index) => {
+            const num = index + 1;
+            block.querySelector('.item-number').textContent = num;
+            // Update the names to maintain sequential order if preferred, 
+            // but our backend logic should just iterate over values.
+        });
+        document.getElementById('itemCount').textContent = document.querySelectorAll('.item-block').length;
+    }
+
+    function calculateTotals() {
+        let grandTotal = 0;
+        document.querySelectorAll('.service-row').forEach(row => {
+            const p = parseFloat(row.querySelector('.service-price').value) || 0;
+            const d = parseFloat(row.querySelector('.service-discount').value) || 0;
+            grandTotal += (p - d);
+        });
+        document.getElementById('totalAmount').textContent = grandTotal.toFixed(2);
+        document.getElementById('calcTotal').textContent = grandTotal.toFixed(2);
+    }
+
+    // Initial calculation
+    window.onload = calculateTotals;
+</script>
+{% endblock %}

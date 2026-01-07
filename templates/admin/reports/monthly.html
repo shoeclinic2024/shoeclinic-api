@@ -108,14 +108,21 @@
                         <th class="bg-light text-muted text-uppercase small">Expenses (Approved)</th>
                         <td class="text-danger fw-bold">₹{{ "%.2f"|format(monthly.total_expenses) }}</td>
                         <th class="bg-light text-muted text-uppercase small">Vendor Cost</th>
-                        <td class="text-danger fw-bold">₹{{ "%.2f"|format(monthly.total_vendor_cost or 0) }}</td>
+                        <td class="text-danger">
+                            <span class="fw-bold">₹{{ "%.2f"|format(monthly.total_vendor_cost or 0) }}</span>
+                            <div class="x-small text-muted mt-1" style="font-size: 0.7rem;">
+                                <span class="text-success">Pd: ₹{{ "%.0f"|format(monthly.vendor_paid or 0) }}</span> |
+                                <span class="text-danger">Pen: ₹{{ "%.0f"|format(monthly.vendor_pending or 0) }}</span>
+                            </div>
+                        </td>
                     </tr>
                     <tr>
                         <th class="bg-light text-muted text-uppercase small">Net Profit</th>
                         <td colspan="3"
                             class="fw-bold {% if monthly.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
                             ₹{{ "%.2f"|format(monthly.net_profit) }}
-                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Vendor Cost)</small>
+                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Paid Vendor
+                                Cost)</small>
                         </td>
                     </tr>
                 </tbody>
@@ -140,11 +147,11 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Assigned Items</td>
+                                <td>Assigned Orders</td>
                                 <td class="text-end fw-bold">{{ monthly.ops.assigned_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Items</td>
+                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Orders</td>
                                 <td class="text-end fw-bold text-danger">{{ monthly.ops.unassigned_count }}</td>
                             </tr>
                             <tr>
@@ -165,11 +172,11 @@
                                 <td class="text-end">{{ monthly.ops.ready_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Items</td>
+                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Orders</td>
                                 <td class="text-end">{{ monthly.ops.billed_granular_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Items</td>
+                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Orders</td>
                                 <td class="text-end fw-bold">{{ monthly.ops.paid_granular_count }}</td>
                             </tr>
                         </tbody>
@@ -211,7 +218,7 @@
                                 </td>
                                 <td class="align-middle" style="width: 40%;">
                                     <div class="progress" style="height: 6px;">
-                                        <div class="progress-bar {% if pct == 100 %}bg-success{% else %}bg-primary{% endif %}"
+                                        <div class="progress-bar {{ 'bg-success' if pct == 100 else 'bg-primary' }}"
                                             role="progressbar" style="width: {{ pct }}%"></div>
                                     </div>
                                     <div class="text-center" style="font-size: 10px; color: #888;">{{ pct }}%</div>

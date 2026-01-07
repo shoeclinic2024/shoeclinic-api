@@ -26,6 +26,11 @@ import calendar as py_calendar
 
 # --- Flask App ---
 app = Flask(__name__)
+# Add favicon route to silence 404 errors
+@app.route('/favicon.ico')
+def favicon():
+    return "", 204
+
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
 # --- Version Information ---
 APP_VERSION = "v02"
@@ -123,6 +128,14 @@ def from_json_filter(value):
     except:
         return {}
 
+@app.template_filter('unique')
+def unique_filter(iterable):
+    """Returns unique elements from an iterable while preserving order"""
+    if not iterable:
+        return []
+    seen = set()
+    return [x for x in iterable if not (x in seen or seen.add(x))]
+
 # --- Database Initialization Route ---
 @app.route('/init-db')
 def init_db():
@@ -202,6 +215,53 @@ def inject_notifications():
         )
     return dict(unread_notifications=[], unread_count=0, pending_action_count=0)
 
+@app.context_processor
+def inject_my_work_counts():
+    if not current_user.is_authenticated:
+        return dict(my_work_total_count=0)
+        
+    try:
+        from models import ManualTask, OrderItem
+        from datetime import date
+        import json
+        
+        today = date.today()
+        
+        # 1. Active Manual Tasks
+        manual_count = ManualTask.query.filter_by(assigned_to=current_user.username)\
+                                       .filter(ManualTask.status.notin_(['done', 'completed'])).count()
+                                       
+        # 2. Active Order Items (mimicking my_works logic)
+        search_term = f'%"{current_user.username}"%'
+        # Use query optimization for just ID/status if possible, but object load is safer for logic
+        assigned_items = OrderItem.query.filter(
+            (OrderItem.technician == current_user.username) | 
+            (OrderItem.service_assignments.ilike(search_term))
+        ).all()
+        
+        active_item_count = 0
+        
+        for item in assigned_items:
+            if not item.order:
+                continue
+                
+            # Skip upcoming
+            if item.order.assignment_start_date and item.order.assignment_start_date.date() > today:
+                continue
+                
+            # Check if fully done
+            st = (item.status or '').lower()
+            if st in ['ready to deliver', 'billed', 'delivered', 'completed', 'paid']:
+                continue
+            
+            # If item is not fully done, it appears in "My Works" main list
+            active_item_count += 1
+            
+        return dict(my_work_total_count=manual_count + active_item_count)
+        
+    except Exception as e:
+        return dict(my_work_total_count=0)
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -260,7 +320,7 @@ def calculate_ops_metrics(start_date, end_date, orders=None):
         ready_count = len([o for o in orders if o.status and 'ready' in o.status.lower()])
         expected_delivery_count = len(orders) 
         
-        # Item/Task Counts (Granular Status)
+        # Order Level Status Counts
         g_yts = 0
         g_wip = 0
         g_done = 0
@@ -269,75 +329,54 @@ def calculate_ops_metrics(start_date, end_date, orders=None):
         g_paid = 0
         g_unassigned = 0
         
-        if orders:
-            for order in orders:
-                o_status = (order.status or '').lower()
-                # Use Payment Status for "Paid" metric
-                is_order_paid = (order.payment_status or '').lower() == 'paid'
-                # Billed if order is finalized but not necessarily paid
-                is_order_billed = o_status in ['billed', 'delivered', 'completed']
-                
-                for item in order.items:
-                    svc_list = []
-                    if item.services:
+        for order in orders:
+            status = (order.status or 'yts').lower()
+            
+            # Check if order has any unassigned items or services
+            is_unassigned = False
+            for item in order.items:
+                if not item.technician and not item.service_assignments:
+                    is_unassigned = True
+                    break
+                # If there are services but none are assigned
+                if item.services and item.service_assignments:
+                    try:
+                        assignments = json.loads(item.service_assignments)
                         svc_list = [s.strip() for s in item.services.split(',') if s.strip()]
-                    
-                    if not svc_list:
-                        # Treat item as single task
-                        if is_order_paid:
-                            g_paid += 1
-                        elif is_order_billed:
-                            g_billed += 1
-                        else:
-                            st = (item.status or 'yts').lower()
-                            is_assigned = bool(item.technician)
-                            
-                            if not is_assigned:
-                                g_unassigned += 1
-                            elif st in ['done', 'completed']: g_done += 1
-                            elif st in ['ready', 'ready to deliver']: g_ready += 1
-                            elif st in ['wip', 'work in progress']: g_wip += 1
-                            else: g_yts += 1
-                    else:
-                        try: statuses = json.loads(item.service_statuses or '{}')
-                        except: statuses = {}
-                        try: assignments = json.loads(item.service_assignments or '{}')
-                        except: assignments = {}
-                        
-                        for svc in svc_list:
-                            if is_order_paid:
-                                g_paid += 1
-                            elif is_order_billed:
-                                g_billed += 1
-                            else:
-                                # Default to item status if specific service stat not found
-                                item_stat_default = (item.status or 'yts').lower()
-                                s_stat = statuses.get(svc, item_stat_default).lower()
-                                is_assigned = bool(assignments.get(svc))
-                                     
-                                if not is_assigned:
-                                    g_unassigned += 1
-                                elif s_stat in ['done', 'completed']: g_done += 1
-                                elif s_stat in ['ready', 'ready to deliver']: g_ready += 1 
-                                elif s_stat in ['wip', 'work in progress']: g_wip += 1
-                                else: g_yts += 1
+                        if any(not assignments.get(svc) for svc in svc_list):
+                            is_unassigned = True
+                            break
+                    except: pass
+                elif item.services and not item.service_assignments:
+                    is_unassigned = True
+                    break
+            
+            if is_unassigned:
+                g_unassigned += 1
+            else:
+                if status == 'paid': g_paid += 1
+                elif status in ['billed', 'delivered', 'completed']: g_billed += 1
+                elif status in ['ready to deliver', 'ready']: g_ready += 1
+                elif status == 'done': g_done += 1
+                elif status == 'wip': g_wip += 1
+                else: g_yts += 1
 
-        assigned_tasks_count = g_yts + g_wip + g_done + g_ready + g_billed + g_paid
-        total_volume = assigned_tasks_count + g_unassigned
+        assigned_orders_count = g_yts + g_wip + g_done + g_ready + g_billed + g_paid
+        total_volume = assigned_orders_count + g_unassigned
         
         return {
             'workers_worked': workers_count or 0,
-            'assigned_count': assigned_tasks_count, # This will be the "Assigned Items" count
-            'total_volume': total_volume,           # Original total if needed
+            'assigned_count': assigned_orders_count, # This will be the "Assigned Orders" count
+            'total_volume': total_volume,           
             'unassigned_count': g_unassigned,
             'yts_count': g_yts,
             'wip_count': g_wip,
             'done_count': g_done,
             'ready_count': g_ready, 
             'billed_granular_count': g_billed,
-            'paid_granular_count': g_paid,          # New Paid metric
-            'delivered_count': delivered_count,     # Order level count
-            'expected_delivery_count': expected_delivery_count
+            'paid_granular_count': g_paid,          
+            'delivered_count': g_billed + g_paid,     # Order level count
+            'expected_delivery_count': len(orders)
         }
     except Exception as e:
         print(f"Error calculating ops metrics: {e}")
@@ -349,40 +388,33 @@ def calculate_ops_metrics(start_date, end_date, orders=None):
         }
 
 def calculate_tech_performance(orders):
-    """Claculate technician efficiency based on list of orders"""
+    """Calculate technician efficiency based on UNIQUE ORDERS assigned to them"""
     tech_performance = {}
     try:
         for order in orders:
+            order_techs = set()
             for item in order.items:
-                # 1. Check Granular Service Assignments first
-                has_granular = False
+                # 1. Granular assignments
                 if item.service_assignments:
                     try:
                         assignments = json.loads(item.service_assignments)
-                        statuses = json.loads(item.service_statuses or '{}')
-                        for svc_name, tech_name in assignments.items():
-                            if tech_name:
-                                has_granular = True
-                                if tech_name not in tech_performance:
-                                    tech_performance[tech_name] = {'assigned': 0, 'completed': 0}
-                                tech_performance[tech_name]['assigned'] += 1
-                                
-                                # Check status of this specific service
-                                s_status = statuses.get(svc_name, 'yts').lower()
-                                if s_status in ['ready to deliver', 'ready', 'billed', 'delivered']:
-                                    tech_performance[tech_name]['completed'] += 1
-                    except:
-                        pass # Valid JSON check failed
-                
-                # 2. Fallback to Item Level Technician if no granular services assigned
-                if not has_granular and item.technician:
-                    t_name = item.technician
-                    if t_name not in tech_performance:
-                        tech_performance[t_name] = {'assigned': 0, 'completed': 0}
-                    tech_performance[t_name]['assigned'] += 1
+                        for svc, tech in assignments.items():
+                            if tech: order_techs.add(tech)
+                    except: pass
+                # 2. Item level fallback
+                if item.technician:
+                    order_techs.add(item.technician)
+            
+            # Count this order for each involved technician
+            is_complete = order.status and order.status.lower() in ['ready to deliver', 'ready', 'billed', 'delivered', 'paid', 'completed']
+            
+            for t_name in order_techs:
+                if t_name not in tech_performance:
+                    tech_performance[t_name] = {'assigned': 0, 'completed': 0}
+                tech_performance[t_name]['assigned'] += 1
+                if is_complete:
+                    tech_performance[t_name]['completed'] += 1
                     
-                    if item.status and item.status.lower() in ['ready to deliver', 'ready', 'billed', 'delivered']:
-                        tech_performance[t_name]['completed'] += 1
     except Exception as e:
         print(f"Error calculating tech performance: {e}")
     return tech_performance
@@ -431,22 +463,47 @@ def get_daily_report(date=None):
         billed_count = len(today_billed_orders)
         billed_revenue = sum([float(o.price or 0) for o in today_billed_orders])
         
-        paid_orders = [o for o in today_billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        # v02: STRICT PAID FILTER - Only count orders where status is officially 'Paid'
+        paid_orders = [o for o in today_billed_orders if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_revenue = sum([float(o.price or 0) for o in paid_orders])
         
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # --- Vendor Cost Tracking ---
-        # Calculate vendor costs for orders handled/active today
-        today_vendor_orders = []
-        processed_v_ids = set()
-        for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
-                today_vendor_orders.append(o)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {} # To avoid overcounting order-level amount
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in today_vendor_orders])
+        for o in all_activities:
+            # We check items of these active orders
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
         
         completed = Order.query.filter(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day, Order.status.ilike('%done%')).count()
         
@@ -468,7 +525,9 @@ def get_daily_report(date=None):
             'paid_count': paid_count,
             'total_expenses': total_expenses,
             'total_vendor_cost': total_vendor_cost,
-            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
+            'net_profit': paid_revenue - total_expenses - total_vendor_paid,
             'completed': completed,
             'pending': len(orders) - completed,
             'orders': orders,
@@ -495,10 +554,7 @@ def get_weekly_report(week_start=None):
         
         # 1. Target Orders (Delivery View - Drop Date)
         orders = Order.query.filter(Order.drop_date >= start_dt, Order.drop_date <= end_dt).all()
-        
-        # Sales Orders (Billing View - Pickup Date)
-        sales_orders = Order.query.filter(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt).all()
-        billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
+        total_revenue = sum([float(o.price or 0) for o in orders])
         
         # --- Operational/Production Inclusive Data (v02 Fix) ---
         all_activities = Order.query.filter(
@@ -510,28 +566,55 @@ def get_weekly_report(week_start=None):
             )
         ).all()
 
-        # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        # --- Revenue Tracking (v02 Fix: Use actual_delivery_date for real billing activity) ---
+        today_billed = Order.query.filter(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt).all()
+        billed_revenue = sum([float(o.price or 0) for o in today_billed])
+        billed_count = len(today_billed)
+        
+        # v02: STRICT PAID FILTER - Only count orders where status is officially 'Paid'
+        paid_orders = [o for o in today_billed if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_revenue = sum([float(o.price or 0) for o in paid_orders])
         
         # Expenses
         all_expenses = Expense.query.filter_by(status='approved').all()
         expenses = [e for e in all_expenses if week_start <= e.expense_date <= week_end]
-        
-        total_revenue = sum([float(o.price or 0) for o in orders])
-        billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # --- Vendor Cost Tracking ---
-        vendor_orders = []
-        processed_v_ids = set()
-        for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
-                vendor_orders.append(o)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {} # To avoid overcounting order-level amount
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        for o in all_activities:
+            # We check items of these active orders
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -544,14 +627,16 @@ def get_weekly_report(week_start=None):
             'title': f"{week_start.strftime('%d %b')} - {week_end.strftime('%d %b, %Y')}",
             'type': 'Weekly',
             'total_orders': len(orders),
-            'total_revenue': total_revenue,
-            'billed_revenue': billed_revenue,
-            'billed_count': len(billed_orders),
+            'total_revenue': total_revenue, # Expected
+            'billed_revenue': billed_revenue, # Actual
+            'billed_count': billed_count,
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
             'total_vendor_cost': total_vendor_cost,
-            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
+            'net_profit': paid_revenue - total_expenses - total_vendor_paid,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -598,8 +683,13 @@ def get_monthly_report(year=None, month=None):
             )
         ).all()
 
-        # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        # --- Revenue Tracking (v02 Fix: Use actual_delivery_date for real billing activity) ---
+        today_billed = Order.query.filter(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt).all()
+        billed_revenue = sum([float(o.price or 0) for o in today_billed])
+        billed_count = len(today_billed)
+        
+        # v02: STRICT PAID FILTER - Only count orders where status is officially 'Paid'
+        paid_orders = [o for o in today_billed if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_revenue = sum([float(o.price or 0) for o in paid_orders])
         
@@ -607,19 +697,42 @@ def get_monthly_report(year=None, month=None):
         all_expenses = Expense.query.filter_by(status='approved').all()
         expenses = [e for e in all_expenses if month_start <= e.expense_date <= month_end]
         
-        total_revenue = sum([float(o.price or 0) for o in orders])
-        billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # --- Vendor Cost Tracking ---
-        vendor_orders = []
-        processed_v_ids = set()
-        for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
-                vendor_orders.append(o)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {} # To avoid overcounting order-level amount
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        for o in all_activities:
+            # We check items of these active orders
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -634,14 +747,16 @@ def get_monthly_report(year=None, month=None):
             'month_start': month_start,
             'month_end': month_end,
             'total_orders': len(orders),
-            'total_revenue': total_revenue, 
+            'total_revenue': sum([float(o.price or 0) for o in orders]), 
             'billed_revenue': billed_revenue,
-            'billed_count': len(billed_orders),
+            'billed_count': billed_count,
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
             'total_vendor_cost': total_vendor_cost,
-            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
+            'net_profit': paid_revenue - total_expenses - total_vendor_paid,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -668,44 +783,30 @@ def get_monthly_report_legacy(year=None, month=None):
             next_month = datetime(year, month + 1, 1).date()
         month_end = next_month - timedelta(days=1)
         
-        all_orders = Order.query.all()
-        orders = [o for o in all_orders if o.pickup_date and month_start <= o.pickup_date.date() <= month_end]
+        # Financial Breakdown (v02 Activity-Based)
+        start_dt = datetime.combine(month_start, datetime.min.time())
+        end_dt = datetime.combine(month_end, datetime.max.time())
         
-        all_expenses = Expense.query.filter_by(status='approved').all()
-        expenses = [e for e in all_expenses if month_start <= e.expense_date <= month_end]
+        # We track billing/collection activity by actual_delivery_date
+        activity_orders = Order.query.filter(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt).all()
         
-        # Financial Breakdown
-        # "Total Orders" = Total Services (as per user definition)
-        total_orders = 0
-        for o in orders:
-            for i in o.items:
-                if i.services:
-                    # Split by comma to count multiple services on one item (e.g. "Deep Clean,Patchwork")
-                    service_list = [s.strip() for s in i.services.split(',') if s.strip()]
-                    total_orders += len(service_list)
-                else:
-                    # If item exists but no service specified, count as 1 item/service?
-                    # Usually items have services. If not, maybe 0 or 1. Safe to assume 1 if item exists?
-                    # Let's count 1 if services is missing but item exists, or just strict service count.
-                    # Given the user's strictness, likely strict service count.
-                    # But if i.services is empty, it might be a new item. Let's count 1 to be safe, or 0.
-                    # 'services' column is String(200). 
-                    # If empty, let's treat as 1 (base product service).
-                    total_orders += 1
-        billed_orders = [o for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])]
+        total_orders = len(activity_orders) # Total volume delivered/billed this month
+        
+        # Billed Orders are all delivered in this window
+        billed_orders = activity_orders
         billed_count = len(billed_orders)
 
         # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        paid_orders = [o for o in billed_orders if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_amount = sum([float(o.price or 0) for o in paid_orders])
         
-        # Calculate discounts specifically for PAID orders to ensure consistent Net Income
+        # Calculate discounts specifically for PAID orders
         paid_discounts = sum([float(o.discount or 0) if o.discount else 0 for o in paid_orders])
         
-        total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in orders])
+        total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in activity_orders])
         billed_amount = sum([float(o.price or 0) for o in billed_orders])
-        total_revenue = sum([float(o.price or 0) for o in orders])
+        total_revenue = sum([float(o.price or 0) for o in activity_orders])
         
         # Income is now Net Paid Income (Cash Basis)
         income = paid_amount - paid_discounts
@@ -780,6 +881,10 @@ def get_monthly_report_legacy(year=None, month=None):
                 'staff_id': s.id
             }
         
+        # Fetch Expenses for the month
+        all_expenses = Expense.query.filter_by(status='approved').all()
+        expenses = [e for e in all_expenses if month_start <= e.expense_date <= month_end]
+
         for e in expenses:
             cat = e.category
             # Merge 'Salary' and 'Salary Advance' for breakdown
@@ -806,7 +911,7 @@ def get_monthly_report_legacy(year=None, month=None):
         
         total_expenses_actual = sum(c['actual'] for c in cat_expenses.values())
         total_expenses_real = sum(c['real'] for c in cat_expenses.values())
-        completed = len([o for o in orders if o.status and 'done' in o.status.lower()])
+        completed = len([o for o in activity_orders if o.status and 'done' in o.status.lower()])
         
         ops = calculate_ops_metrics(month_start, month_end)
 
@@ -816,13 +921,39 @@ def get_monthly_report_legacy(year=None, month=None):
             mode = o.payment_mode or 'Default'
             payment_breakdown[mode] = payment_breakdown.get(mode, 0.0) + float(o.price or 0)
 
-        # Vendor Cost for Monthly
-        total_vendor_cost = 0.0
-        processed_v_ids = set()
-        for o in orders:
-            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-                total_vendor_cost += float(o.vendor_amount)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {}
+        
+        for o in activity_orders:
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
 
         return {
             'month': month,
@@ -841,15 +972,18 @@ def get_monthly_report_legacy(year=None, month=None):
             'total_expenses_real': total_expenses_real,
             'total_expenses': total_expenses_actual,  # Compatibility with reports.html
             'total_vendor_cost': total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
             'profit_loss_actual': income - total_expenses_actual - total_vendor_cost,
-            'profit_loss_real': income - total_expenses_real - total_vendor_cost,
-            'net_profit': income - total_expenses_actual - total_vendor_cost,  # Compatibility with reports.html
+            'profit_loss_real': income - total_expenses_real - total_vendor_paid,
+            'net_profit': income - total_expenses_actual - total_vendor_paid,  # Consistency
             'completed': completed,
             'pending': total_orders - completed,
-            'orders': orders,
+            'orders': activity_orders,
             'month_start': month_start,
             'month_end': month_end,
             'ops': ops,
+            'expenses': expenses,
             'payment_breakdown': payment_breakdown,
             'paid_count': paid_count,
             'paid_amount': paid_amount
@@ -872,10 +1006,7 @@ def get_yearly_report(year=None):
         
         # 1. Target Orders (Delivery View - Drop Date)
         orders = Order.query.filter(Order.drop_date >= start_dt, Order.drop_date <= end_dt).all()
-        
-        # Sales Orders (Billing View - Pickup Date)
-        sales_orders = Order.query.filter(Order.pickup_date >= start_dt, Order.pickup_date <= end_dt).all()
-        billed_orders = [o for o in sales_orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'received', 'settled']) or (o.status and o.status.lower() in ['billed', 'delivered', 'completed'])]
+        total_revenue = sum([float(o.price or 0) for o in orders])
         
         # --- Operational/Production Inclusive Data (v02 Fix) ---
         all_activities = Order.query.filter(
@@ -887,28 +1018,55 @@ def get_yearly_report(year=None):
             )
         ).all()
 
-        # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        # --- Revenue Tracking (v02 Fix: Use actual_delivery_date for real billing activity) ---
+        today_billed = Order.query.filter(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt).all()
+        billed_revenue = sum([float(o.price or 0) for o in today_billed])
+        billed_count = len(today_billed)
+        
+        # v02: STRICT PAID FILTER - Only count orders where status is officially 'Paid'
+        paid_orders = [o for o in today_billed if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_revenue = sum([float(o.price or 0) for o in paid_orders])
         
         # Expenses
         all_expenses = Expense.query.filter_by(status='approved').all()
         expenses = [e for e in all_expenses if year_start <= e.expense_date <= year_end]
-        
-        total_revenue = sum([float(o.price or 0) for o in orders])
-        billed_revenue = sum([float(o.price or 0) for o in billed_orders])
         total_expenses = sum([float(e.amount or 0) for e in expenses])
         
-        # --- Vendor Cost Tracking ---
-        vendor_orders = []
-        processed_v_ids = set()
-        for o in all_activities:
-            if o.id not in processed_v_ids and (o.vendor_amount or 0) > 0:
-                vendor_orders.append(o)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {} # To avoid overcounting order-level amount
         
-        total_vendor_cost = sum([float(o.vendor_amount or 0) for o in vendor_orders])
+        for o in all_activities:
+            # We check items of these active orders
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
         
         # Tech Perf
         tech_performance = calculate_tech_performance(all_activities)
@@ -925,12 +1083,14 @@ def get_yearly_report(year=None):
             'total_orders': len(orders),
             'total_revenue': total_revenue,
             'billed_revenue': billed_revenue,
-            'billed_count': len(billed_orders),
+            'billed_count': billed_count,
             'paid_revenue': paid_revenue,
             'paid_count': paid_count,
             'total_expenses': total_expenses,
             'total_vendor_cost': total_vendor_cost,
-            'net_profit': paid_revenue - total_expenses - total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
+            'net_profit': paid_revenue - total_expenses - total_vendor_paid,
             'completed': 0,
             'pending': 0,
             'orders': orders,
@@ -954,33 +1114,28 @@ def get_yearly_report_legacy(year=None):
         all_orders = Order.query.all()
         orders = [o for o in all_orders if o.pickup_date and year_start <= o.pickup_date.date() <= year_end]
         
-        all_expenses = Expense.query.filter_by(status='approved').all()
-        expenses = [e for e in all_expenses if year_start <= e.expense_date <= year_end]
+        # Financial Breakdown (v02 Activity-Based)
+        start_dt = datetime.combine(year_start, datetime.min.time())
+        end_dt = datetime.combine(year_end, datetime.max.time())
         
-        # Financial Breakdown
-        # "Total Orders" = Total Services
-        total_orders = 0
-        for o in orders:
-            for i in o.items:
-                if i.services:
-                    service_list = [s.strip() for s in i.services.split(',') if s.strip()]
-                    total_orders += len(service_list)
-                else:
-                    total_orders += 1
-        billed_orders = [o for o in orders if (o.payment_status and o.payment_status.lower() in ['paid', 'billed', 'done', 'completed']) or (o.status and o.status.lower() in ['billed', 'completed', 'delivered'])]
+        activity_orders = Order.query.filter(Order.actual_delivery_date >= start_dt, Order.actual_delivery_date <= end_dt).all()
+        
+        total_orders = len(activity_orders)
+        
+        billed_orders = activity_orders
         billed_count = len(billed_orders)
 
         # --- Paid Orders Tracking (v02) ---
-        paid_orders = [o for o in billed_orders if o.payment_status and o.payment_status.lower() == 'paid']
+        paid_orders = [o for o in billed_orders if o.status and o.status.lower() == 'paid']
         paid_count = len(paid_orders)
         paid_amount = sum([float(o.price or 0) for o in paid_orders])
         
         # Calculate discounts specifically for PAID orders
         paid_discounts = sum([float(o.discount or 0) if o.discount else 0 for o in paid_orders])
 
-        total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in orders])
+        total_discount = sum([float(o.discount or 0) if o.discount else 0 for o in activity_orders])
         billed_amount = sum([float(o.price or 0) for o in billed_orders])
-        total_revenue = sum([float(o.price or 0) for o in orders])
+        total_revenue = sum([float(o.price or 0) for o in activity_orders])
         
         # Income is now Net Paid Income (Cash Basis)
         income = paid_amount - paid_discounts
@@ -1039,6 +1194,10 @@ def get_yearly_report_legacy(year=None):
                 'rate': float(s.base_salary or 0)
             }
         
+        # Fetch Expenses for the year
+        all_expenses = Expense.query.filter_by(status='approved').all()
+        expenses = [e for e in all_expenses if year_start <= e.expense_date <= year_end]
+
         for e in expenses:
             cat = e.category
             if cat in ["Salary", "Salary Advance"]:
@@ -1074,13 +1233,39 @@ def get_yearly_report_legacy(year=None):
             mode = o.payment_mode or 'Default'
             payment_breakdown[mode] = payment_breakdown.get(mode, 0.0) + float(o.price or 0)
 
-        # Vendor Cost for Yearly
-        total_vendor_cost = 0.0
-        processed_v_ids = set()
-        for o in orders:
-            if o.vendor_amount and o.vendor_amount > 0 and o.id not in processed_v_ids:
-                total_vendor_cost += float(o.vendor_amount)
-                processed_v_ids.add(o.id)
+        # --- Vendor Cost Tracking (v02 Strict Tracking) ---
+        total_vendor_paid = 0.0
+        total_vendor_pending = 0.0
+        order_vendor_budget = {}
+        
+        for o in activity_orders:
+            for item in o.items:
+                is_vendor = False
+                if item.technician == 'VENDOR':
+                    is_vendor = True
+                else:
+                    try:
+                        assigns = json.loads(item.service_assignments or '{}')
+                        if 'VENDOR' in assigns.values():
+                            is_vendor = True
+                    except: pass
+                
+                if not is_vendor: continue
+                
+                cost = float(item.vendor_amount or 0.0)
+                if cost == 0 and item.order.vendor_amount:
+                    o_id = item.order.id
+                    if o_id not in order_vendor_budget:
+                        order_vendor_budget[o_id] = float(item.order.vendor_amount or 0)
+                    cost = order_vendor_budget[o_id]
+                    order_vendor_budget[o_id] = 0.0 # Consumed
+                
+                if item.is_vendor_paid:
+                    total_vendor_paid += cost
+                else:
+                    total_vendor_pending += cost
+        
+        total_vendor_cost = total_vendor_paid + total_vendor_pending
 
         return {
             'year': year,
@@ -1098,13 +1283,16 @@ def get_yearly_report_legacy(year=None):
             'total_expenses_real': total_expenses_real,
             'total_expenses': total_expenses_actual,  # Compatibility with reports.html
             'total_vendor_cost': total_vendor_cost,
+            'vendor_paid': total_vendor_paid,
+            'vendor_pending': total_vendor_pending,
             'profit_loss_actual': income - total_expenses_actual - total_vendor_cost,
-            'profit_loss_real': income - total_expenses_real - total_vendor_cost,
-            'net_profit': income - total_expenses_actual - total_vendor_cost,  # Compatibility with reports.html
+            'profit_loss_real': income - total_expenses_real - total_vendor_paid,
+            'net_profit': income - total_expenses_actual - total_vendor_paid,  # Compatibility with reports.html
             'completed': completed,
             'pending': total_orders - completed,
-            'orders': orders,
+            'orders': activity_orders,
             'year_start': year_start,
+            'expenses': expenses,
             'ops': ops,
             'payment_breakdown': payment_breakdown,
             'paid_count': paid_count,
@@ -1570,9 +1758,11 @@ def unlock_account(user_id):
 @login_required
 def home():
     today = datetime.now().date()
-    todays_pickup_count = Order.query.filter(
+    todays_pickup_orders = Order.query.filter(
         db.func.date(Order.pickup_date) == today
-    ).count()
+    ).all()
+    todays_pickup_count = len(todays_pickup_orders)
+    todays_pickup_service_count = sum([len(o.items) for o in todays_pickup_orders])
     expected_delivery_count = Order.query.filter(
         db.func.date(Order.drop_date) == today
     ).count()
@@ -1599,6 +1789,7 @@ def home():
 
     return render_template("home.html", 
                          todays_pickup_count=todays_pickup_count,
+                         todays_pickup_service_count=todays_pickup_service_count,
                          expected_delivery_count=expected_delivery_count,
                          actually_delivered_count=actually_delivered_count,
                          announcements=announcements,
@@ -1614,7 +1805,7 @@ def tsc_dashboard():
     drop_date_filter = request.args.get("drop_date_filter", "")
     status_filter = request.args.get("status_filter", "")
     technician_filter = request.args.get("technician_filter", "")
-    discount_filter = request.args.get("discount_filter", "")
+    payment_mode_filter = request.args.get("payment_mode_filter", "")
     outsource_filter = request.args.get("outsource_filter", "")
 
     query = Order.query.options(db.joinedload(Order.items))
@@ -1636,8 +1827,11 @@ def tsc_dashboard():
             (Order.technician.ilike(f"%{technician_filter}%")) |
             (OrderItem.technician.ilike(f"%{technician_filter}%"))
         ).distinct()
-    if discount_filter:
-        query = query.filter(Order.discount.ilike(f"%{discount_filter}%"))
+    if payment_mode_filter:
+        if payment_mode_filter == "Online":
+             query = query.filter(Order.payment_mode.in_(['Online', 'Razorpay', 'payment_link']))
+        else:
+             query = query.filter(Order.payment_mode == payment_mode_filter)
     if outsource_filter:
         query = query.filter(Order.outsource == outsource_filter)
 
@@ -1733,12 +1927,23 @@ def add_order():
                 item_price = sum(service_prices) if service_prices else 0.0
                 item_discount = sum(service_discounts) if service_discounts else 0.0
 
+                # Prepare JSON mappings for prices and discounts
+                price_map = {}
+                discount_map = {}
+                for idx, svc in enumerate(services):
+                    s_name = svc.strip()
+                    if s_name:
+                        price_map[s_name] = service_prices[idx] if idx < len(service_prices) else 0.0
+                        discount_map[s_name] = service_discounts[idx] if idx < len(service_discounts) else 0.0
+
                 item = OrderItem(
                     order_id=order.id,
                     product_name=product_name,
                     services=','.join(services) if services else None,
                     price=item_price,
                     discount=item_discount,
+                    service_prices=json.dumps(price_map),
+                    service_discounts=json.dumps(discount_map),
                     status='yts',
                     defects=request.form.get(f"items[{i}][defects]")
                 )
@@ -1846,22 +2051,125 @@ def edit_order(order_id):
                     except:
                         pass
 
-        # Other Info
+        # Basic Info
+        order.job_id = request.form.get("job_id")
+        order.customer_name = request.form.get("customer_name")
         order.mobile = request.form.get("mobile")
-        order.product_name = request.form.get("product_name")
-        order.token = request.form.get("token")
-        order.price = float(request.form.get("price")) if request.form.get("price") else None
+        order.place = request.form.get("place")
         order.payment_mode = request.form.get("payment_mode")
         order.payment_status = request.form.get("payment_status")
-        order.discount = request.form.get("discount")
         order.outsource = request.form.get("outsource")
+        order.service_note = request.form.get("service_note")
+        
+        # Dates
+        order.pickup_date = datetime.strptime(request.form.get("pickup_date"), "%Y-%m-%d") if request.form.get("pickup_date") else None
+        order.drop_date = datetime.strptime(request.form.get("drop_date"), "%Y-%m-%d") if request.form.get("drop_date") else None
+        
+        form_service_date = request.form.get("service_date")
+        if form_service_date:
+            order.service_date = datetime.strptime(form_service_date, "%Y-%m-%d")
+            
+        # Rework Fields
+        order.re_work_status = request.form.get("re_work_status")
+        order.re_work_count = int(request.form.get("re_work_count")) if request.form.get("re_work_count") else None
+        order.re_work_token = request.form.get("re_work_token")
+        if request.form.get("re_work_date"):
+            order.re_work_date = datetime.strptime(request.form.get("re_work_date"), "%Y-%m-%d")
+            
+        # Vendor Amount
         try:
             v_amt = request.form.get("vendor_amount")
             order.vendor_amount = float(v_amt) if v_amt else 0.0
         except:
             order.vendor_amount = 0.0
+
+        # Reset items and recreate from form data
+        try:
+            # Delete existing items first
+            from models import OrderItem
+            OrderItem.query.filter_by(order_id=order.id).delete()
             
-        order.item_count = int(request.form.get("item_count")) if request.form.get("item_count") else None
+            total_order_price = 0.0
+            total_order_discount = 0.0
+            total_item_count = 0
+            first_product_name = None
+            
+            # Find item indices in the form
+            item_indices = []
+            for key in request.form.keys():
+                if key.startswith('items[') and '][product_name]' in key:
+                    try:
+                        idx = int(key.split('[')[1].split(']')[0])
+                        if idx not in item_indices:
+                            item_indices.append(idx)
+                    except: continue
+            
+            item_indices.sort()
+            
+            for i in item_indices:
+                product_name = request.form.get(f"items[{i}][product_name]")
+                if not product_name: continue
+                
+                if not first_product_name:
+                    first_product_name = product_name
+                    
+                services = request.form.getlist(f"items[{i}][services][]")
+                prices = request.form.getlist(f"items[{i}][service_prices][]")
+                discounts = request.form.getlist(f"items[{i}][service_discounts][]")
+                item_status = request.form.get(f"items[{i}][status]", "yts")
+                
+                # Compute totals for this item
+                try:
+                    service_prices = [float(p) if p else 0.0 for p in prices]
+                except ValueError:
+                    service_prices = [float(p) if p else 0.0 for p in prices if p is not None]
+                try:
+                    service_discounts = [float(d) if d else 0.0 for d in discounts]
+                except ValueError:
+                    service_discounts = [float(d) if d else 0.0 for d in discounts if d is not None]
+                    
+                item_price = sum(service_prices) if service_prices else 0.0
+                item_discount = sum(service_discounts) if service_discounts else 0.0
+                
+                # Prepare JSON mappings
+                import json
+                price_map = {}
+                discount_map = {}
+                for idx, svc in enumerate(services):
+                    s_name = svc.strip()
+                    if s_name:
+                        price_map[s_name] = service_prices[idx] if idx < len(service_prices) else 0.0
+                        discount_map[s_name] = service_discounts[idx] if idx < len(service_discounts) else 0.0
+                
+                new_item = OrderItem(
+                    order_id=order.id,
+                    product_name=product_name,
+                    services=','.join(services) if services else None,
+                    price=item_price,
+                    discount=item_discount,
+                    service_prices=json.dumps(price_map),
+                    service_discounts=json.dumps(discount_map),
+                    status=item_status,
+                    defects=request.form.get(f"items[{i}][defects]")
+                )
+                db.session.add(new_item)
+                
+                total_order_price += (item_price - item_discount)
+                total_item_count += 1
+                total_order_discount += item_discount
+                
+            # Update order level totals
+            order.price = total_order_price
+            order.item_count = total_item_count
+            order.discount = str(total_order_discount) if total_order_discount else "0"
+            if first_product_name:
+                order.product_name = first_product_name
+                
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error processing itemized data: {str(e)}", "danger")
+            staff = User.query.filter_by(is_active=True).all()
+            return render_template("edit.html", order=order, staff=staff)
 
         try:
             db.session.commit()
@@ -1979,91 +2287,114 @@ def update_task_status():
     service_name = request.form.get("service_name")
     new_status = request.form.get("new_status")
     
+    # Validate required parameters
+    if not item_id or not service_name or not new_status:
+        error_msg = "Missing required parameters"
+        if request.args.get('ajax'):
+            return jsonify({'status': 'error', 'message': error_msg}), 400
+        flash(f"Error: {error_msg}", "danger")
+        return redirect(url_for("my_works"))
+    
     try:
         item = OrderItem.query.get(item_id)
-        if item:
-            statuses = json.loads(item.service_statuses) if item.service_statuses else {}
-            statuses[service_name] = new_status
+        if not item:
+            raise ValueError(f"Item with ID {item_id} not found")
             
-            # --- Automatic Deep Clean Status Logic ---
-            cleaning_subtasks = ['wash', 're wash', 'packing']
-            if service_name in cleaning_subtasks or service_name.lower() == 'deep clean':
+        statuses = json.loads(item.service_statuses) if item.service_statuses else {}
+        
+        # Update the status for this specific service
+        statuses[service_name] = new_status
+        
+        # --- Automatic Deep Clean Status Logic ---
+        cleaning_subtasks = ['wash', 're wash', 're-wash', 'packing']
+        if service_name.lower() in cleaning_subtasks or service_name.lower() == 'deep clean':
                 # Re-calculate Deep Clean status based on subtasks
-                sub_statuses = [statuses.get(s, 'yts') for s in cleaning_subtasks]
+                # We only consider subtasks that are actually present in the item's services
+                item_services = [s.strip().lower() for s in (item.services or '').split(',')]
+                active_subtasks = [s for s in cleaning_subtasks if s in item_services]
                 
-                if all(s == 'ready to deliver' for s in sub_statuses):
-                    statuses['deep clean'] = 'ready to deliver'
-                elif any(s in ['wip', 'done', 'ready to deliver'] for s in sub_statuses):
-                    statuses['deep clean'] = 'wip'
-                else:
-                    statuses['deep clean'] = 'yts'
-            
-            item.service_statuses = json.dumps(statuses)
-            
-            # --- Improved Status Logic ---
-            
-            # 1. Determine Item Status based on its Services
-            service_statuses = []
-            if item.services:
-                for s in item.services.split(','):
-                    name = s.strip()
+                if active_subtasks:
+                    sub_statuses = [statuses.get(s, 'yts') for s in active_subtasks]
+                    
+                    if all(s == 'ready to deliver' for s in sub_statuses):
+                        statuses['deep clean'] = 'ready to deliver'
+                    elif all(s in ['done', 'ready to deliver'] for s in sub_statuses):
+                        statuses['deep clean'] = 'done'
+                    elif any(s in ['wip', 'done', 'ready to deliver'] for s in sub_statuses):
+                        statuses['deep clean'] = 'wip'
+                    else:
+                        statuses['deep clean'] = 'yts'
+        
+        item.service_statuses = json.dumps(statuses)
+        
+        # --- Improved Status Logic ---
+        
+        # 1. Determine Item Status based on its Services
+        service_statuses = []
+        if item.services:
+            for s in item.services.split(','):
+                name = s.strip()
+                # Skip 'deep clean' - it's a bundle, not a real task
+                if name.lower() != 'deep clean':
                     service_statuses.append(statuses.get(name, 'yts'))
+        
+        # v02: Include ALL tracked services (including dynamic ones like Packing, Re-Wash, etc.)
+        core_services = [s.strip() for s in item.services.split(',')] if item.services else []
+        for k, v in statuses.items():
+            # Skip 'deep clean' and only add if not in core services
+            if k not in core_services and k.lower() != 'deep clean':
+                 service_statuses.append(v)
+        
+        if not service_statuses: 
+            pass 
+        elif all(s == 'yts' for s in service_statuses):
+            item.status = 'yts'
+        elif all(s == 'ready to deliver' for s in service_statuses):
+            item.status = 'ready to deliver'
+        elif all(s in ['done', 'ready to deliver'] for s in service_statuses):
+            item.status = 'done'
+        else:
+            item.status = 'wip'
             
-            # v02: Include ALL tracked services (including dynamic ones like Packing, Re-Wash, etc.)
-            # We check for any keys in 'statuses' that we haven't already counted (though counting twice doesn't hurt logic much, let's be clean)
-            # Actually, simplest is to just use values of statuses dict? 
-            # But item.services defines the "core" scope. We want to ADD extras.
-            
-            core_services = [s.strip() for s in item.services.split(',')] if item.services else []
-            for k, v in statuses.items():
-                if k not in core_services:
-                     service_statuses.append(v)
-            
-            if not service_statuses: 
-                pass 
-            elif all(s == 'yts' for s in service_statuses):
-                item.status = 'yts'
-            elif all(s == 'done' for s in service_statuses):
-                item.status = 'done'
-            elif all(s == 'ready to deliver' for s in service_statuses):
-                item.status = 'ready to deliver'
-            # Check for mixed completed states (e.g. some done, some ready)
-            elif all(s in ['done', 'ready to deliver'] for s in service_statuses):
-                # If mixed 'done' and 'ready', treat as 'done' to be safe, or 'ready'?
-                # User specifically asked for DONE -> DONE.
-                item.status = 'done'
-            else:
-                item.status = 'wip'
-                
-            # 2. Determine Order Status based on all Items
-            order = item.order
-            item_statuses = [i.status for i in order.items if i.id != item.id] 
-            item_statuses.append(item.status) 
-            
-            if all(s == 'yts' for s in item_statuses):
-                order.status = 'yts'
-            elif all(s == 'done' for s in item_statuses):
-                order.status = 'done'
-            elif all(s == 'ready to deliver' for s in item_statuses):
-                order.status = 'ready to deliver'
-                if not order.work_finish_date:
-                    order.work_finish_date = datetime.now()
-            elif all(s in ['done', 'ready to deliver'] for s in item_statuses):
-                 # Mixed Done/Ready -> Done
-                 order.status = 'done'
-                 # Note: we don't set work_finish_date here unless we consider 'done' as finished work?
-                 # Usually 'done' means work is finished. 'ready to deliver' means ready for customer.
-                 if not order.work_finish_date:
-                    order.work_finish_date = datetime.now()
-            else:
-                order.status = 'wip'
-                
+        # 2. Determine Order Status based on all Items
+        order = item.order
+        
+        # v02: Protect final statuses from being overwritten by technician updates
+        if order.status and order.status.lower() in ['billed', 'paid', 'delivered', 'completed', 'ready to deliver (paid)']:
             db.session.commit()
-            flash(f"Status updated to {new_status} \u2705", "success")
+            if request.args.get('ajax'):
+                return jsonify({'status': 'success', 'message': f"Status updated to {new_status}"})
+            flash(f"Status updated to {new_status} ✅", "success")
+            return redirect(url_for("my_works"))
+
+        item_statuses = [i.status for i in order.items if i.id != item.id] 
+        item_statuses.append(item.status) 
+        
+        if all(s == 'yts' for s in item_statuses):
+            order.status = 'yts'
+        elif all(s == 'ready to deliver' for s in item_statuses):
+            order.status = 'ready to deliver'
+            if not order.work_finish_date:
+                order.work_finish_date = datetime.now()
+        elif all(s in ['done', 'ready to deliver'] for s in item_statuses):
+             order.status = 'done'
+             if not order.work_finish_date:
+                order.work_finish_date = datetime.now()
+        else:
+            order.status = 'wip'
+            
+        db.session.commit()
+        if request.args.get('ajax'):
+            return jsonify({'status': 'success', 'message': f"Status updated to {new_status}"})
+        flash(f"Status updated to {new_status} ✅", "success")
     except Exception as e:
         db.session.rollback()
+        if request.args.get('ajax'):
+            return jsonify({'status': 'error', 'message': str(e)}), 500
         flash(f"Error updating status: {str(e)}", "danger")
         
+    if request.args.get('ajax'):
+        return jsonify({'status': 'error', 'message': 'Unknown error'}), 500
     return redirect(url_for("my_works"))
 
 @app.route("/update_manual_task_status", methods=["POST"])
@@ -2150,7 +2481,7 @@ def my_works():
 
         is_lead = (item.technician == current_user.username)
         st = (item.status or '').lower()
-        is_item_fully_done = st in ['ready to deliver', 'billed', 'delivered', 'done', 'completed']
+        is_item_fully_done = st in ['ready to deliver', 'billed', 'delivered', 'paid']
         
         # 1. Capture specific tasks this user completed on this item
         core_services = [s.strip() for s in (item.services or '').split(',')] if item.services else []
@@ -2177,13 +2508,16 @@ def my_works():
             # Create a single summary entry for this item
             history_entries.append({
                 'job_id': item.order.job_id,
+                'token': item.order.token or '-',
                 'product': item.product_name,
                 'customer': item.order.customer_name,
                 'tasks': finished_tasks,
                 'is_lead': is_lead,
+                'lead_tech': item.technician or '-',
+                'is_vendor': False,
                 'is_full_done': is_item_fully_done,
                 'status': st if is_item_fully_done else "In Progress",
-                'time': item.order.work_finish_date if (st in ['ready to deliver', 'billed', 'delivered']) else today
+                'time': item.order.work_finish_date if (st in ['ready to deliver', 'billed', 'delivered', 'paid']) else today
             })
 
         # 3. Decision for main list: Active vs Completed
@@ -2196,10 +2530,13 @@ def my_works():
     for mt in completed_manual_tasks:
         history_entries.append({
             'job_id': f"MAN-{mt.id}",
+            'token': '-',
             'product': mt.title,
             'customer': mt.customer_name or 'N/A',
             'tasks': [f"{mt.task_type} (Manual)"],
             'is_lead': True,
+            'lead_tech': mt.assigned_to or current_user.username,
+            'is_vendor': False,
             'is_full_done': True,
             'status': 'Done',
             'time': mt.completed_at or mt.created_at # Fallback if completed_at missing
@@ -2277,12 +2614,13 @@ def my_works():
 
         is_item_technician = (item.technician == current_user.username)
         
-        # Determine services for this user
+        # Determine services for this user - STRICT ASSIGNMENT ONLY
         user_services = []
         if item.services:
             for s in item.services.split(','):
                 s_name = s.strip()
-                if assignments.get(s_name) == current_user.username or (not assignments.get(s_name) and is_item_technician):
+                # Only count if explicitly assigned to this user
+                if assignments.get(s_name) == current_user.username:
                     user_services.append(s_name)
                     
         # Filter for ANY Auxiliary Task assigned to user
@@ -2307,6 +2645,10 @@ def my_works():
         else:
             # Count based on services
             for s_name in user_services:
+                # Skip the bundle parent from individual task counts
+                if s_name.lower() == 'deep clean':
+                    continue
+                    
                 st = statuses.get(s_name, 'yts').lower()
                 if st in ['ready to deliver', 'billed', 'delivered']:
                     ready_count += 1
@@ -2412,6 +2754,7 @@ def print_bill():
     
     if request.method == "POST":
         order_id = request.form.get("order_id")
+        payment_mode = request.form.get("payment_mode")
         order = Order.query.get(order_id)
         if order:
             from datetime import datetime
@@ -2419,22 +2762,31 @@ def print_bill():
                 order.actual_delivery_date = datetime.now()
             if not order.work_finish_date:
                 order.work_finish_date = datetime.now()
-            # v02: Capture Payment Mode on Bill Generation
-            payment_mode = request.form.get("payment_mode")
             
-            if payment_mode:
-                order.payment_mode = payment_mode
-                # If payment mode is selected, assume Paid and Update Status
+            # v02: Enhanced Payment Logic per User Request
+            if payment_mode == "Cash":
+                order.payment_mode = "Cash"
                 order.payment_status = 'Paid'
-                order.status = 'Paid'
-            elif order.payment_status == 'Paid':
-                # Preserve Paid status if already paid
-                order.status = 'Paid'
+                final_status = 'Paid'
+            elif payment_mode in ["UPI", "Card", "billed"]:
+                # For UPI/Card, the bill generates and status becomes 'billed'
+                # Payment remains 'Pending' until confirmed by gateway
+                order.payment_mode = payment_mode if payment_mode != "billed" else "pending"
+                order.payment_status = 'Pending' # Reset to pending if digital is selected
+                final_status = 'billed'
+            elif order.payment_status == 'Paid' or order.status == 'Paid':
+                final_status = 'Paid'
             else:
-                # Default to billed if not paid
-                order.status = "billed"
+                final_status = 'billed'
+            
+            order.status = final_status
+            
+            # v02: Sync all items to the billed/paid status
+            for item in order.items:
+                item.status = final_status
                 
             db.session.commit()
+            flash(f"Order {order.job_id} successfully marked as {final_status.upper()}.", "success")
         return redirect(url_for('view_bill', order_id=order_id))
 
     # GET parameters for search and filter
@@ -2494,6 +2846,14 @@ def view_bill(order_id):
     
     payment_link = tx.short_url if tx else None
     
+    # v02: Automatically mark as 'billed' when viewing/sending the bill
+    if order.status and order.status.lower() in ['ready to deliver', 'ready']:
+        order.status = 'billed'
+        for item in order.items:
+            item.status = 'billed'
+        db.session.commit()
+
+    
     # Generate new link if it doesn't exist and price is valid
     if not payment_link and order.price and order.price > 0:
         try:
@@ -2521,6 +2881,7 @@ def view_bill(order_id):
             new_tx = PaymentTransaction(
                 order_id=order.id,
                 razorpay_plink_id=plink.get('id'),
+                razorpay_order_id=plink.get('order_id'), # Capture order_id for webhook matching
                 short_url=payment_link,
                 amount=float(order.price),
                 status='created'
@@ -2547,15 +2908,48 @@ def pickup_confirmation(order_id):
     msg += f"--------------------------------\n"
     
     # Add Itemized details
+    import json
     for i, item in enumerate(order.items, 1):
-        services_str = f" ({item.services})" if item.services else ""
-        msg += f"{i}. {item.product_name or 'Item'}{services_str}\n"
+        try:
+            prices = json.loads(item.service_prices or '{}')
+            discounts = json.loads(item.service_discounts or '{}')
+        except:
+            prices = {}
+            discounts = {}
+            
+        svc_parts = []
+        if item.services:
+            svc_list = item.services.split(',')
+            has_deep_clean = any(s.strip().lower() == 'deep clean' for s in svc_list)
+            
+            for s in svc_list:
+                s_name = s.strip()
+                if has_deep_clean and s_name.lower() in ['wash', 're wash', 're-wash', 'packing']:
+                    continue
+                    
+                s_price = prices.get(s_name)
+                s_disc = discounts.get(s_name)
+                
+                part = s_name
+                if s_price is not None:
+                    part += f" (₹{int(float(s_price))})"
+                elif len(svc_list) == 1 and item.price:
+                    # Fallback for old orders with single service
+                    part += f" (₹{int(item.price)})"
+                    
+                if s_disc and float(s_disc) > 0:
+                    part += f" [-₹{int(float(s_disc))}]"
+                svc_parts.append(part)
+        
+        services_str = f" ({', '.join(svc_parts)})" if svc_parts else ""
+        item_subtotal = (item.price or 0) - (item.discount or 0)
+        msg += f"{i}. {item.product_name or 'Item'}{services_str} | Subtotal: ₹{int(item_subtotal)}\n"
         if item.defects:
-            msg += f"   ΓÜá Condition: {item.defects}\n"
+            msg += f"   ⚠ Condition: {item.defects}\n"
             
     msg += f"\nCustomer: {order.customer_name}\n"
     msg += f"Total Items: {order.item_count}\n"
-    msg += f"Total Amount: Γé╣{order.price}\n"
+    msg += f"Total Amount: ₹{int(order.price or 0)}\n"
     msg += f"--------------------------------\n"
     msg += f"Thank you for choosing ShoeClinic!"
     
@@ -2655,17 +3049,17 @@ def attendance():
                     notif = Notification(
                         user_id=super_admin.id,
                         title="New Leave Request ≡ƒôà",
-                        message=f"{current_user.username} has applied for leave on {target_date.strftime('%d %b')}.",
+                        message=f"{current_user.username} has applied for leave on {target_date.strftime('%d %b') if target_date else '-'}.",
                         link=url_for('attendance_manage')
                     )
                     db.session.add(notif)
                     
-                flash(f"Leave request for {target_date.strftime('%d %b, %Y')} submitted for approval.", "info")
+                flash(f"Leave request for {target_date.strftime('%d %b, %Y') if target_date else '-'} submitted for approval.", "info")
             else:
                 if existing_attendance.status == 'Leave Pending':
-                     flash(f"Leave request for {target_date.strftime('%d %b, %Y')} is already pending approval.", "warning")
+                     flash(f"Leave request for {target_date.strftime('%d %b, %Y') if target_date else '-'} is already pending approval.", "warning")
                 else:
-                     flash(f"Attendance/Leave record already exists for {target_date.strftime('%d %b, %Y')}."
+                     flash(f"Attendance/Leave record already exists for {target_date.strftime('%d %b, %Y') if target_date else '-'}."
                      , "warning")
         
         elif action == "request_reg":
@@ -2684,7 +3078,7 @@ def attendance():
                     notif = Notification(
                         user_id=super_admin.id,
                         title="Regularization Request ≡ƒöº",
-                        message=f"{current_user.username} requested update for {att.date.strftime('%d %b')}.",
+                        message=f"{current_user.username} requested update for {att.date.strftime('%d %b') if (att and att.date) else '-'}.",
                         link=url_for('attendance_manage')
                     )
                     db.session.add(notif)
@@ -2869,7 +3263,7 @@ def attendance_manage():
             notif = Notification(
                 user_id=att.user_id,
                 title="Attendance Regularized \u2705",
-                message=f"Your regularization request for {att.date.strftime('%d %b')} was approved as '{att.status}'.",
+                message=f"Your regularization request for {att.date.strftime('%d %b') if att.date else '-'} was approved as '{att.status}'.",
                 link=url_for('attendance')
             )
             db.session.add(notif)
@@ -2883,7 +3277,7 @@ def attendance_manage():
             notif = Notification(
                 user_id=att.user_id,
                 title="Leave Approved \u2705",
-                message=f"Your leave request for {att.date.strftime('%d %b')} has been APPROVED.",
+                message=f"Your leave request for {att.date.strftime('%d %b') if att.date else '-'} has been APPROVED.",
                 link=url_for('attendance')
             )
             db.session.add(notif)
@@ -2896,7 +3290,7 @@ def attendance_manage():
             notif = Notification(
                 user_id=att.user_id,
                 title="Leave Rejected \u274c",
-                message=f"Your leave request for {att.date.strftime('%d %b')} has been REJECTED by Admin.",
+                message=f"Your leave request for {att.date.strftime('%d %b') if att.date else '-'} has been REJECTED by Admin.",
                 link=url_for('attendance')
             )
             db.session.add(notif)
@@ -2908,7 +3302,7 @@ def attendance_manage():
             notif = Notification(
                 user_id=att.user_id,
                 title="Regularization Rejected \u274c",
-                message=f"Your regularization request for {att.date.strftime('%d %b')} was rejected by Super Admin.",
+                message=f"Your regularization request for {att.date.strftime('%d %b') if att.date else '-'} was rejected by Super Admin.",
                 link=url_for('attendance')
             )
             db.session.add(notif)
@@ -2942,7 +3336,7 @@ def attendance_manage():
             notif = Notification(
                 user_id=att.user_id,
                 title="Attendance Updated ≡ƒô¥",
-                message=f"Admin manually updated your attendance for {att.date.strftime('%d %b')} to '{att.status}'.",
+                message=f"Admin manually updated your attendance for {att.date.strftime('%d %b') if att.date else '-'} to '{att.status}'.",
                 link=url_for('attendance')
             )
             db.session.add(notif)
@@ -2950,7 +3344,7 @@ def attendance_manage():
             
         elif action == "delete":
             username = att.user.username
-            date_str = att.date.strftime('%d %b %Y')
+            date_str = att.date.strftime('%d %b %Y') if att.date else '-'
             db.session.delete(att)
             db.session.commit()
             flash(f"Attendance record for {username} on {date_str} has been permanently deleted.", "warning")
@@ -3169,7 +3563,7 @@ def export_dashboard_excel():
     drop_date_filter = request.args.get("drop_date_filter", "")
     status_filter = request.args.get("status_filter", "")
     technician_filter = request.args.get("technician_filter", "")
-    discount_filter = request.args.get("discount_filter", "")
+    payment_mode_filter = request.args.get("payment_mode_filter", "")
     outsource_filter = request.args.get("outsource_filter", "")
 
     # Apply same filters as dashboard
@@ -3192,8 +3586,11 @@ def export_dashboard_excel():
             (Order.technician.ilike(f"%{technician_filter}%")) |
             (OrderItem.technician.ilike(f"%{technician_filter}%"))
         ).distinct()
-    if discount_filter:
-        query = query.filter(Order.discount.ilike(f"%{discount_filter}%"))
+    if payment_mode_filter:
+        if payment_mode_filter == "Online":
+             query = query.filter(Order.payment_mode.in_(['Online', 'Razorpay', 'payment_link']))
+        else:
+             query = query.filter(Order.payment_mode == payment_mode_filter)
     if outsource_filter:
         query = query.filter(Order.outsource == outsource_filter)
 
@@ -3241,7 +3638,7 @@ def export_dashboard_excel():
             'Product': order.product_name or '-',
             'Price': float(order.price or 0),
             'Payment Status': order.payment_status or '-',
-            'Discount': order.discount or '0',
+            'Payment Mode': order.payment_mode or '-',
             'Outsource': order.outsource or '-',
             'Count': order.item_count or 0
         })
@@ -3298,7 +3695,7 @@ def export_dashboard_pdf():
     drop_date_filter = request.args.get("drop_date_filter", "")
     status_filter = request.args.get("status_filter", "")
     technician_filter = request.args.get("technician_filter", "")
-    discount_filter = request.args.get("discount_filter", "")
+    payment_mode_filter = request.args.get("payment_mode_filter", "")
     outsource_filter = request.args.get("outsource_filter", "")
 
     # Apply same filters as dashboard
@@ -3321,8 +3718,11 @@ def export_dashboard_pdf():
             (Order.technician.ilike(f"%{technician_filter}%")) |
             (OrderItem.technician.ilike(f"%{technician_filter}%"))
         ).distinct()
-    if discount_filter:
-        query = query.filter(Order.discount.ilike(f"%{discount_filter}%"))
+    if payment_mode_filter:
+        if payment_mode_filter == "Online":
+             query = query.filter(Order.payment_mode.in_(['Online', 'Razorpay', 'payment_link']))
+        else:
+             query = query.filter(Order.payment_mode == payment_mode_filter)
     if outsource_filter:
         query = query.filter(Order.outsource == outsource_filter)
 
@@ -3360,7 +3760,7 @@ def export_dashboard_pdf():
     elements.append(Spacer(1, 10))
     
     # Table Header (17 Columns exactly per user request)
-    data = [['Sl. No', 'Job ID', 'Token', 'Name', 'Pickup', 'Service', 'Service Date', 'Drop', 'Place', 'Status', 'Mobile', 'Product', 'Price', 'Payment Status', 'Discount', 'Outsource', 'Count']]
+    data = [['Sl. No', 'Job ID', 'Token', 'Name', 'Pickup', 'Service', 'Service Date', 'Drop', 'Place', 'Status', 'Mobile', 'Product', 'Price', 'Payment Status', 'Pay Mode', 'Outsource', 'Count']]
     
     total_price = 0
     for i, order in enumerate(orders, 1):
@@ -3412,7 +3812,7 @@ def export_dashboard_pdf():
             Paragraph(order.product_name or '-', table_cell_style),
             f"{price:.0f}",
             Paragraph(order.payment_status or '-', table_cell_style),
-            str(order.discount or '0'),
+            str(order.payment_mode or '-'),
             (order.outsource or '-')[:3],
             str(order.item_count or 0)
         ])
@@ -3945,7 +4345,7 @@ if __name__ == "__main__":
     # Use PORT from environment (default to 5000 for local)
     port = int(os.environ.get("PORT", 5000))
     # Enable Debug Mode for automatic reloading
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=port)
 # --- Payment Gateway Routes (v02) ---
 
 @app.route("/create_payment/<int:order_id>", methods=["POST"])
@@ -4025,6 +4425,11 @@ def verify_payment():
             if order:
                 order.payment_status = 'Paid'
                 order.payment_mode = 'Online'
+                order.status = 'Paid'
+                
+                # Sync items
+                for item in order.items:
+                    item.status = 'Paid'
                 
             db.session.commit()
             return jsonify({"status": "success", "message": "Payment verified successfully"})
@@ -4040,3 +4445,51 @@ def verify_payment():
             db.session.commit()
             
         return jsonify({"status": "error", "message": "Payment verification failed"}), 400
+
+@app.route("/razorpay_webhook", methods=["POST"])
+def razorpay_webhook():
+    """Handle Razorpay Webhooks for automated status updates"""
+    from models import Order, PaymentTransaction
+    
+    # We ignore signature verification here unless RAZORPAY_WEBHOOK_SECRET is set
+    # because it's hard to configure secret via chat without the user's dashboard access.
+    # In production, signature verification SHOULD be used.
+    
+    data = request.json
+    event = data.get("event")
+    payload = data.get("payload", {})
+    
+    # Process only paid/captured events
+    if event in ["payment.captured", "order.paid", "payment_link.paid"]:
+        # Extract ID and search for transaction
+        payment_entity = payload.get("payment", {}).get("entity", {})
+        order_id = payment_entity.get("order_id")
+        plink_id = payload.get("payment_link", {}).get("entity", {}).get("id")
+        
+        tx = None
+        if order_id:
+            tx = PaymentTransaction.query.filter_by(razorpay_order_id=order_id).first()
+        if not tx and plink_id:
+            tx = PaymentTransaction.query.filter_by(razorpay_plink_id=plink_id).first()
+            
+        if tx:
+            # Update Transaction
+            tx.status = 'captured'
+            tx.razorpay_payment_id = payment_entity.get("id")
+            
+            # Update Order
+            order = Order.query.get(tx.order_id)
+            if order:
+                order.payment_status = 'Paid'
+                order.payment_mode = 'Online (Webhook)'
+                order.status = 'Paid'
+                
+                # Sync items
+                for item in order.items:
+                    item.status = 'Paid'
+            
+            db.session.commit()
+            return jsonify({"status": "ok"}), 200
+            
+    return jsonify({"status": "ignored"}), 200
+

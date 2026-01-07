@@ -97,14 +97,21 @@
                         <th class="bg-light text-muted text-uppercase small">Expenses (Approved)</th>
                         <td class="text-danger fw-bold">₹{{ "%.2f"|format(weekly.total_expenses) }}</td>
                         <th class="bg-light text-muted text-uppercase small">Vendor Cost</th>
-                        <td class="text-danger fw-bold">₹{{ "%.2f"|format(weekly.total_vendor_cost or 0) }}</td>
+                        <td class="text-danger">
+                            <span class="fw-bold">₹{{ "%.2f"|format(weekly.total_vendor_cost or 0) }}</span>
+                            <div class="x-small text-muted mt-1" style="font-size: 0.7rem;">
+                                <span class="text-success">Pd: ₹{{ "%.0f"|format(weekly.vendor_paid or 0) }}</span> |
+                                <span class="text-danger">Pen: ₹{{ "%.0f"|format(weekly.vendor_pending or 0) }}</span>
+                            </div>
+                        </td>
                     </tr>
                     <tr>
                         <th class="bg-light text-muted text-uppercase small">Net Profit</th>
                         <td colspan="3"
                             class="fw-bold {% if weekly.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
                             ₹{{ "%.2f"|format(weekly.net_profit) }}
-                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Vendor Cost)</small>
+                            <small class="text-muted fw-normal ms-2">(Paid Revenue - Expenses - Paid Vendor
+                                Cost)</small>
                         </td>
                     </tr>
                 </tbody>
@@ -129,11 +136,11 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Assigned Items</td>
+                                <td>Assigned Orders</td>
                                 <td class="text-end fw-bold">{{ weekly.ops.assigned_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Items</td>
+                                <td><i class="bi bi-circle-fill text-danger small me-2"></i>Unassigned Orders</td>
                                 <td class="text-end fw-bold text-danger">{{ weekly.ops.unassigned_count }}</td>
                             </tr>
                             <tr>
@@ -154,11 +161,11 @@
                                 <td class="text-end">{{ weekly.ops.ready_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Items</td>
+                                <td><i class="bi bi-circle-fill text-dark small me-2"></i>Billed Orders</td>
                                 <td class="text-end">{{ weekly.ops.billed_granular_count }}</td>
                             </tr>
                             <tr>
-                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Items</td>
+                                <td><i class="bi bi-circle-fill text-success small me-2"></i>Paid Orders</td>
                                 <td class="text-end fw-bold">{{ weekly.ops.paid_granular_count }}</td>
                             </tr>
                         </tbody>

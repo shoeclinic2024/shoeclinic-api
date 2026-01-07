@@ -149,12 +149,12 @@
                     {% set statuses = item.service_statuses|from_json %}
                     {% set work_ns = namespace(my_services=[], visible_services=[]) %}
 
-                    {# Identify which services belong to this user #}
+                    {# Include all assigned services, including 'deep clean' for hierarchy #}
                     {% if item.services %}
                     {% for s in item.services.split(',') %}
                     {% set s_name = s|trim %}
-                    {% if assignments.get(s_name) == current_user.username or (item.technician == current_user.username
-                    and not assignments.get(s_name)) %}
+                    {% if assignments.get(s_name) == current_user.username or (s_name|lower == 'deep clean' and
+                    item.technician == current_user.username) %}
                     {% set work_ns.my_services = work_ns.my_services + [s_name] %}
                     {% endif %}
                     {% endfor %}
@@ -170,9 +170,10 @@
                     {% set work_ns.my_services = work_ns.my_services + ['Supervision'] %}
                     {% endif %}
 
-                    {# Filter out 'done' and 'ready to deliver' tasks to check visibility #}
+                    {# Filter out 'ready to deliver' tasks (fully complete) #}
+                    {# User Request: Keep 'done' visible so they can be clicked to 'Ready' #}
                     {% for s in work_ns.my_services %}
-                    {% if statuses.get(s) not in ['done', 'ready to deliver', 'completed'] %}
+                    {% if statuses.get(s) not in ['ready to deliver', 'completed', 'billed', 'delivered'] %}
                     {% set work_ns.visible_services = work_ns.visible_services + [s] %}
                     {% endif %}
                     {% endfor %}
@@ -217,7 +218,7 @@
                                     <span
                                         class="badge rounded-pill bg-{{ statuses.get(s_task)|status_color }} py-0 px-2"
                                         style="font-size: 0.55rem;">
-                                        {{ statuses.get(s_task)|default('yts')|upper }}
+                                        {{ statuses.get(s_task)|default('yts', true)|upper }}
                                     </span>
                                 </div>
                                 {% endif %}
@@ -233,7 +234,7 @@
                                     <span class="text-light" style="font-size: 0.7rem;">Main Task</span>
                                     <span class="badge rounded-pill bg-{{ item.status|status_color }} py-0 px-2"
                                         style="font-size: 0.55rem;">
-                                        {{ item.status|default('yts')|upper }}
+                                        {{ item.status|default('yts', true)|upper }}
                                     </span>
                                 </div>
                                 {% endif %}
@@ -244,10 +245,19 @@
                             <div class="d-flex flex-column gap-2">
                                 {% set sub_tasks = ['wash', 're wash', 'packing'] %}
                                 {% set ns = namespace(has_deep_clean=false) %}
-                                {% for v in visible_services %}{% if v.lower() == 'deep clean' %}{% set
-                                ns.has_deep_clean = true %}{% endif %}{% endfor %}
+                                {% for v in visible_services %}
+                                {% if v.lower() == 'deep clean' %}{% set ns.has_deep_clean = true %}{% endif %}
+                                {% endfor %}
 
-                                {% for s_name in visible_services %}
+                                {# Reorder: Put 'deep clean' at the very top of the list if it exists #}
+                                {% set dc_list = [] %}{% set other_list = [] %}
+                                {% for v in visible_services %}
+                                {% if v.lower() == 'deep clean' %}{% set _ = dc_list.append(v) %}
+                                {% else %}{% set _ = other_list.append(v) %}{% endif %}
+                                {% endfor %}
+                                {% set sorted_visible = dc_list + other_list %}
+
+                                {% for s_name in sorted_visible %}
                                 {% set is_sub = s_name.lower() in sub_tasks and ns.has_deep_clean %}
                                 <div
                                     class="d-flex flex-wrap align-items-center justify-content-between p-2 rounded-3 border shadow-sm {% if is_sub %}ms-4 border-start-0 border-top-0 border-end-0 rounded-0 bg-light bg-opacity-10{% else %}bg-white{% endif %} mb-1">
@@ -259,27 +269,36 @@
                                         {% if s_name == 'Supervision' %}
                                         <span
                                             class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-2 py-2">
-                                            👀 Supervision
+                                            👀 Supervision Mode
                                         </span>
                                         {% else %}
-                                        <span
-                                            class="badge bg-{{ 'info' if is_sub else 'primary' }} bg-opacity-10 text-{{ 'info' if is_sub else 'primary' }} border border-{{ 'info' if is_sub else 'primary' }} border-opacity-25 px-2 py-2"
-                                            style="font-size: 0.85rem;">
-                                            {{ s_name }}
-                                        </span>
+                                        <div class="d-flex flex-column align-items-start">
+                                            <span
+                                                class="badge bg-{{ 'info' if is_sub else 'primary' }} bg-opacity-10 text-{{ 'info' if is_sub else 'primary' }} border border-{{ 'info' if is_sub else 'primary' }} border-opacity-25 px-2 py-2"
+                                                style="font-size: 0.85rem;">
+                                                {{ s_name }}
+                                            </span>
+                                            {% if not assignments.get(s_name) and s_name.strip().lower() != 'deep clean'
+                                            %}
+                                            <span class="x-small text-danger fw-bold mt-1"
+                                                style="font-size: 0.6rem;">(Unassigned - Lead Default)</span>
+                                            {% endif %}
+                                        </div>
                                         {% endif %}
 
                                         <!-- Current Status Indicator -->
                                         <span
                                             class="badge rounded-pill bg-{{ statuses.get(s_name)|status_color }} px-2 ml-2">
-                                            {{ statuses.get(s_name)|default('yts')|upper }}
+                                            {{ statuses.get(s_name)|default('yts', true)|upper }}
                                         </span>
                                     </div>
 
                                     <div class="ms-auto">
-                                        {% if s_name.lower() != 'deep clean' %}
+                                        {% if s_name == 'Supervision' %}
+                                        <span class="x-small text-muted italic">Oversight Only</span>
+                                        {% elif s_name.lower() != 'deep clean' %}
                                         <form action="{{ url_for('update_task_status') }}" method="POST"
-                                            class="d-flex gap-1 m-0">
+                                            class="d-flex gap-1 m-0 status-update-form">
                                             <input type="hidden" name="item_id" value="{{ item.id }}">
                                             <input type="hidden" name="service_name" value="{{ s_name }}">
 
@@ -338,7 +357,7 @@
                             </span>
                             <span
                                 class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill small">
-                                Recent: {{ completed_items|length }}
+                                Recent: {{ history_entries|length }}
                             </span>
                         </div>
                     </div>
@@ -408,7 +427,7 @@
                     <div
                         class="p-3 bg-black bg-opacity-25 border-top border-bottom border-secondary border-opacity-25 mt-0">
                         <h6 class="fw-bold mb-0 text-success d-flex align-items-center">
-                            <i class="bi bi-check2-all me-2"></i> Recently Completed (Billed Today)
+                            <i class="bi bi-patch-check-fill me-2"></i>🏆 Recent Achievements & Finished Works
                         </h6>
                     </div>
                     {% if history_entries %}
@@ -418,24 +437,26 @@
                                 <tr>
                                     <th class="border-0 ps-4">Job Details</th>
                                     <th class="border-0">Customer</th>
-                                    <th class="border-0">Finished Task</th>
                                     <th class="border-0">Time</th>
-                                    <th class="border-0">Status</th>
+                                    <th class="border-0 text-end pe-4">Overall Status</th>
                                 </tr>
                             </thead>
                             <tbody class="border-top-0">
                                 {% for entry in history_entries %}
                                 <tr class="bg-transparent">
                                     <td class="ps-4">
-                                        <div class="fw-bold text-info">{{ entry.job_id }}</div>
+                                        <div class="fw-bold text-info">{{ entry.job_id }} <span
+                                                class="text-secondary small fw-normal ms-1">(T: {{ entry.token
+                                                }})</span></div>
                                         <div class="small text-muted mb-1">{{ entry.product }}</div>
                                         <!-- Granular Task Redmarks -->
                                         <div class="d-flex flex-wrap gap-1">
                                             {% for t in entry.tasks %}
+                                            {% set is_dc = (t|lower == 'deep clean') %}
                                             <span
-                                                class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25 py-0 px-2"
+                                                class="badge bg-{{ 'primary' if is_dc else 'danger' }} bg-opacity-10 text-{{ 'primary' if is_dc else 'danger' }} border border-{{ 'primary' if is_dc else 'danger' }} border-opacity-25 py-0 px-2"
                                                 style="font-size: 0.6rem; letter-spacing: 0.02rem;">
-                                                ✓ {{ t }}
+                                                {% if not is_dc %}✓ {% endif %}{{ t }}
                                             </span>
                                             {% endfor %}
                                         </div>
@@ -443,27 +464,39 @@
                                     <td>
                                         <div class="fw-semibold text-light">{{ entry.customer }}</div>
                                         {% if entry.is_lead %}
-                                        <div class="x-small text-warning opacity-75" style="font-size: 0.65rem;">Lead
-                                            Tech</div>
+                                        <div class="x-small text-warning opacity-75" style="font-size: 0.65rem;">Lead:
+                                            {{ entry.lead_tech }}</div>
+                                        {% endif %}
+                                        {% if entry.is_vendor %}
+                                        <div class="x-small text-danger fw-bold" style="font-size: 0.65rem;">VENDOR
+                                            TRACKED</div>
                                         {% endif %}
                                     </td>
                                     <td>
-                                        <span
-                                            class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 rounded-pill px-2 x-small">
-                                            {{ "Full Item Completed" if entry.is_full_done else "Partially Done" }}
-                                        </span>
-                                    </td>
-                                    <td>
                                         <span class="small text-muted x-small">
-                                            {{ entry.time.strftime('%d %b %Y, %I:%M %p') if entry.time is not string
-                                            else entry.time }}
+                                            {{ entry.time.strftime('%I:%M %p') if (entry.time and entry.time is not
+                                            string) else
+                                            (entry.time or '') }}
+                                            <br>
+                                            <small class="opacity-50 text-uppercase" style="font-size: 0.55rem;">{{
+                                                entry.time.strftime('%d %b %Y') if (entry.time and entry.time is not
+                                                string) else ''
+                                                }}</small>
                                         </span>
                                     </td>
-                                    <td>
-                                        <span
-                                            class="badge bg-{{ entry.status|status_color }} bg-opacity-10 text-{{ entry.status|status_color }} border border-{{ entry.status|status_color }} border-opacity-25 rounded-pill x-small">
-                                            {{ entry.status|upper }}
-                                        </span>
+                                    <td class="text-end pe-4">
+                                        <div class="d-flex flex-column align-items-end">
+                                            <span
+                                                class="badge bg-{{ entry.status|status_color }} bg-opacity-10 text-{{ entry.status|status_color }} border border-{{ entry.status|status_color }} border-opacity-25 rounded-pill px-3 py-1 mb-1"
+                                                style="font-size: 0.7rem; letter-spacing: 0.02rem;">
+                                                {{ entry.status|upper }}
+                                            </span>
+                                            <small
+                                                class="x-small {% if entry.is_full_done %}text-success{% else %}text-info{% endif %} opacity-75"
+                                                style="font-size: 0.6rem;">
+                                                {{ "FULLY FINISHED" if entry.is_full_done else "PARTIALLY DONE" }}
+                                            </small>
+                                        </div>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -485,10 +518,9 @@
                         </h6>
                     </div>
                     <div class="row g-0">
-                        <!-- Active Vendor Works -->
-                        <div class="col-lg-7 border-end border-secondary border-opacity-25">
+                        <!-- Active Vendor Works (Full Width) -->
+                        <div class="col-12">
                             <div class="p-3">
-                                <h6 class="text-muted text-uppercase x-small fw-bold mb-3">Active Assignments</h6>
                                 <div class="table-responsive bg-transparent">
                                     <table class="table table-dark table-hover align-middle mb-0">
                                         <thead class="bg-black bg-opacity-50 text-secondary text-uppercase x-small">
@@ -504,22 +536,47 @@
                                             <tr class="bg-transparent">
                                                 <td class="ps-4">
                                                     <div class="fw-bold text-primary">{{ entry.item.order.job_id }}
+                                                        <span class="text-secondary small fw-normal ms-1">(T: {{
+                                                            entry.item.order.token }})</span>
                                                     </div>
                                                     <div class="small text-muted">{{ entry.item.product_name }}</div>
+                                                    <div class="x-small text-warning mt-1">Lead: {{
+                                                        entry.item.technician }}</div>
                                                 </td>
                                                 <td>
                                                     {% for t in entry.tasks %}
-                                                    <span
-                                                        class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 small mb-1">
-                                                        {{ t.name }} ({{ t.status|upper }})
-                                                    </span>
+                                                    <div
+                                                        class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom border-secondary border-opacity-10 last-child-border-0">
+                                                        <span class="text-light small fw-bold me-2">{{ t.name }}</span>
+                                                        <form action="{{ url_for('update_task_status') }}" method="POST"
+                                                            class="d-flex gap-1 m-0 status-update-form">
+                                                            <input type="hidden" name="item_id"
+                                                                value="{{ entry.item.id }}">
+                                                            <input type="hidden" name="service_name"
+                                                                value="{{ t.name }}">
+
+                                                            <button type="submit" name="new_status" value="yts"
+                                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if t.status == 'yts' %}active{% endif %}"
+                                                                style="font-size: 0.6rem;" title="YTS">YTS</button>
+                                                            <button type="submit" name="new_status" value="wip"
+                                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if t.status == 'wip' %}active{% endif %}"
+                                                                style="font-size: 0.6rem;" title="WIP">WIP</button>
+                                                            <button type="submit" name="new_status" value="done"
+                                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if t.status == 'done' %}active{% endif %}"
+                                                                style="font-size: 0.6rem;" title="DONE">DONE</button>
+                                                            <button type="submit" name="new_status"
+                                                                value="ready to deliver"
+                                                                class="btn btn-sm status-btn rounded-pill py-0 px-2 {% if t.status == 'ready to deliver' %}active{% endif %}"
+                                                                style="font-size: 0.6rem;" title="READY">READY</button>
+                                                        </form>
+                                                    </div>
                                                     {% endfor %}
                                                 </td>
                                                 <td>
                                                     <a href="{{ url_for('edit_order', order_id=entry.item.order.id) }}"
-                                                        class="btn btn-sm btn-outline-danger py-0 px-2"
+                                                        class="btn btn-sm btn-outline-info py-0 px-2"
                                                         style="font-size: 0.7rem;">
-                                                        Manage
+                                                        View Order
                                                     </a>
                                                 </td>
                                             </tr>
@@ -532,43 +589,6 @@
                                             {% endif %}
                                         </tbody>
                                     </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Vendor History -->
-                        <div class="col-lg-5">
-                            <div class="p-3">
-                                <h6 class="text-muted text-uppercase x-small fw-bold mb-3">Recent Vendor History</h6>
-                                <div style="max-height: 400px; overflow-y: auto;">
-                                    {% if vendor_history %}
-                                    <ul class="list-group list-group-flush">
-                                        {% for entry in vendor_history %}
-                                        <li
-                                            class="list-group-item bg-transparent py-2 border-secondary border-opacity-10">
-                                            <div class="d-flex justify-content-between align-items-center">
-                                                <div>
-                                                    <div class="fw-bold small text-light">{{ entry.item.order.job_id }}
-                                                        - {{ entry.item.order.customer_name }}</div>
-                                                    <div class="x-small text-muted">{{ entry.item.product_name }}</div>
-                                                    <div class="mt-1">
-                                                        {% for t in entry.tasks %}
-                                                        <span class="x-small text-success">✓ {{ t.name }}</span>
-                                                        {% endfor %}
-                                                    </div>
-                                                </div>
-                                                <div class="text-end">
-                                                    <div
-                                                        class="x-small text-success border border-success border-opacity-25 bg-success bg-opacity-10 px-2 rounded-pill">
-                                                        Paid</div>
-                                                </div>
-                                            </div>
-                                        </li>
-                                        {% endfor %}
-                                    </ul>
-                                    {% else %}
-                                    <div class="text-center text-muted small py-4">No recent vendor history.</div>
-                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -633,5 +653,58 @@
     .opacity-75 {
         opacity: 0.6;
     }
+
+    .last-child-border-0:last-child {
+        border-bottom: 0 !important;
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+    }
 </style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const statusForms = document.querySelectorAll('.status-update-form');
+
+        statusForms.forEach(form => {
+            const buttons = form.querySelectorAll('button[name="new_status"]');
+
+            buttons.forEach(btn => {
+                btn.addEventListener('click', function (e) {
+                    e.preventDefault();
+
+                    const formData = new FormData(form);
+                    formData.append('new_status', this.value);
+
+                    // Visual feedback: disable buttons temporarily
+                    const originalBtn = this;
+                    buttons.forEach(b => b.classList.add('opacity-50'));
+
+                    fetch(form.action + '?ajax=1', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                // Full page reload ensures stats at top and history at bottom 
+                                // are perfectly synchronized with the change.
+                                location.reload();
+                            } else {
+                                alert('Error updating status: ' + (data.message || 'Unknown error'));
+                                buttons.forEach(b => b.classList.remove('opacity-50'));
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('An error occurred while updating status.');
+                            buttons.forEach(b => b.classList.remove('opacity-50'));
+                        });
+                });
+            });
+        });
+    });
+</script>
 {% endblock %}

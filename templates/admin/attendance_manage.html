@@ -40,7 +40,7 @@
                         {% for reg in pending_reg %}
                         <tr>
                             <td class="ps-4"><strong>{{ reg.user.username }}</strong></td>
-                            <td>{{ reg.date.strftime('%d %b') }}</td>
+                            <td>{{ reg.date.strftime('%d %b') if reg.date else '-' }}</td>
                             <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ reg.reg_status }}</span>
                             </td>
                             <td><small class="text-muted">{{ reg.reg_reason }}</small></td>
@@ -148,7 +148,7 @@
                                 <div class="fw-bold">{{ att.user.username }}</div>
                                 <small class="text-muted">{{ att.user.role }}</small>
                             </td>
-                            <td>{{ att.date.strftime('%d-%m-%Y') }}</td>
+                            <td>{{ att.date.strftime('%d-%m-%Y') if att.date else '-' }}</td>
                             <td>
                                 <div class="small">
                                     <span class="text-success badge bg-success bg-opacity-10 border-0 me-1">In: {{
@@ -279,7 +279,7 @@
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">DATE</label>
                         <input type="date" name="date" class="form-control border-0 bg-light shadow-none" required
-                            value="{{ now.strftime('%Y-%m-%d') }}">
+                            value="{{ now.strftime('%Y-%m-%d') if now else '' }}">
                     </div>
 
                     <div class="mb-3">

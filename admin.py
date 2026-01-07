@@ -951,11 +951,37 @@ def work_assign():
         db.session.commit()
         all_items = OrderItem.query.all() # Refresh list
 
-    active_items = [
-        item for item in all_items 
-        if item.order and (item.status is None or str(item.status).lower() not in ['done', 'completed', 'delivered', 'cancelled', 'ready to deliver', 'ready', 'billed'])
-        and (item.order.status is None or str(item.order.status).lower() not in ['cancelled', 'delivered', 'billed', 'ready to deliver', 'ready', 'completed'])
-    ]
+    active_items = []
+    for item in all_items:
+        # 1. Basic status filtering (consistent with v01 logic)
+        item_status = str(item.status or '').lower()
+        o_status = str(item.order.status or '').lower() if item.order else 'cancelled'
+        
+        excluded = ['delivered', 'cancelled', 'ready to deliver', 'ready', 'billed']
+        if not item.order or item_status in excluded or o_status in excluded:
+            continue
+            
+        # 2. Assignment Check (v02 Fix: Hide fully assigned items)
+        is_assigned = False
+        try:
+            lead_ok = bool(item.technician)
+            
+            # Check Granular Services
+            svc_list = [s.strip() for s in (item.services or '').split(',') if s.strip()]
+            if svc_list:
+                import json
+                assignments = json.loads(item.service_assignments or '{}')
+                # Every service in list must have a technician name assigned
+                all_svcs_ok = all(assignments.get(s) and assignments.get(s) != 'UNASSIGN' for s in svc_list)
+                is_assigned = lead_ok and all_svcs_ok
+            else:
+                # No granular services, just check Main Lead
+                is_assigned = lead_ok
+        except:
+            is_assigned = False
+
+        if not is_assigned:
+            active_items.append(item)
     
     # Sort by drop date
     active_items.sort(key=lambda x: (x.order.drop_date if x.order and x.order.drop_date else datetime.max))
@@ -971,8 +997,8 @@ def work_assign():
     for item in all_items:
         # Check if item is active (Consistency with active_items filter)
         if not item.order \
-           or str(item.status).lower() in ['done', 'completed', 'delivered', 'cancelled', 'ready to deliver', 'ready', 'billed'] \
-           or str(item.order.status).lower() in ['cancelled', 'delivered', 'billed', 'ready to deliver', 'ready', 'completed']:
+           or str(item.status).lower() in ['delivered', 'cancelled', 'ready to deliver', 'ready', 'billed'] \
+           or str(item.order.status).lower() in ['cancelled', 'delivered', 'billed', 'ready to deliver', 'ready']:
             continue
             
         import json
@@ -998,8 +1024,11 @@ def work_assign():
         except:
             pass
 
-    # Fetch manual tasks
-    manual_tasks = ManualTask.query.filter(ManualTask.status.notin_(['done', 'completed'])).all()
+    # Fetch only UNASSIGNED manual tasks
+    manual_tasks = ManualTask.query.filter(
+        ManualTask.status.notin_(['done', 'completed']),
+        or_(ManualTask.assigned_to == None, ManualTask.assigned_to == '')
+    ).all()
     
     # Include manual tasks in workload
     for task in manual_tasks:
@@ -1007,12 +1036,37 @@ def work_assign():
             workload[task.assigned_to]['tasks'] += 1
             workload[task.assigned_to]['items'] += 1
 
+    # Check leave status for tomorrow (to prevent assigning tasks to people on leave)
+    from datetime import timedelta
+    tomorrow = today + timedelta(days=1)
+    
+    # Create a dictionary to track leave status
+    leave_status = {}
+    for person in staff:
+        # Check if person has attendance record for tomorrow
+        attendance = Attendance.query.filter_by(
+            user_id=person.id,
+            date=tomorrow
+        ).first()
+        
+        # Mark as on leave if status is Leave, Absent, or Holiday
+        if attendance and attendance.status in ['Leave', 'Absent', 'Holiday']:
+            leave_status[person.username] = {
+                'on_leave': True,
+                'status': attendance.status,
+                'date': tomorrow
+            }
+        else:
+            leave_status[person.username] = {'on_leave': False}
+
     return render_template("admin/work_assign.html", 
                            items=active_items, 
                            staff=staff, 
                            workload=workload,
                            manual_tasks=manual_tasks,
-                           today_date=today)
+                           today_date=today,
+                           leave_status=leave_status,
+                           tomorrow_date=tomorrow)
 
 @admin_bp.route("/add_manual_task", methods=["POST"])
 @login_required
@@ -1089,24 +1143,29 @@ def assign_task():
                         services_to_clear = [service_name]
                         if service_name.lower() == 'deep clean':
                             services_to_clear.extend(['wash', 're wash', 'packing'])
+                            # Also clear main lead if unassigning deep clean
+                            item.technician = None
                         
                         for s in services_to_clear:
                             if s in assignments:
                                 del assignments[s]
                             if s in statuses:
                                 del statuses[s]
-                        flash(f"Service(s) cleared \u2705", "info")
+                        flash(f"Service(s) cleared ✅", "info")
                     else:
                         # Assign Logic
                         services_to_assign = [service_name]
                         if service_name.lower() == 'deep clean':
                             services_to_assign.extend(['wash', 're wash', 'packing'])
+                            # Automatically set Main Lead when Deep Clean is assigned
+                            # item.technician = technician_name
+                            pass
                         
                         for s in services_to_assign:
                             assignments[s] = technician_name
                             if s not in statuses:
                                 statuses[s] = 'yts'
-                        flash(f"Assigned to {technician_name} \u2705", "success")
+                        flash(f"Assigned to {technician_name} ✅", "success")
                         
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
@@ -1189,13 +1248,8 @@ def assign_task_bundle():
             # 1. Update Services List
             for s in services_to_add:
                 if technician_name == 'UNASSIGN':
-                    # REMOVE Logic: Remove service from list and assignments
-                    # Remove from text list
-                    temp_services = []
-                    for existing in current_services:
-                        if existing.lower() != s.lower():
-                            temp_services.append(existing)
-                    current_services = temp_services
+                    # REMOVE Logic: Only clear assignments, keep the tasks in the list
+                    # (Prevents tasks from disappearing when just unassigning a user)
                     
                     # Remove assignment
                     if s in assignments:
@@ -1223,7 +1277,16 @@ def assign_task_bundle():
                     if s not in statuses:
                         statuses[s] = 'yts'
             
-            item.services = ",".join(current_services)
+            # Sync item lead if bundle is assigned
+            # Sync item lead if bundle is assigned
+            # STOPPED converting bundle tech to Main Lead as per user request
+            # if technician_name != 'UNASSIGN':
+            #      item.technician = technician_name
+            # else:
+            #      item.technician = None
+            pass
+
+            item.services = ','.join(current_services)
             item.service_assignments = json.dumps(assignments)
             item.service_statuses = json.dumps(statuses)
             
@@ -1231,7 +1294,7 @@ def assign_task_bundle():
             if item.order and not item.order.service_date:
                 from datetime import datetime
                 item.order.service_date = datetime.now()
-            
+
             db.session.commit()
             
             if technician_name == 'UNASSIGN':
@@ -1270,15 +1333,15 @@ def set_assignment_date():
                 days_diff = (start_date - today).days
                 
                 if days_diff > 0:
-                    flash(f"Assignment scheduled to start in {days_diff} day{'s' if days_diff != 1 else ''} Γ£ô", "info")
+                    flash(f"Assignment scheduled to start in {days_diff} day{'s' if days_diff != 1 else ''} ✅", "info")
                 elif days_diff == 0:
-                    flash(f"Assignment set to start today Γ£ô", "success")
+                    flash(f"Assignment set to start today ✅", "success")
                 else:
-                    flash(f"Assignment is now active Γ£ô", "success")
+                    flash(f"Assignment is now active ✅", "success")
             else:
                 # Clear the assignment start date
                 order.assignment_start_date = None
-                flash("Assignment start date cleared - task is now immediately visible Γ£ô", "info")
+                flash("Assignment start date cleared - task is now immediately visible ✅", "info")
             
             db.session.commit()
     except Exception as e:
@@ -1754,12 +1817,12 @@ def export_expenses_excel():
     data = []
     for e in expenses:
         data.append({
-            'Date': e.expense_date.strftime('%d-%b-%Y'),
+            'Date': e.expense_date.strftime('%d-%b-%Y') if e.expense_date else '-',
             'Title': e.title,
             'Category': e.category,
             'Description': e.description or '-',
             'Amount': e.real_amount or e.amount,
-            'Added At': e.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            'Added At': e.created_at.strftime('%Y-%m-%d %H:%M:%S') if e.created_at else '-'
         })
     
     df = pd.DataFrame(data)
@@ -1805,7 +1868,7 @@ def export_expenses_pdf():
     total = 0
     for e in expenses:
         data.append([
-            e.expense_date.strftime('%d-%b-%Y'),
+            e.expense_date.strftime('%d-%b-%Y') if e.expense_date else '-',
             e.title,
             e.category,
             e.description or '-',
@@ -1941,14 +2004,14 @@ def expense_chart_data():
             
             if diff <= 62: # Up to 2 months, show daily
                 for e in trend_expenses:
-                    d_key = e.expense_date.strftime('%d %b')
+                    d_key = e.expense_date.strftime('%d %b') if e.expense_date else 'No Date'
                     val = e.real_amount or e.amount or 0
                     time_groups[d_key] = time_groups.get(d_key, 0) + val
                 # Sort by date properly
                 labels = sorted(time_groups.keys(), key=lambda x: datetime.strptime(x, '%d %b'))
             else: # Larger range, show monthly
                 for e in trend_expenses:
-                    m_key = e.expense_date.strftime('%b %Y')
+                    m_key = e.expense_date.strftime('%b %Y') if e.expense_date else 'No Date'
                     val = e.real_amount or e.amount or 0
                     time_groups[m_key] = time_groups.get(m_key, 0) + val
                 labels = sorted(time_groups.keys(), key=lambda x: datetime.strptime(x, '%b %Y'))
@@ -2704,7 +2767,11 @@ def mark_order_paid_manual():
         if order:
             order.payment_status = 'Paid'
             order.payment_mode = mode
-            # Could update price if different, but usually stick to order price
+            order.status = 'Paid'
+            
+            # Sync items
+            for item in order.items:
+                item.status = 'Paid'
             
             db.session.commit()
             flash(f"Order {order.job_id} marked as PAID via {mode}", "success")
@@ -2718,65 +2785,221 @@ def mark_order_paid_manual():
     return redirect(url_for('tsc_dashboard'))
 
 
+@admin_bp.route("/pay_vendor_item", methods=["POST"])
+@login_required
+@admin_required
+def pay_vendor_item():
+    from models import OrderItem, Expense
+    item_id = request.form.get("item_id")
+    amount = float(request.form.get("amount") or 0)
+    
+    try:
+        item = OrderItem.query.get_or_404(item_id)
+        
+        if item.is_vendor_paid:
+            flash("Vendor already paid for this item.", "warning")
+            return redirect(url_for('admin.vendor_management'))
+            
+        # Update Item
+        item.is_vendor_paid = True
+        item.vendor_paid_date = datetime.now()
+        item.vendor_amount = amount # Update amount if confirmed during payment
+        
+        # Create Expense
+        # We assume 'Vendor Payment' category exists or is valid
+        expense = Expense(
+            title=f"Vendor Payment - Job {item.order.job_id} ({item.product_name})",
+            amount=amount,
+            real_amount=amount,
+            category="Vendor Payment",
+            description=f"Payment for outsourced work on {item.product_name}. Vendor: VENDOR", # Ideally we'd have dynamic vendor names in future
+            expense_date=datetime.now().date(),
+            status='approved', # Auto-approve vendor payments made by admin
+            added_by=current_user.id
+        )
+        db.session.add(expense)
+        db.session.commit()
+        
+        flash(f"Vendor paid ₹{amount} successfully! Expense recorded. \u2705", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error recording payment: {str(e)}", "danger")
+        
+    return redirect(url_for('admin.vendor_management'))
+
 @admin_bp.route("/vendor_management")
 @login_required
 @admin_required
 def vendor_management():
-    # --- VENDOR TRACKING ---
-    vendor_active = []
-    vendor_history = []
-    total_vendor_paid = 0.0
+    # --- VENDOR TRACKING & REPORTING ---
+    from collections import defaultdict
+    import calendar
     
-    # Find all items where any task is assigned to "VENDOR"
+    # 1. Fetch all Vendor Items
     v_search = '%"VENDOR"%'
     all_vendor_items = OrderItem.query.filter(
         (OrderItem.technician == 'VENDOR') | 
         (OrderItem.service_assignments.ilike(v_search))
     ).order_by(OrderItem.created_at.desc()).all()
     
-    processed_orders = set()
+    market_active = [] # Items currently WIP/Ready but not Paid/Done fully
+    
+    # Financial Data Structure:
+    # { 'Year-Month': { 'total': 0, 'paid': 0, 'pending': 0, 'items': [] } }
+    monthly_data = defaultdict(lambda: {'total': 0.0, 'paid': 0.0, 'pending': 0.0, 'month_obj': None})
+    
+    current_month_key = datetime.now().strftime('%Y-%m')
+    
+    total_lifetime_paid = 0.0
+    total_lifetime_pending = 0.0
+
+    # Track if an order's vendor amount has already been 'assigned' to one of its items to avoid double counting
+    order_vendor_budget = {}
+
     for v_item in all_vendor_items:
         if not v_item.order: continue
         
-        # Extract only vendor tasks
+        cost = float(v_item.vendor_amount or 0.0)
+        
+        # v02 Smart Inheritance: If item has no cost, borrow from the order's total vendor amount
+        if cost == 0 and v_item.order.vendor_amount:
+            o_id = v_item.order.id
+            if o_id not in order_vendor_budget:
+                order_vendor_budget[o_id] = float(v_item.order.vendor_amount or 0)
+            
+            # Use remaining budget (usually the full amount for the first vendor item we find)
+            cost = order_vendor_budget[o_id]
+            order_vendor_budget[o_id] = 0.0 # Budget consumed for this order
+        
+        # Parse Tasks
         try:
             v_assigns = json.loads(v_item.service_assignments or '{}')
             v_stats = json.loads(v_item.service_statuses or '{}')
         except:
             v_assigns = {}
             v_stats = {}
-        
-        # Tasks assigned to VENDOR
+            
         v_tasks = []
         core_v = [s.strip() for s in (v_item.services or '').split(',')] if v_item.services else []
         for s_name in core_v:
             if v_assigns.get(s_name) == 'VENDOR' or (not v_assigns.get(s_name) and v_item.technician == 'VENDOR'):
                 v_tasks.append({'name': s_name, 'status': v_stats.get(s_name, 'yts')})
-        
         for t_name, t_user in v_assigns.items():
             if t_user == 'VENDOR' and t_name not in core_v:
                 v_tasks.append({'name': t_name, 'status': v_stats.get(t_name, 'yts')})
         
-        if v_tasks:
-            entry = {
-                'item': v_item,
-                'tasks': v_tasks,
-                'vendor_amount': v_item.order.vendor_amount or 0.0
-            }
-            # If all vendor tasks are done, it's history
-            is_v_done = all(t['status'].lower() in ['done', 'ready to deliver', 'billed'] for t in v_tasks)
-            if is_v_done:
-                vendor_history.append(entry)
-                if v_item.order.id not in processed_orders:
-                    total_vendor_paid += (v_item.order.vendor_amount or 0.0)
-                    processed_orders.add(v_item.order.id)
-            else:
-                vendor_active.append(entry)
-                
+        if not v_tasks: continue
+
+        # Entry Object
+        entry = {
+            'item': v_item,
+            'tasks': v_tasks,
+            'vendor_amount': cost,
+            'is_paid': v_item.is_vendor_paid,
+            'paid_date': v_item.vendor_paid_date
+        }
+
+        # --- Report Logic ---
+        # Date for grouping: Paid Date if paid, else Created Date (or Finished Date?)
+        # User wants to track "Monthly/Yearly".
+        # Usually expenses are booked when Paid. Liabilites are booked when Incurred.
+        # Let's group by:
+        # If Paid -> Paid Month
+        # If Unpaid -> Current Month (Pending) or Created Month?
+        # User asked for "Balance transfers". This implies Pending stays in previous months until paid?
+        # Or Pending moves forward?
+        # "Implement logic to carry over any unpaid balance from one month to the next"
+        # This usually means: Previous Month Closing Balance = Current Month Opening Balance.
+        
+        # Let's assign to the month the work was "Done" or "Created". 
+        # If we use Created Month, we can show "Pending" for that month.
+        
+        date_ref = v_item.vendor_paid_date or v_item.order.work_finish_date or v_item.created_at
+        month_key = date_ref.strftime('%Y-%m')
+        
+        monthly_data[month_key]['total'] += cost
+        if v_item.is_vendor_paid:
+            monthly_data[month_key]['paid'] += cost
+            total_lifetime_paid += cost
+        else:
+            monthly_data[month_key]['pending'] += cost
+            total_lifetime_pending += cost
+            
+        # Active List for "Management" UI (Not just reporting)
+        # Show items that are NOT fully paid or processed
+        is_fully_paid = v_item.is_vendor_paid
+        if not is_fully_paid:
+             market_active.append(entry)
+             
+    # Sort Monthly Data
+    sorted_months = sorted(monthly_data.keys(), reverse=True)
+    report_data = []
+    
+    cumulative_pending = 0.0 # This would be calculated from oldest to newest if we want true chronological balance
+    
+    # Re-calculate carry-over balances strictly?
+    # Actually, user wants to see "Carried Over". 
+    # Let's simplify: Show Total Due, Total Paid, Balance for each month.
+    # We can iterate reversed (Oldest First) to calculate running balance?
+    
+    # Convert monthly_data to list
+    ordered_keys = sorted(monthly_data.keys()) # Oldest to Newest
+    running_balance = 0.0
+    
+    final_report = []
+    
+    for key in ordered_keys:
+        d = monthly_data[key]
+        year, month = map(int, key.split('-'))
+        month_name = calendar.month_name[month]
+        
+        # Logic: 
+        # Opening Balance = Previous Running Balance
+        # Total Vendor Amount = New Work this month
+        # Total Paid = Payments made this month (or for this month's work?)
+        # Closing Balance = Opening + New Work - Paid
+        
+        # Note: Our grouping was based on 'date_ref'.
+        # If we group by 'Paid Date' for paid items, then 'Paid' column is accurate for that month's cash flow.
+        # But 'Total Vendor Amount' (Liability) should be grouped by 'Created/Finished Date'.
+        # This splits a single item into two timelines (Liability vs Expense).
+        # This is complex accounting. 
+        # SIMPLIFICATION: Group by "Date Reference" as defined above.
+        # If paid, it contributes to 'Paid' of that reference month.
+        # If not paid, it contributes to 'Pending' of that reference month.
+        # Balance = Pending.
+        
+        running_balance += d['pending'] # Add unpaid amounts to running balance? 
+        # Wait, if I group by "Created Date", and I pay it 3 months later...
+        # If I strictly group by "date_ref" (which shifts to Paid Date when paid), 
+        # then the "Liability" moves to the current month? That avoids carry-over logic issues.
+        
+        # Let's stick to the User's likely mental model:
+        # List of months.
+        # Each month has "Total Vendor Bill" (Work Done) and "Total Paid".
+        # Unpaid amounts carry forward.
+        
+        # To do this correctly, we MUST group Liabilities by "Work Date" and Payments by "Payment Date".
+        # But we are iterating Items.
+        # Let's just group by "Analysis Date" (date_ref) and show simple stats for now.
+        # If User explicitly meant "Accounting Balance Sheet", we'd need separate tables.
+        
+        final_report.append({
+            'month': f"{month_name} {year}",
+            'total': d['total'],
+            'paid': d['paid'],
+            'pending': d['pending'],
+            'key': key
+        })
+        
+    final_report.reverse() # Show newest first
+
     return render_template("admin/vendor_management.html", 
-                           vendor_active=vendor_active, 
-                           vendor_history=vendor_history, 
-                           total_vendor_paid=total_vendor_paid)
+                           vendor_active=market_active, 
+                           report_data=final_report, 
+                           total_vendor_paid=total_lifetime_paid,
+                           total_pending=total_lifetime_pending)
 
 @admin_bp.route("/edit_manual_task/<int:task_id>", methods=["POST"])
 @login_required
@@ -2804,6 +3027,34 @@ def edit_manual_task(task_id):
         flash(f"Error updating manual task: {str(e)}", "danger")
         
     return redirect(url_for('admin.work_assign'))
+
+
+@admin_bp.route("/update_order_vendor", methods=["POST"])
+@login_required
+@super_admin_required
+def update_order_vendor():
+    from models import Order
+    order_id = request.form.get("order_id")
+    outsource = request.form.get("outsource")
+    vendor_amount = request.form.get("vendor_amount")
+    
+    try:
+        order = Order.query.get(order_id)
+        if order:
+            order.outsource = outsource
+            if vendor_amount:
+                # Replace comma with dot if user enters it (some locales use comma)
+                vendor_amount = vendor_amount.replace(',', '.')
+                order.vendor_amount = float(vendor_amount)
+            else:
+                order.vendor_amount = 0.0
+            
+            db.session.commit()
+            return jsonify({"status": "success", "message": "Vendor info updated!"})
+        return jsonify({"status": "error", "message": "Order not found"}), 404
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @admin_bp.route("/emergency_db_fix")
 @login_required

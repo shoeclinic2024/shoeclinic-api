@@ -88,8 +88,11 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="outsource" class="form-label">Vendor Status</label>
-                        <input type="text" class="form-control" id="outsource" name="outsource"
-                            placeholder="e.g. Yes / Internal">
+                        <select class="form-select" id="outsource" name="outsource">
+                            <option value="">Not Decided</option>
+                            <option value="Yes">Yes</option>
+                            <option value="Internal">Internal</option>
+                        </select>
                     </div>
                     <div class="col-md-6">
                         <label for="vendor_amount" class="form-label">Vendor Amount</label>
