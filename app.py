@@ -157,6 +157,15 @@ def init_db():
         error_details = traceback.format_exc()
         return f"\u274c Error creating tables:<br><pre>{error_details}</pre>", 500
 
+@app.route("/sync_db")
+def repair_database():
+    try:
+        from scripts.db_sync_live import sync_db
+        sync_db()
+        return "Database synchronized successfully! You can now <a href='/'>Go Home</a> and try again."
+    except Exception as e:
+        return f"Error syncing database: {str(e)}"
+
 from functools import wraps
 
 @app.context_processor
