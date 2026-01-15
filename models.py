@@ -98,6 +98,7 @@ class OrderItem(db.Model):
     vendor_amount = db.Column(db.Float, default=0.0)
     is_vendor_paid = db.Column(db.Boolean, default=False)
     vendor_paid_date = db.Column(db.DateTime, nullable=True)
+    assigned_at = db.Column(db.DateTime, nullable=True)
 
 # --- Expense Model ---
 class Expense(db.Model):
@@ -284,3 +285,21 @@ class ManualTask(db.Model):
     # Optional relationship if needed
     # user = db.relationship('User', primaryjoin="ManualTask.assigned_to == User.username", foreign_keys="User.username")
 
+
+# --- App Config Model (v02) ---
+class AppConfig(db.Model):
+    """Store global application settings"""
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True, nullable=False)
+    value = db.Column(db.String(255), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+# --- Daily Capacity Model (v02) ---
+class DailyCapacity(db.Model):
+    """Store date-specific order capacity overrides"""
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, unique=True, nullable=False)
+    capacity = db.Column(db.Integer, nullable=False)
+    note = db.Column(db.String(255), nullable=True) # e.g. "Employee on leave"
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)

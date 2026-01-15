@@ -935,7 +935,7 @@
   }
 
   function handleRazorpay(orderId, amount) {
-    // Show a small "Creating Order" alert or loader
+    // 1. Initiate payment on backend
     fetch(`/create_payment/${orderId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
@@ -955,7 +955,7 @@
               "contact": data.prefill_contact
             },
             "handler": function (response) {
-              // Verify payment
+              // 2. Verify payment on backend after success
               fetch('/verify_payment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -968,7 +968,7 @@
                 .then(res => res.json())
                 .then(verifyData => {
                   if (verifyData.status === 'success') {
-                    alert('Payment captured successfully!');
+                    alert('Payment success! Order marked as PAID.');
                     location.reload();
                   } else {
                     alert('Verification failed: ' + verifyData.message);
@@ -983,12 +983,12 @@
           });
           rzp1.open();
         } else {
-          alert("Error creating payment: " + data.message);
+          alert("Error: " + data.message);
         }
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred. Please try again.');
+        alert('Could not start payment. Please check your credentials.');
       });
   }
 
@@ -1029,51 +1029,6 @@
     document.getElementById('manualPayOrderId').value = orderId;
     document.getElementById('manualPayAmount').value = price || '';
     new bootstrap.Modal(document.getElementById('manualPayModal')).show();
-  }
-
-  // --- Payment Gateway Integration ---
-  function handleRazorpay(orderId, amount) {
-    // Placeholder: You mentioned the setup is ready.
-    // Ensure you have the backend route '/create_order' and handle the response.
-    // Example fetch call:
-    fetch('/create_order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId, amount: amount })
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.error) { alert(data.error); return; }
-
-        var options = {
-          "key": data.key,
-          "amount": data.amount,
-          "currency": "INR",
-          "name": "The Shoe Clinic",
-          "description": "Order Payment",
-          "order_id": data.order_id,
-          "handler": function (response) {
-            // On success, verify payment
-            fetch('/verify_payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                internal_order_id: orderId
-              })
-            }).then(r => r.json())
-              .then(res => {
-                if (res.status === 'success') location.reload();
-                else alert('Verification failed');
-              });
-          }
-        };
-        var rzp1 = new Razorpay(options);
-        rzp1.open();
-      })
-      .catch(e => console.error(e));
   }
 </script>
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>

@@ -1000,8 +1000,8 @@
             </a>
             <a href="{{ url_for('print_bill') }}" class="{% if request.endpoint=='print_bill'%}active{% endif %}">
                 <i class="bi bi-receipt-cutoff"></i> Print Bill
-                {% if todays_due_count|default(0) > 0 %}
-                <span class="badge bg-danger ms-auto">{{ todays_due_count }}</span>
+                {% if ready_to_bill_count|default(0) > 0 %}
+                <span class="badge bg-danger ms-auto">{{ ready_to_bill_count }}</span>
                 {% endif %}
             </a>
             <a href="{{ url_for('announcement') }}" class="{% if request.endpoint=='announcement'%}active{% endif %}">

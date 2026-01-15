@@ -21,6 +21,10 @@
                     <i class="bi bi-printer"></i> Print Bill
                 </button>
                 {% if order.payment_status|lower != 'paid' %}
+                <button type="button" class="btn btn-success fw-bold"
+                    onclick="handleRazorpay('{{ order.id }}', '{{ order.price }}')">
+                    <i class="bi bi-credit-card"></i> Pay Online
+                </button>
                 <button type="button" class="btn btn-warning text-dark fw-bold" data-bs-toggle="modal"
                     data-bs-target="#manualPaymentModal">
                     <i class="bi bi-wallet2"></i> Mark Paid (Manual)
@@ -337,26 +341,11 @@
             message += `*Items:*\n`;
             {% for item in order.items %}
             {% set svc_list = (item.services or '').split(',') %}
-            {% set svc_prices = (item.service_prices or '{}')| from_json %}
-            {% set has_deep_clean = false %}
-            {% for s in svc_list %} {% if s | trim | lower == 'deep clean' %} {% set has_deep_clean = true %} {% endif %} {% endfor %}
-
             {% set displayed_svcs = [] %}
             {% for s in svc_list %}
             {% set s_name = s | trim %}
-            {% if s_name %}
-            {% if not(has_deep_clean and s_name | lower in ['wash', 're wash', 're-wash', 'packing']) %}
-            {% set s_p = svc_prices.get(s_name) %}
-            {% if s_p is not none %}
-            {% set _ = displayed_svcs.append(s_name ~ ' (₹' ~ "%.0f" | format(s_p) ~ ')') %}
-            {% else %}
-            {% if svc_list | length == 1 and item.price %}
-            {% set _ = displayed_svcs.append(s_name ~ ' (₹' ~ "%.0f" | format(item.price) ~ ')') %}
-            {% else %}
+            {% if s_name and s_name | lower not in ['wash', 're wash', 're-wash', 'packing'] %}
             {% set _ = displayed_svcs.append(s_name) %}
-            {% endif %}
-            {% endif %}
-            {% endif %}
             {% endif %}
             {% endfor %}
             message += `- {{ item.product_name }}: ({{ displayed_svcs|join(', ') if displayed_svcs else '-' }}) | ₹{{ "%.2f"|format(item.price or 0) }}\n`;
@@ -365,8 +354,11 @@
             message += `\n*Grand Total: ${total}*\n\n`;
 
             {% if payment_link and order.payment_status | lower != 'paid' %}
-            message += `🔗 *PAY ONLINE:* {{ payment_link }}\n`;
-            message += `(Safe payment via Razorpay. Supports UPI, QR, Card)\n\n`;
+            message += `\n--------------------------------\n`;
+            message += `💳 *PAY ONLINE SECURELY:*\n`;
+            message += `Click the link below to pay via GPay, PhonePe, or UPI:\n`;
+            message += `👉 {{ payment_link }}\n`;
+            message += `--------------------------------\n\n`;
             {% endif %}
 
             message += `Thank you for choosing The Shoe Clinic! ✨\n`;
@@ -412,5 +404,59 @@
                 `sms:${mobile}?body=${message}`;
             window.location.href = smsUrl;
         }
+
+        function handleRazorpay(orderId, amount) {
+            fetch(`/create_payment/${orderId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const options = {
+                            "key": data.razorpay_key_id,
+                            "amount": data.amount,
+                            "currency": data.currency,
+                            "name": data.order_name,
+                            "description": data.order_description,
+                            "order_id": data.razorpay_order_id,
+                            "prefill": {
+                                "name": data.prefill_name,
+                                "contact": data.prefill_contact
+                            },
+                            "handler": function (response) {
+                                fetch('/verify_payment', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        razorpay_order_id: response.razorpay_order_id,
+                                        razorpay_payment_id: response.razorpay_payment_id,
+                                        razorpay_signature: response.razorpay_signature
+                                    })
+                                })
+                                    .then(res => res.json())
+                                    .then(verifyData => {
+                                        if (verifyData.status === 'success') {
+                                            alert('Payment success! Order marked as PAID.');
+                                            location.reload();
+                                        } else {
+                                            alert('Verification failed: ' + verifyData.message);
+                                        }
+                                    });
+                            },
+                            "theme": { "color": "#111827" }
+                        };
+                        const rzp1 = new Razorpay(options);
+                        rzp1.open();
+                    } else {
+                        alert("Error: " + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Could not start payment. Please check your credentials.');
+                });
+        }
     </script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
     {% endblock %}

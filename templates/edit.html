@@ -7,7 +7,7 @@
         <a href="{{ url_for('tsc_dashboard') }}" class="btn btn-outline-secondary">← Back to Dashboard</a>
     </div>
 
-    <form method="post">
+    <form method="post" id="editOrderForm" onsubmit="return validateForm()">
         <!-- Order Details Section -->
         <div class="card mb-4 border-primary border-opacity-25 shadow-sm">
             <div class="card-header bg-primary text-white">Basic Order Info</div>
@@ -19,7 +19,9 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Token</label>
-                        <input type="text" class="form-control" name="token" value="{{ order.token or '' }}">
+                        <input type="text" class="form-control" name="token" id="token" value="{{ order.token or '' }}"
+                            onchange="checkToken(this.value)">
+                        <div id="token-feedback" class="small mt-1 fw-bold"></div>
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Customer Name *</label>
@@ -36,8 +38,10 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Drop Date *</label>
-                        <input type="date" class="form-control" name="drop_date"
-                            value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}" required>
+                        <input type="date" class="form-control" name="drop_date" id="drop_date"
+                            value="{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date }}" required
+                            onchange="checkCapacity(this.value)">
+                        <div id="capacity-feedback" class="small mt-1 fw-bold"></div>
                     </div>
                 </div>
 
@@ -305,6 +309,80 @@
 
 <script>
     let itemCounter = {{ order.items| length or 0 }};
+    let isCapacityFull = false;
+    let isTokenUsed = false;
+    const originalToken = "{{ order.token or '' }}";
+    const originalDropDate = "{{ order.drop_date.strftime('%Y-%m-%d') if order.drop_date else '' }}";
+
+    function validateForm() {
+        if (isCapacityFull) {
+            alert("⚠️ Booking is full for the selected date. Please choose another date.");
+            document.getElementById('drop_date').focus();
+            return false;
+        }
+        if (isTokenUsed) {
+            alert("⚠️ The entered Token is already in use by another unpaid order. Please use a different token.");
+            document.getElementById('token').focus();
+            return false;
+        }
+        return true;
+    }
+
+    function checkCapacity(dateStr) {
+        if (!dateStr || dateStr === originalDropDate) {
+            isCapacityFull = false;
+            document.getElementById('capacity-feedback').innerHTML = '';
+            return;
+        }
+        const feedback = document.getElementById('capacity-feedback');
+        feedback.innerHTML = '<span class="text-secondary small"><i class="bi bi-hourglass-split"></i> Checking capacity...</span>';
+
+        fetch(`/api/check_capacity?date=${dateStr}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.is_full) {
+                    isCapacityFull = true;
+                    let msg = `<span class="text-danger small"><i class="bi bi-exclamation-triangle-fill"></i> BOOKING FULL (${data.current_count}/${data.capacity})</span>`;
+                    feedback.innerHTML = msg;
+                } else {
+                    isCapacityFull = false;
+                    const remaining = data.capacity - data.current_count;
+                    feedback.innerHTML = `<span class="text-success small"><i class="bi bi-check-circle-fill"></i> Available (${remaining} slots left)</span>`;
+                }
+            })
+            .catch(err => {
+                console.error('Capacity check failed:', err);
+                isCapacityFull = false;
+                feedback.innerHTML = '';
+            });
+    }
+
+    function checkToken(token) {
+        if (!token || token === originalToken) {
+            isTokenUsed = false;
+            document.getElementById('token-feedback').innerHTML = '';
+            return;
+        }
+        const feedback = document.getElementById('token-feedback');
+        feedback.innerHTML = '<span class="text-secondary small"><i class="bi bi-hourglass-split"></i> Validating token...</span>';
+
+        fetch(`/api/check_token?token=${encodeURIComponent(token)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.is_available) {
+                    isTokenUsed = true;
+                    feedback.innerHTML = `<span class="text-danger small"><i class="bi bi-exclamation-triangle-fill"></i> REUSED! Order ${data.job_id} (${data.customer}) is NOT paid yet.</span>`;
+                } else {
+                    isTokenUsed = false;
+                    feedback.innerHTML = `<span class="text-success small"><i class="bi bi-check-circle-fill"></i> Available</span>`;
+                }
+            })
+            .catch(err => {
+                console.error('Token check failed:', err);
+                isTokenUsed = false;
+                feedback.innerHTML = '';
+            });
+    }
 
     function addNewItem() {
         itemCounter++;

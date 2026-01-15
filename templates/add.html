@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container mt-4">
     <h2>Add New Order</h2>
-    <form method="post">
+    <form method="post" id="orderForm" onsubmit="return validateForm()">
         <!-- Order Details Section -->
         <div class="card mb-4">
             <div class="card-header">Order Details</div>
@@ -15,7 +15,9 @@
                     </div>
                     <div class="col-md-4">
                         <label for="token" class="form-label">Token</label>
-                        <input type="text" class="form-control" id="token" name="token" placeholder="Enter Token">
+                        <input type="text" class="form-control" id="token" name="token" placeholder="Enter Token"
+                            onchange="checkToken(this.value)">
+                        <div id="token-feedback" class="small mt-1 fw-bold"></div>
                     </div>
                     <div class="col-md-4">
                         <label for="customer_name" class="form-label">Customer Name *</label>
@@ -26,7 +28,9 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label for="drop_date" class="form-label">Drop Date *</label>
-                        <input type="date" class="form-control" id="drop_date" name="drop_date" required>
+                        <input type="date" class="form-control" id="drop_date" name="drop_date" required
+                            onchange="checkCapacity(this.value)">
+                        <div id="capacity-feedback" class="small mt-1 fw-bold"></div>
                     </div>
                     <div class="col-md-6">
                         <label for="place" class="form-label">Place *</label>
@@ -223,6 +227,22 @@
 
 <script>
     let itemCounter = 1;
+    let isCapacityFull = false;
+    let isTokenUsed = false;
+
+    function validateForm() {
+        if (isCapacityFull) {
+            alert("⚠️ Booking is full for the selected date. Please choose another date.");
+            document.getElementById('drop_date').focus();
+            return false;
+        }
+        if (isTokenUsed) {
+            alert("⚠️ The entered Token is already in use by another unpaid order. Please use a different token.");
+            document.getElementById('token').focus();
+            return false;
+        }
+        return true;
+    }
 
     function addNewItem() {
         itemCounter++;
@@ -416,6 +436,72 @@
         const isHidden = panel.style.display === 'none';
         panel.style.display = isHidden ? 'block' : 'none';
         calculateTotals();
+    }
+
+    // Capacity Check Logic (v02)
+    function checkCapacity(dateStr) {
+        if (!dateStr) return;
+        const feedback = document.getElementById('capacity-feedback');
+        feedback.innerHTML = '<span class="text-secondary"><i class="bi bi-hourglass-split"></i> Checking capacity...</span>';
+
+        fetch(`/api/check_capacity?date=${dateStr}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.is_full) {
+                    isCapacityFull = true;
+                    let msg = `<span class="text-danger"><i class="bi bi-exclamation-triangle-fill"></i> BOOKING FULL (${data.current_count}/${data.capacity})</span>`;
+                    if (data.next_available) {
+                        msg += `<br><span class="text-info">Next available: <a href="javascript:void(0)" onclick="setNextDate('${data.next_available}')" class="text-decoration-underline text-info">${data.next_available}</a></span>`;
+                    }
+                    feedback.innerHTML = msg;
+                } else {
+                    isCapacityFull = false;
+                    const remaining = data.capacity - data.current_count;
+                    feedback.innerHTML = `<span class="text-success"><i class="bi bi-check-circle-fill"></i> Available (${remaining} slots left)</span>`;
+                }
+            })
+            .catch(err => {
+                console.error('Capacity check failed:', err);
+                isCapacityFull = false;
+                feedback.innerHTML = '';
+            });
+    }
+
+    function setNextDate(dateSlash) {
+        // Date comes in DD-MM-YYYY, input expects YYYY-MM-DD
+        const parts = dateSlash.split('-');
+        if (parts.length === 3) {
+            const formatted = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            const input = document.getElementById('drop_date');
+            input.value = formatted;
+            checkCapacity(formatted);
+        }
+    }
+
+    function checkToken(token) {
+        if (!token) {
+            document.getElementById('token-feedback').innerHTML = '';
+            return;
+        }
+        const feedback = document.getElementById('token-feedback');
+        feedback.innerHTML = '<span class="text-secondary small"><i class="bi bi-hourglass-split"></i> Validating token...</span>';
+
+        fetch(`/api/check_token?token=${encodeURIComponent(token)}`)
+            .then(res => res.json())
+            .then(data => {
+                if (!data.is_available) {
+                    isTokenUsed = true;
+                    feedback.innerHTML = `<span class="text-danger small"><i class="bi bi-exclamation-triangle-fill"></i> REUSED! Order ${data.job_id} (${data.customer}) is NOT paid yet.</span>`;
+                } else {
+                    isTokenUsed = false;
+                    feedback.innerHTML = `<span class="text-success small"><i class="bi bi-check-circle-fill"></i> Available</span>`;
+                }
+            })
+            .catch(err => {
+                console.error('Token check failed:', err);
+                isTokenUsed = false;
+                feedback.innerHTML = '';
+            });
     }
 </script>
 

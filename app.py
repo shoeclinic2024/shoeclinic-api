@@ -216,6 +216,19 @@ def inject_notifications():
     return dict(unread_notifications=[], unread_count=0, pending_action_count=0)
 
 @app.context_processor
+def inject_billing_counts():
+    if current_user.is_authenticated:
+        try:
+            from models import Order
+            # Count orders that are finished by technician but not yet billed/paid
+            count = Order.query.filter(Order.status.in_(['ready to deliver', 'ready'])).count()
+            return dict(ready_to_bill_count=count)
+        except Exception as e:
+            print(f"Error in inject_billing_counts: {e}")
+            return dict(ready_to_bill_count=0)
+    return dict(ready_to_bill_count=0)
+
+@app.context_processor
 def inject_my_work_counts():
     if not current_user.is_authenticated:
         return dict(my_work_total_count=0)
@@ -281,6 +294,107 @@ def super_admin_required(f):
             return redirect(request.referrer or url_for('home'))
         return f(*args, **kwargs)
     return decorated_function
+
+# --- Capacity Management Helpers (v02) ---
+def get_capacity_for_date(target_date):
+    """Returns the order capacity for a specific date (override or global default)"""
+    from models import DailyCapacity, AppConfig
+    from datetime import datetime, date
+    
+    if isinstance(target_date, str):
+        try:
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        except:
+            return 20 # Fallback
+            
+    # 1. Check for specific override
+    override = DailyCapacity.query.filter_by(date=target_date).first()
+    if override:
+        return override.capacity
+        
+    # 2. Get global default
+    default_config = AppConfig.query.filter_by(key="default_daily_capacity").first()
+    if default_config:
+        try:
+            return int(default_config.value)
+        except:
+            pass
+            
+    return 20 # Ultimate fallback
+
+def get_order_count_for_date(target_date):
+    """Returns the number of orders scheduled for delivery on a specific date"""
+    from models import Order
+    from datetime import datetime, date, time
+    
+    if isinstance(target_date, str):
+        try:
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        except:
+            return 0
+            
+    start_of_day = datetime.combine(target_date, time.min)
+    end_of_day = datetime.combine(target_date, time.max)
+    
+    return Order.query.filter(Order.drop_date >= start_of_day, Order.drop_date <= end_of_day).count()
+
+@app.route('/api/check_capacity')
+@login_required
+def check_capacity_api():
+    """AJAX endpoint to check if a date is full and suggest the next available date"""
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'No date provided'}), 400
+        
+    try:
+        from datetime import datetime, timedelta
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        
+        capacity = get_capacity_for_date(target_date)
+        current_count = get_order_count_for_date(target_date)
+        
+        is_full = current_count >= capacity
+        next_available = None
+        
+        if is_full:
+            # Find next available date (search up to 30 days ahead)
+            temp_date = target_date + timedelta(days=1)
+            for _ in range(30):
+                if get_order_count_for_date(temp_date) < get_capacity_for_date(temp_date):
+                    next_available = temp_date.strftime('%d-%m-%Y')
+                    break
+                temp_date += timedelta(days=1)
+        
+        return jsonify({
+            'date': date_str,
+            'is_full': is_full,
+            'current_count': current_count,
+            'capacity': capacity,
+            'next_available': next_available
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/check_token')
+@login_required
+def check_token_api():
+    token = request.args.get('token')
+    if not token:
+        return jsonify({'is_available': True})
+    
+    # A token can only be reused if previous orders with that token are marked as 'Paid'
+    conflicting_order = Order.query.filter_by(token=token).filter(Order.payment_status != 'Paid').first()
+    
+    if conflicting_order:
+        return jsonify({
+            'is_available': False,
+            'job_id': conflicting_order.job_id,
+            'customer': conflicting_order.customer_name,
+            'status': conflicting_order.status,
+            'payment_status': conflicting_order.payment_status
+        })
+    
+    return jsonify({'is_available': True})
 
 # --- Report Helper Functions ---
 import json
@@ -1861,6 +1975,37 @@ def add_order():
     today = datetime.today().strftime("%Y-%m-%d")
 
     if request.method == "POST":
+        # --- Capacity Check (v02) ---
+        drop_date_str = request.form.get("drop_date")
+        if drop_date_str:
+            try:
+                target_date = datetime.strptime(drop_date_str, "%Y-%m-%d").date()
+                capacity = get_capacity_for_date(target_date)
+                current_count = get_order_count_for_date(target_date)
+                if current_count >= capacity:
+                    flash(f"Booking complete for {drop_date_str}! Please select another date.", "warning")
+                    # Find next available date
+                    temp_date = target_date + timedelta(days=1)
+                    next_avail = None
+                    for _ in range(30):
+                        if get_order_count_for_date(temp_date) < get_capacity_for_date(temp_date):
+                            next_avail = temp_date.strftime('%d-%m-%Y')
+                            break
+                        temp_date += timedelta(days=1)
+                    if next_avail:
+                        flash(f"Next available date: {next_avail}", "info")
+                    return redirect(request.url)
+            except Exception as e:
+                print(f"Capacity check error: {e}")
+
+        # --- Token Validation (v02) ---
+        token = request.form.get("token")
+        if token:
+            conflicting_order = Order.query.filter_by(token=token).filter(Order.payment_status != 'Paid').first()
+            if conflicting_order:
+                flash(f"⚠️ Token {token} is already in use by Order {conflicting_order.job_id} ({conflicting_order.customer_name}). Please complete that order and mark as Paid before reusing.", "warning")
+                return redirect(request.url)
+
         try:
             order = Order(
                 job_id=request.form["job_id"],
@@ -1983,6 +2128,31 @@ def edit_order(order_id):
     order = Order.query.get_or_404(order_id)
 
     if request.method == "POST":
+        # --- Capacity Check (v02) ---
+        new_drop_date_str = request.form.get("drop_date")
+        if new_drop_date_str:
+            try:
+                new_drop_date = datetime.strptime(new_drop_date_str, "%Y-%m-%d").date()
+                old_drop_date = order.drop_date.date() if order.drop_date else None
+                
+                # Only check if date is changed
+                if new_drop_date != old_drop_date:
+                    capacity = get_capacity_for_date(new_drop_date)
+                    current_count = get_order_count_for_date(new_drop_date)
+                    if current_count >= capacity:
+                        flash(f"Booking complete for {new_drop_date_str}! Please select another date.", "warning")
+                        return redirect(request.url)
+            except Exception as e:
+                print(f"Edit capacity check error: {e}")
+
+        # --- Token Validation (v02) ---
+        new_token = request.form.get("token")
+        if new_token and new_token != order.token:
+            conflicting_order = Order.query.filter_by(token=new_token).filter(Order.payment_status != 'Paid').first()
+            if conflicting_order:
+                flash(f"⚠️ Token {new_token} is already in use by Order {conflicting_order.job_id} ({conflicting_order.customer_name}). Please complete that order and mark as Paid before reusing.", "warning")
+                return redirect(request.url)
+
         # Basic Info
         new_technician = request.form.get("technician")
         if new_technician and not order.service_date:
@@ -2597,14 +2767,19 @@ def my_works():
                 else:
                     vendor_active.append(entry)
     
-    # Calculate Granular Task Counts
-    import json
-    yts_count = 0
-    wip_count = 0
-    done_count = 0
-    ready_count = 0
+    # Calculate Granular Task Counts for the NEW Work Station UI
+    labor_tasks = 0
+    wash_count = 0
+    rewash_count = 0
+    packing_count = 0
+    supervision_count = 0
     
     for item in assigned_items: 
+        # Check if item is active (Consistency check)
+        st = (item.status or '').lower()
+        if st in ['ready to deliver', 'delivered', 'billed', 'paid']:
+            continue # Skip completed items from active stats
+            
         try:
             assignments = json.loads(item.service_assignments or '{}')
             statuses = json.loads(item.service_statuses or '{}')
@@ -2612,56 +2787,46 @@ def my_works():
             assignments = {}
             statuses = {}
 
-        is_item_technician = (item.technician == current_user.username)
+        # 1. Lead Supervision Check
+        if item.technician == current_user.username:
+            supervision_count += 1
         
-        # Determine services for this user - STRICT ASSIGNMENT ONLY
-        user_services = []
-        if item.services:
-            for s in item.services.split(','):
-                s_name = s.strip()
-                # Only count if explicitly assigned to this user
-                if assignments.get(s_name) == current_user.username:
-                    user_services.append(s_name)
-                    
-        # Filter for ANY Auxiliary Task assigned to user
-        # This covers Packing, Re-Wash, or any dynamically added service not in the main list
-        core_services = [s.strip() for s in (item.services or '').split(',')]
-        for task_name, assigned_user in assignments.items():
-            if assigned_user == current_user.username:
-                if task_name not in core_services and task_name not in user_services:
-                    user_services.append(task_name)
-        
-        # If no specific services but user is item technician, count the item itself
-        if not user_services and is_item_technician:
-             st = (item.status or 'yts').lower()
-             if st in ['ready to deliver', 'billed', 'delivered']:
-                 ready_count += 1
-             elif st in ['done', 'completed']:
-                 done_count += 1
-             elif st in ['wip', 'work in progress']:
-                 wip_count += 1
-             else: 
-                 yts_count += 1
-        else:
-            # Count based on services
-            for s_name in user_services:
-                # Skip the bundle parent from individual task counts
-                if s_name.lower() == 'deep clean':
+        # 2. Individual Task Counts
+        for s_name, tech_name in assignments.items():
+            if tech_name == current_user.username:
+                s_clean = s_name.strip().lower()
+                
+                # Exclude parent headers like 'deep clean' from labor count
+                if s_clean == 'deep clean':
+                    continue
+
+                # ONLY COUNT if not done/ready
+                svc_status = (statuses.get(s_name) or 'yts').lower()
+                if svc_status in ['done', 'ready', 'ready to deliver', 'delivered', 'billed', 'paid']:
                     continue
                     
-                st = statuses.get(s_name, 'yts').lower()
-                if st in ['ready to deliver', 'billed', 'delivered']:
-                    ready_count += 1
-                elif st in ['done', 'completed']:
-                    done_count += 1
-                elif st in ['wip', 'work in progress']:
-                    wip_count += 1
-                else:
-                    yts_count += 1
+                labor_tasks += 1
+                if s_clean == 'wash':
+                    wash_count += 1
+                elif s_clean in ['re wash', 're-wash']:
+                    rewash_count += 1
+                elif s_clean == 'packing':
+                    packing_count += 1
+
+    # Include Manual Tasks in Labor Count
+    labor_tasks += len(manual_tasks)
+    
+    task_stats = {
+        'total': labor_tasks,
+        'wash': wash_count,
+        'rewash': rewash_count,
+        'packing': packing_count,
+        'supervision': supervision_count
+    }
 
     return render_template("my_works.html", items=filtered_items, history_entries=history_entries, upcoming_items=upcoming_items,
                            vendor_active=vendor_active, vendor_history=vendor_history, total_vendor_paid=total_vendor_paid,
-                           task_stats={'yts': yts_count, 'wip': wip_count, 'done': done_count, 'ready': ready_count, 'total': yts_count + wip_count + done_count + ready_count},
+                           task_stats=task_stats,
                            manual_tasks=manual_tasks, completed_items=completed_items, today_date=today)
 
 # Reports
@@ -2870,11 +3035,12 @@ def view_bill(order_id):
                 "notify": {"sms": False, "email": False},
                 "reminder_enable": True,
                 "notes": {"order_id": order.id, "job_id": order.job_id},
-                "callback_url": url_for('dashboard', _external=True), # Redirect back to dashboard after payment
+                "callback_url": url_for('tsc_dashboard', _external=True), # Redirect back to dashboard after payment
                 "callback_method": "get"
             }
             
-            plink = razorpay_client.payment_link.create(data=link_data)
+            client, _ = get_razorpay_client()
+            plink = client.payment_link.create(data=link_data)
             payment_link = plink.get('short_url')
             
             # Save transaction info
@@ -4267,10 +4433,13 @@ def request_report_export():
     
     return jsonify({"status": "error", "message": "Super Admin not found."})
 
-# Razorpay Client
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "rzp_test_YourKeyID")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "YourKeySecret")
-razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
+# Razorpay Configuration
+def get_razorpay_client():
+    from dotenv import load_dotenv
+    load_dotenv() # Reload to pick up manual .env changes
+    key_id = os.getenv("RAZORPAY_KEY_ID", "rzp_test_YourKeyID").strip()
+    key_secret = os.getenv("RAZORPAY_KEY_SECRET", "YourKeySecret").strip()
+    return razorpay.Client(auth=(key_id, key_secret)), key_id
 
 # --- Diagnostics & Health ---
 @app.route("/health")
@@ -4334,25 +4503,13 @@ def handle_exception(e):
     """Catch-all for any unhandled exception"""
     return handle_500_error(e)
 
-# --- Utils ---
-if __name__ == "__main__":
-    print("\n" + "="*50)
-    print("DEBUG: Server is starting from E:\\app_v02")
-    print("DEBUG: Auto-Reload (Debug Mode) is ENABLED")
-    print("="*50 + "\n")
-    with app.app_context():
-        db.create_all()
-    # Use PORT from environment (default to 5000 for local)
-    port = int(os.environ.get("PORT", 5000))
-    # Enable Debug Mode for automatic reloading
-    app.run(debug=True, host='0.0.0.0', port=port)
 # --- Payment Gateway Routes (v02) ---
 
 @app.route("/create_payment/<int:order_id>", methods=["POST"])
 @login_required
 def create_payment(order_id):
     from models import Order, PaymentTransaction
-    order = Order.query.get_or_4_4(order_id)
+    order = Order.query.get_or_404(order_id)
     
     if not order.price or order.price <= 0:
         return jsonify({"status": "error", "message": "Invalid order price"}), 400
@@ -4367,7 +4524,8 @@ def create_payment(order_id):
             "payment_capture": 1 # Auto capture
         }
         
-        razorpay_order = razorpay_client.order.create(data=data)
+        client, rzp_key = get_razorpay_client()
+        razorpay_order = client.order.create(data=data)
         
         # Log transaction
         tx = PaymentTransaction(
@@ -4382,7 +4540,7 @@ def create_payment(order_id):
         return jsonify({
             "status": "success",
             "razorpay_order_id": razorpay_order['id'],
-            "razorpay_key_id": RAZORPAY_KEY_ID,
+            "razorpay_key_id": rzp_key,
             "amount": amount,
             "currency": "INR",
             "order_name": "The Shoe Clinic",
@@ -4411,7 +4569,8 @@ def verify_payment():
     
     try:
         # Verify the signature
-        razorpay_client.utility.verify_payment_signature(params_dict)
+        client, _ = get_razorpay_client()
+        client.utility.verify_payment_signature(params_dict)
         
         # Update transaction
         tx = PaymentTransaction.query.filter_by(razorpay_order_id=razorpay_order_id).first()
@@ -4492,4 +4651,17 @@ def razorpay_webhook():
             return jsonify({"status": "ok"}), 200
             
     return jsonify({"status": "ignored"}), 200
+
+# --- Utils ---
+if __name__ == "__main__":
+    print("\n" + "="*50)
+    print("DEBUG: Server is starting from E:\\app_v02")
+    print("DEBUG: Auto-Reload (Debug Mode) is ENABLED")
+    print("="*50 + "\n")
+    with app.app_context():
+        db.create_all()
+    # Use PORT from environment (default to 5000 for local)
+    port = int(os.environ.get("PORT", 5000))
+    # Enable Debug Mode for automatic reloading
+    app.run(debug=True, host='0.0.0.0', port=port)
 

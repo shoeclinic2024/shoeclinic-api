@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4 px-md-5">
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold text-light d-flex align-items-center gap-3">
+            <i class="bi bi-clock-history text-info"></i> Work Assign History
+        </h2>
+        <a href="{{ url_for('admin.work_assign') }}" class="btn btn-outline-secondary rounded-pill">
+            <i class="bi bi-arrow-left me-1"></i> Back to Live Assign
+        </a>
+    </div>
+
+
+    <div class="card bg-dark border-secondary border-opacity-25 shadow-lg rounded-4 overflow-hidden">
+        <div class="card-header bg-dark border-secondary border-opacity-25 p-4">
+            <h5 class="mb-0 fw-bold text-secondary small text-uppercase tracking-wider">
+                Last 100 Assignments
+            </h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-dark table-hover align-middle mb-0">
+                    <thead class="bg-dark bg-opacity-75 text-light x-small text-uppercase tracking-wider border-0"
+                        style="border-bottom: 2px solid rgba(255,255,255,0.05) !important;">
+                        <tr>
+                            <th class="ps-4 py-3">Assigned At</th>
+                            <th class="py-3">Job ID</th>
+                            <th class="py-3">Customer</th>
+                            <th class="py-3">Item / Product</th>
+                            <th class="py-3">Main Lead</th>
+                            <th class="py-3">Sub Tasks</th>
+                            <th class="py-3">Status</th>
+                            <th class="text-end pe-4 py-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td class="ps-4">
+                                <span class="text-info small fw-bold">
+                                    {{ item.assigned_at.strftime('%d %b, %H:%M') if item.assigned_at else 'N/A' }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge bg-black border border-secondary text-secondary rounded-pill">
+                                    {{ item.order.job_id if item.order else 'DELETED' }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="fw-bold text-light small">{{ item.order.customer_name if item.order else
+                                    'Unknown' }}</div>
+                            </td>
+                            <td>
+                                <div class="text-light small">{{ item.product_name }}</div>
+                            </td>
+                            <td>
+                                <span
+                                    class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3">
+                                    <i class="bi bi-person-badge me-1"></i> Lead: {{ item.technician or 'None' }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="x-small text-secondary">
+                                    {% set status_icon = '•' %}
+                                    {% set assignments = item.service_assignments|from_json if item.service_assignments
+                                    else
+                                    {} %}
+                                    {% set core_svcs = item.services.split(',') if item.services else [] %}
+
+                                    {% set list_ns = namespace(all=[]) %}
+                                    {% for s in core_svcs %}
+                                    {% set s_clean = s|trim|lower %}
+                                    {% if s_clean and s_clean not in list_ns.all %}
+                                    {% set list_ns.all = list_ns.all + [s_clean] %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% for s in assignments.keys() %}
+                                    {% set s_clean = s|trim|lower %}
+                                    {% if s_clean and s_clean not in list_ns.all %}
+                                    {% set list_ns.all = list_ns.all + [s_clean] %}
+                                    {% endif %}
+                                    {% endfor %}
+                                    {% set all_svc_names = list_ns.all %}
+
+                                    {% set bundle_names = ['wash', 're wash'] %}
+                                    {% set summary_ns = namespace(items=[]) %}
+                                    {% set statuses = item.service_statuses|from_json if item.service_statuses else {}
+                                    %}
+
+                                    {# Deep Clean Grouping Logic #}
+                                    {% if 'deep clean' in all_svc_names %}
+                                    {% set m_tech = item.technician %}
+                                    {% set m_str = '<div class="mb-1">' %}
+                                        {% set m_str = m_str ~ '<span class="text-info fw-bold">deep clean</span>' %}
+                                        {% if m_tech %}
+                                        {% set m_str = m_str ~ ' <span class="text-primary x-small ms-1">' ~ m_tech ~
+                                            '</span>' %}
+                                        {% endif %}
+
+                                        {% set children_ns = namespace(names=[]) %}
+                                        {% for s in all_svc_names if s in bundle_names %}
+                                        {% set c_tech = assignments.get(s) %}
+                                        {% set c_status = statuses.get(s, 'yts')|lower %}
+                                        {% set status_icon = '✓' if c_status in ['done', 'ready to deliver'] else ('⏳'
+                                        if c_status == 'wip' else '•') %}
+                                        {% set status_color = 'text-success' if c_status in ['done', 'ready to deliver']
+                                        else ('text-warning' if c_status == 'wip' else 'text-secondary') %}
+
+                                        {% set child_entry = '<span class="' ~ status_color ~ ' x-small">' ~ status_icon
+                                            ~ ' ' ~ s %}
+                                            {% if c_tech and c_tech != m_tech %}
+                                            {% set child_entry = child_entry ~ ' ' ~ c_tech %}
+                                            {% endif %}
+                                            {% set child_entry = child_entry ~ '</span>' %}
+
+                                        {% set children_ns.names = children_ns.names + [child_entry] %}
+                                        {% endfor %}
+
+                                        {% if children_ns.names %}
+                                        {% set m_str = m_str ~ ' <span class="text-secondary x-small">(' ~
+                                            children_ns.names|join(', ') ~ ')</span>' %}
+                                        {% endif %}
+                                        {% set m_str = m_str ~ '</div>' %}
+                                    {% set summary_ns.items = summary_ns.items + [m_str] %}
+                                    {% endif %}
+
+                                    {# Other Tasks #}
+                                    {% for s in all_svc_names %}
+                                    {% if s|lower != 'deep clean' and (s not in bundle_names or 'deep clean' not in
+                                    all_svc_names) %}
+                                    {% set i_tech = assignments.get(s) %}
+                                    {% set i_status = statuses.get(s, 'yts')|lower %}
+                                    {% set s_icon = '✓' if i_status in ['done', 'ready to deliver'] else ('⏳' if
+                                    i_status == 'wip' else '•') %}
+                                    {% set s_color = 'text-success' if i_status in ['done', 'ready to deliver'] else
+                                    ('text-warning' if i_status == 'wip' else 'text-secondary') %}
+                                    <div class="mb-1 x-small">
+                                        <span class="{{ s_color }}">{{ s_icon }}</span>
+                                        <span class="text-light">{{ s }}:</span>
+                                        <span class="text-info">{{ i_tech or 'not assigned' }}</span>
+                                    </div>
+                                    {% endif %}
+                                    {% endfor %}
+                                    {{ summary_ns.items|join('')|safe }}
+                                </div>
+                            </td>
+                            <td>
+                                <span
+                                    class="badge bg-{{ item.status|status_color }} bg-opacity-10 text-{{ item.status|status_color }} rounded-pill x-small px-2 border border-{{ item.status|status_color }} border-opacity-25">
+                                    {{ item.status|upper }}
+                                </span>
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('admin.revert_assignment', item_id=item.id) }}"
+                                    class="btn btn-outline-danger btn-xs rounded-pill px-3"
+                                    onclick="return confirm('Are you sure you want to REVERT this assignment? It will go back to the live Work Assign list.')">
+                                    <i class="bi bi-arrow-counterclockwise"></i> Revert
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .x-small {
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}

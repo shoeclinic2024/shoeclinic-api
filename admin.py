@@ -953,38 +953,18 @@ def work_assign():
 
     active_items = []
     for item in all_items:
-        # 1. Basic status filtering (consistent with v01 logic)
+        # 1. Basic status filtering
         item_status = str(item.status or '').lower()
         o_status = str(item.order.status or '').lower() if item.order else 'cancelled'
-        
         excluded = ['delivered', 'cancelled', 'ready to deliver', 'ready', 'billed']
         if not item.order or item_status in excluded or o_status in excluded:
             continue
             
-        # 2. Assignment Check (v02 Fix: Hide fully assigned items)
-        is_assigned = False
-        try:
-            lead_ok = bool(item.technician)
-            
-            # Check Granular Services
-            svc_list = [s.strip() for s in (item.services or '').split(',') if s.strip()]
-            if svc_list:
-                import json
-                assignments = json.loads(item.service_assignments or '{}')
-                # Every service in list must have a technician name assigned
-                all_svcs_ok = all(assignments.get(s) and assignments.get(s) != 'UNASSIGN' for s in svc_list)
-                is_assigned = lead_ok and all_svcs_ok
-            else:
-                # No granular services, just check Main Lead
-                is_assigned = lead_ok
-        except:
-            is_assigned = False
-
-        if not is_assigned:
+        if not item.assigned_at:
             active_items.append(item)
     
     # Sort by drop date
-    active_items.sort(key=lambda x: (x.order.drop_date if x.order and x.order.drop_date else datetime.max))
+    active_items.sort(key=lambda x: (x.order.drop_date if x.order and x.order.drop_date else datetime.max, x.id))
     
     # Fetch active staff for the availability sidebar and assignment options
     staff = User.query.filter_by(is_active=True).all()
@@ -992,7 +972,7 @@ def work_assign():
     # Detailed Workload
     today = datetime.now().date()
     # Detailed Workload calculation counting individual services (tasks)
-    workload = {p.username: {'items': 0, 'tasks': 0} for p in staff}
+    workload = {p.username: {'items': 0, 'tasks': 0, 'breakdown': {}} for p in staff}
     
     for item in all_items:
         # Check if item is active (Consistency with active_items filter)
@@ -1009,14 +989,21 @@ def work_assign():
             # Count individual tasks assigned to staff
             for s_name, tech_name in assignments.items():
                 if tech_name and tech_name in workload:
+                    # EXCLUDE 'deep clean' parent heading from count
+                    if s_name.lower() == 'deep clean':
+                        continue
+                        
                     workload[tech_name]['tasks'] += 1
                     item_techs.add(tech_name)
+                    
+                    # Track breakdown for live page cards
+                    svc_key = s_name.strip()
+                    workload[tech_name]['breakdown'][svc_key] = workload[tech_name]['breakdown'].get(svc_key, 0) + 1
             
             # If a Main Lead is assigned, they are involved with the item
             if item.technician and item.technician in workload:
                 item_techs.add(item.technician)
-                # If they are Main Lead but have no specific tasks assigned yet, 
-                # we still count the item involvement.
+                # Note: Lead supervision is NOT counted in 'tasks' volume, only 'items' count
             
             # Increment item count for everyone involved in this specific item
             for tech_name in item_techs:
@@ -1059,6 +1046,25 @@ def work_assign():
         else:
             leave_status[person.username] = {'on_leave': False}
 
+    # Fetch Capacity Config
+    from models import AppConfig, DailyCapacity
+    default_capacity_config = AppConfig.query.filter_by(key="default_daily_capacity").first()
+    default_capacity = int(default_capacity_config.value) if default_capacity_config else 20
+    
+    date_overrides = DailyCapacity.query.filter(DailyCapacity.date >= today).order_by(DailyCapacity.date.asc()).all()
+    
+    # Calculate counts for overrides to show current fill
+    overrides_data = []
+    from app import get_order_count_for_date
+    for o in date_overrides:
+        overrides_data.append({
+            'id': o.id,
+            'date': o.date,
+            'capacity': o.capacity,
+            'note': o.note,
+            'current_count': get_order_count_for_date(o.date)
+        })
+
     return render_template("admin/work_assign.html", 
                            items=active_items, 
                            staff=staff, 
@@ -1066,7 +1072,85 @@ def work_assign():
                            manual_tasks=manual_tasks,
                            today_date=today,
                            leave_status=leave_status,
-                           tomorrow_date=tomorrow)
+                           tomorrow_date=tomorrow,
+                           default_capacity=default_capacity,
+                           overrides=overrides_data)
+
+@admin_bp.route("/work_assign_history")
+@login_required
+@super_admin_required
+def work_assign_history():
+    from models import OrderItem, User
+    from datetime import datetime
+    
+    # Fetch all items that HAVE an assignment timestamp
+    history_items = OrderItem.query.filter(OrderItem.assigned_at != None).order_by(OrderItem.assigned_at.desc()).limit(100).all()
+    
+    return render_template("admin/work_assign_history.html", 
+                           items=history_items)
+
+@admin_bp.route("/update_default_capacity", methods=["POST"])
+@login_required
+@super_admin_required
+def update_default_capacity():
+    from models import AppConfig
+    try:
+        new_val = request.form.get("capacity")
+        if new_val:
+            config = AppConfig.query.filter_by(key="default_daily_capacity").first()
+            if not config:
+                config = AppConfig(key="default_daily_capacity", value=new_val)
+                db.session.add(config)
+            else:
+                config.value = new_val
+            db.session.commit()
+            flash("Default daily capacity updated! \u2705", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error: {str(e)}", "danger")
+    return redirect(url_for('admin.work_assign'))
+
+@admin_bp.route("/add_capacity_override", methods=["POST"])
+@login_required
+@super_admin_required
+def add_capacity_override():
+    from models import DailyCapacity
+    from datetime import datetime
+    try:
+        date_str = request.form.get("date")
+        cap = request.form.get("capacity")
+        note = request.form.get("note")
+        
+        if date_str and cap:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            override = DailyCapacity.query.filter_by(date=target_date).first()
+            if override:
+                override.capacity = int(cap)
+                override.note = note
+            else:
+                override = DailyCapacity(date=target_date, capacity=int(cap), note=note)
+                db.session.add(override)
+            db.session.commit()
+            flash(f"Capacity override set for {date_str} \u2705", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error: {str(e)}", "danger")
+    return redirect(url_for('admin.work_assign'))
+
+@admin_bp.route("/delete_capacity_override/<int:override_id>", methods=["POST"])
+@login_required
+@super_admin_required
+def delete_capacity_override(override_id):
+    from models import DailyCapacity
+    try:
+        override = DailyCapacity.query.get_or_404(override_id)
+        db.session.delete(override)
+        db.session.commit()
+        flash("Capacity override deleted.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error: {str(e)}", "danger")
+    return redirect(url_for('admin.work_assign'))
 
 @admin_bp.route("/add_manual_task", methods=["POST"])
 @login_required
@@ -1123,17 +1207,76 @@ def delete_manual_task(task_id):
 @super_admin_required
 def assign_task():
     from models import Order, OrderItem
+    from datetime import datetime
     import json
     
-    order_id = request.form.get("order_id")
     item_id = request.form.get("item_id")
-    service_name = request.form.get("service_name")
+    order_id = request.form.get("order_id")
     technician_name = request.form.get("technician")
+    service_name = request.form.get("service_name")
+    bundle_name = request.form.get("bundle_name")
     
     try:
         if item_id:
             item = OrderItem.query.get(item_id)
             if item:
+                # 1. Main Lead Assignment
+                main_lead = request.form.get("main_lead")
+                if main_lead:
+                    if main_lead == 'UNASSIGN':
+                        item.technician = None
+                        flash("Main Lead cleared ✅", "info")
+                    else:
+                        item.technician = main_lead
+                        flash(f"Main Lead updated to {main_lead} ✅", "success")
+                    
+                    if item.order and not item.order.service_date:
+                        item.order.service_date = datetime.now()
+
+                    # Only set timestamp if NOT Deep Clean or if DC already has CORE sub-tasks (Wash + Re-wash)
+                    is_dc = 'deep clean' in (item.services or '').lower()
+                    assignments = json.loads(item.service_assignments or '{}')
+                    has_core = assignments.get('wash') and assignments.get('re wash')
+                    
+                    if not is_dc or has_core:
+                        item.assigned_at = datetime.now()
+
+                # 2. Bundle Assignment (Standard Process)
+                if bundle_name:
+                    current_services = [s.strip() for s in item.services.split(',')] if item.services else []
+                    assignments = json.loads(item.service_assignments) if item.service_assignments else {}
+                    statuses = json.loads(item.service_statuses) if item.service_statuses else {}
+                    
+                    services_to_add = []
+                    if bundle_name == 'standard_process' or bundle_name == 'cleaning_full':
+                        services_to_add = ['deep clean', 'wash', 're wash']
+                    
+                    if technician_name: # Use tech from form for the bundle
+                        for s in services_to_add:
+                            if technician_name == 'UNASSIGN':
+                                if s in assignments: del assignments[s]
+                                if s in statuses: del statuses[s]
+                            else:
+                                if s not in current_services: current_services.append(s)
+                                assignments[s] = technician_name
+                                if s not in statuses: statuses[s] = 'yts'
+                        
+                        item.services = ','.join(current_services)
+                        item.service_assignments = json.dumps(assignments)
+                        item.service_statuses = json.dumps(statuses)
+                        # For sub-tasks, only set persistent timestamp if it's considered "fully assigned"
+                        # For Deep Clean items, this means Wash AND Re-wash must be present
+                        is_dc = 'deep clean' in (item.services or '').lower()
+                        assignments_check = json.loads(item.service_assignments)
+                        has_dc_tasks = assignments_check.get('wash') and assignments_check.get('re wash')
+                        
+                        if not is_dc or (has_dc_tasks and item.technician):
+                            # Item is now considered fully assigned and handles by history/visibility
+                            item.assigned_at = datetime.now()
+                            
+                        flash(f"Bundle {bundle_name} processed ✅", "success")
+
+                # 3. Specific Task Assignment
                 if service_name:
                     assignments = json.loads(item.service_assignments) if item.service_assignments else {}
                     statuses = json.loads(item.service_statuses) if item.service_statuses else {}
@@ -1142,8 +1285,8 @@ def assign_task():
                         # Unassign Logic
                         services_to_clear = [service_name]
                         if service_name.lower() == 'deep clean':
-                            services_to_clear.extend(['wash', 're wash', 'packing'])
-                            # Also clear main lead if unassigning deep clean
+                            services_to_clear.extend(['wash', 're wash'])
+                            # Also clear main lead if unassigning deep clean explicitly
                             item.technician = None
                         
                         for s in services_to_clear:
@@ -1151,40 +1294,38 @@ def assign_task():
                                 del assignments[s]
                             if s in statuses:
                                 del statuses[s]
-                        flash(f"Service(s) cleared ✅", "info")
+                        
+                        # If no assignments left, clear timestamp
+                        if not assignments:
+                            item.assigned_at = None
+                        flash(f"Service {service_name} cleared ✅", "info")
                     else:
                         # Assign Logic
                         services_to_assign = [service_name]
                         if service_name.lower() == 'deep clean':
-                            services_to_assign.extend(['wash', 're wash', 'packing'])
-                            # Automatically set Main Lead when Deep Clean is assigned
-                            # item.technician = technician_name
-                            pass
+                            services_to_assign.extend(['wash', 're wash'])
                         
                         for s in services_to_assign:
                             assignments[s] = technician_name
                             if s not in statuses:
                                 statuses[s] = 'yts'
-                        flash(f"Assigned to {technician_name} ✅", "success")
+                        
+                        # For sub-tasks, only set persistent timestamp if it's considered "fully assigned"
+                        is_dc = 'deep clean' in (item.services or '').lower()
+                        has_dc_tasks = assignments.get('wash') and assignments.get('re wash')
+                        
+                        if not is_dc or (has_dc_tasks and item.technician):
+                            item.assigned_at = datetime.now()
+                            
+                        flash(f"Task {service_name} assigned to {technician_name} ✅", "success")
                         
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
                     
                     # Set service_date on the order if not already set
                     if item.order and not item.order.service_date:
-                        from datetime import datetime
                         item.order.service_date = datetime.now()
-                else:
-                    # Assign whole item (Main Lead)
-                    # We ONLY update the item-level technician now.
-                    # We do NOT automatically assign this person to every individual service anymore.
-                    item.technician = technician_name
-                    flash(f"Main Lead updated to {technician_name} \u2705", "success")
-                    
-                    # Ensure order service_date is set
-                    if item.order and not item.order.service_date:
-                        from datetime import datetime
-                        item.order.service_date = datetime.now()
+                
                 db.session.commit()
         elif order_id:
             order = Order.query.get(order_id)
@@ -1193,12 +1334,33 @@ def assign_task():
                 
                 # Set service_date if not already set
                 if not order.service_date:
-                    from datetime import datetime
                     order.service_date = datetime.now()
                 
                 # Also auto-assign to all items
+                now = datetime.now()
                 for item in order.items:
-                    item.technician = technician_name
+                    if technician_name == 'UNASSIGN':
+                        item.technician = None
+                        item.assigned_at = None
+                    else:
+                        item.technician = technician_name
+                        
+                        # Deep Clean items only get 'assigned_at' if they have core tasks
+                        is_dc_item = 'deep clean' in (item.services or '').lower()
+                        if is_dc_item:
+                            assignments_tmp = {}
+                            if item.services:
+                                for s in item.services.split(','):
+                                    assignments_tmp[s.strip().lower()] = technician_name
+                            
+                            if assignments_tmp.get('wash') and assignments_tmp.get('re wash'):
+                                item.assigned_at = now
+                            else:
+                                item.assigned_at = None
+                        else:
+                            # Non-Deep Clean items move to history immediately upon assignment
+                            item.assigned_at = now
+                    
                     assignments = {}
                     statuses = json.loads(item.service_statuses) if item.service_statuses else {}
                     if item.services:
@@ -1210,7 +1372,7 @@ def assign_task():
                     item.service_assignments = json.dumps(assignments)
                     item.service_statuses = json.dumps(statuses)
                 db.session.commit()
-                flash(f"Whole Order {order.job_id} assigned to {technician_name} \u2705", "success")
+                flash(f"Whole Order {order.job_id} assigned to {technician_name} ✅", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error assigning task: {str(e)}", "danger")
@@ -1222,6 +1384,7 @@ def assign_task():
 @super_admin_required
 def assign_task_bundle():
     from models import OrderItem
+    from datetime import datetime
     import json
     
     item_id = request.form.get("item_id")
@@ -1241,9 +1404,9 @@ def assign_task_bundle():
             
             services_to_add = []
             if bundle_name == 'standard_process':
-                 services_to_add = ['deep clean', 'wash', 're wash', 'packing']
+                 services_to_add = ['deep clean', 'wash', 're wash']
             elif bundle_name == 'cleaning_full':
-                 services_to_add = ['deep clean', 'wash', 're wash', 'packing']
+                 services_to_add = ['deep clean', 'wash', 're wash']
             
             # 1. Update Services List
             for s in services_to_add:
@@ -1277,6 +1440,16 @@ def assign_task_bundle():
                     if s not in statuses:
                         statuses[s] = 'yts'
             
+            if technician_name != 'UNASSIGN':
+                # Re-calculate if it should be marked as "assigned" in history
+                is_dc = 'deep clean' in (item.services or '').lower()
+                has_core = assignments.get('wash') and assignments.get('re wash')
+                
+                if not is_dc or (has_core and item.technician):
+                    item.assigned_at = datetime.now()
+                else:
+                    item.assigned_at = None
+
             # Sync item lead if bundle is assigned
             # Sync item lead if bundle is assigned
             # STOPPED converting bundle tech to Main Lead as per user request
@@ -1307,6 +1480,29 @@ def assign_task_bundle():
         flash(f"Error: {str(e)}", "danger")
         
     return redirect(url_for("admin.work_assign"))
+
+@admin_bp.route("/revert_assignment/<int:item_id>")
+@login_required
+@super_admin_required
+def revert_assignment(item_id):
+    from models import OrderItem
+    try:
+        item = OrderItem.query.get(item_id)
+        if item:
+            item.technician = None
+            item.assigned_at = None
+            item.service_assignments = "{}"
+            # Optionally clear statuses too if you want it completely fresh
+            # item.service_statuses = "{}"
+            db.session.commit()
+            flash(f"Assignment for {item.order.job_id if item.order else 'Item'} reverted ✅", "success")
+        else:
+            flash("Item not found", "danger")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error reverting assignment: {str(e)}", "danger")
+        
+    return redirect(url_for("admin.work_assign_history"))
 
 @admin_bp.route("/set_assignment_date", methods=["POST"])
 @login_required

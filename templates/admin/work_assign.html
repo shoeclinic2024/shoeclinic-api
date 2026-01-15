@@ -37,6 +37,22 @@
                                 <div class="text-secondary x-small">{{ stats['items'] }} Items</div>
                             </div>
                         </div>
+
+                        {% if stats.breakdown %}
+                        <div class="mb-2">
+                            <div
+                                class="d-flex flex-wrap gap-1 px-2 py-1 bg-black bg-opacity-25 rounded-2 mt-1 border border-secondary border-opacity-10">
+                                {% for svc, svc_count in stats.breakdown.items() %}
+                                <div class="x-small text-secondary d-flex align-items-center">
+                                    <span class="opacity-75">{{ svc }}:</span>
+                                    <span class="text-info fw-bold ms-1">{{ svc_count }}</span>
+                                    {% if not loop.last %}<span class="mx-1 text-muted">|</span>{% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <div class="progress" style="height: 3px; background: rgba(255,255,255,0.05);">
                             <div class="progress-bar bg-primary" role="progressbar"
                                 style="width: {{ [100, (stats['tasks'] * 20)]|min }}%"></div>
@@ -44,6 +60,55 @@
                     </div>
                 </div>
                 {% endfor %}
+
+                <!-- Capacity Management Widget (v02) -->
+                <div class="d-flex align-items-center bg-black bg-opacity-25 rounded-3 border border-primary border-opacity-20 p-2 cursor-pointer"
+                    style="min-width: 250px; cursor: pointer;" data-bs-toggle="modal" data-bs-target="#capacityModal">
+                    <div class="avatar-circle bg-info bg-opacity-10 text-info d-flex align-items-center justify-content-center fw-bold small me-3"
+                        style="width: 36px; height: 36px; flex-shrink: 0;">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <div>
+                                <div class="fw-bold text-info small">Daily Capacity</div>
+                                <div class="text-secondary x-small text-uppercase">Status & Controls</div>
+                            </div>
+                            <div class="text-end ms-2">
+                                <div class="text-info fw-bold small">{{ default_capacity }} Orders</div>
+                                <div class="text-secondary x-small">Default Limit</div>
+                            </div>
+                        </div>
+                        <div class="progress" style="height: 3px; background: rgba(255,255,255,0.05);">
+                            <div class="progress-bar bg-info" role="progressbar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Work Assign History Widget (v02) -->
+                <a href="{{ url_for('admin.work_assign_history') }}"
+                    class="d-flex align-items-center bg-black bg-opacity-25 rounded-3 border border-info border-opacity-20 p-2 text-decoration-none"
+                    style="min-width: 250px;">
+                    <div class="avatar-circle bg-info bg-opacity-10 text-info d-flex align-items-center justify-content-center fw-bold small me-3"
+                        style="width: 36px; height: 36px; flex-shrink: 0;">
+                        <i class="bi bi-clock-history"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between mb-1">
+                            <div>
+                                <div class="fw-bold text-info small">Assign History</div>
+                                <div class="text-secondary x-small text-uppercase">View Recently Assigned</div>
+                            </div>
+                            <div class="text-end ms-2">
+                                <div class="text-info fw-bold small">Logs</div>
+                                <div class="text-secondary x-small">Click to open</div>
+                            </div>
+                        </div>
+                        <div class="progress" style="height: 3px; background: rgba(255,255,255,0.05);">
+                            <div class="progress-bar bg-info" role="progressbar" style="width: 100%"></div>
+                        </div>
+                    </div>
+                </a>
             </div>
         </div>
     </div>
@@ -140,7 +205,7 @@
                                                 {% endfor %}
                                                 {% set all_svc_names = list_ns.all %}
 
-                                                {% set bundle_names = ['wash', 're wash', 'packing'] %}
+                                                {% set bundle_names = ['wash', 're wash'] %}
                                                 {% set main_process_key = 'deep clean' %}
 
                                                 {# Use namespace to store our display strings safely #}
@@ -168,7 +233,7 @@
                                                 {% set c_tech = assignments.get(s) %}
                                                 {% set c_status = statuses.get(s, 'yts')|lower %}
                                                 {% set status_icon = '✓' if c_status in ['done', 'ready to deliver']
-                                                else ('⏳' if c_status == 'wip' else '○') %}
+                                                else ('⏳' if c_status == 'wip' else '•') %}
                                                 {% set status_color = 'text-success' if c_status in ['done', 'ready to
                                                 deliver'] else ('text-warning' if c_status == 'wip' else
                                                 'text-secondary') %}
@@ -211,111 +276,6 @@
 
                                                 {{ summary_ns.items|join(' , ')|safe }}
                                             </div>
-
-                                            <!-- Show Already Assigned Dynamic Tasks Management -->
-                                            {% set assignments = item.service_assignments|from_json if
-                                            item.service_assignments else {} %}
-                                            {% for task, tech in assignments.items() %}
-                                            {# Hide 'deep clean' row as it is tied to the Lead drop-down #}
-                                            {% if tech and tech != 'UNASSIGN' and task|lower != 'deep clean' %}
-                                            <div
-                                                class="d-flex align-items-center justify-content-between p-1 rounded-2 border border-secondary border-opacity-10 bg-black bg-opacity-25 mt-1">
-                                                <span class="x-small text-info px-2">{{ task }}</span>
-                                                <form action="{{ url_for('admin.assign_task') }}" method="POST"
-                                                    class="m-0">
-                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                                    <input type="hidden" name="service_name" value="{{ task }}">
-                                                    <select name="technician"
-                                                        class="form-select form-select-sm bg-black text-light border-0 x-small py-0"
-                                                        style="width: 110px; min-height: 24px;"
-                                                        onchange="if(confirmLeave(this)){this.form.submit()}else{location.reload()}">
-                                                        <option value="">Assign..</option>
-                                                        <option value="UNASSIGN" class="text-danger fw-bold">Unassign
-                                                            (Revert)</option>
-                                                        <option value="VENDOR" {% if tech=='VENDOR' %}selected{% endif
-                                                            %}>
-                                                            VENDOR</option>
-                                                        {% for person in staff %}
-                                                        {% set is_on_leave = leave_status.get(person.username,
-                                                        {}).get('on_leave', False) %}
-                                                        <option value="{{ person.username }}" {% if
-                                                            tech==person.username %}selected{% endif %}
-                                                            class="{% if is_on_leave %}text-danger{% endif %}">
-                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
-                                                            %}
-                                                        </option>
-                                                        {% endfor %}
-                                                    </select>
-                                                </form>
-                                            </div>
-                                            {% endif %}
-                                            {% endfor %}
-
-                                            <!-- Add New Task Dropdown -->
-                                            <div class="mt-2 p-1 border-top border-secondary border-opacity-10 pt-2">
-                                                <form action="{{ url_for('admin.assign_task') }}" method="POST"
-                                                    class="d-flex gap-1">
-                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                                    <select name="service_name"
-                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
-                                                        style="width: 80px;" required>
-                                                        <option value="" selected disabled>+ Task</option>
-                                                        {% for svc in ['wash', 're wash', 'recolor/paint', 'stitching',
-                                                        'patchwork', 'polish', 'packing'] %}
-                                                        <option value="{{ svc }}">{{ svc|title }}</option>
-                                                        {% endfor %}
-                                                    </select>
-                                                    <select name="technician"
-                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
-                                                        style="width: 90px;"
-                                                        onchange="if(this.form.service_name.value){ if(confirmLeave(this)){this.form.submit()}else{this.value=''} }else{alert('Please select a task first!'); this.value='';}">
-                                                        <option value="" selected disabled>Assign..</option>
-                                                        {% for person in staff %}
-                                                        {% set is_on_leave = leave_status.get(person.username,
-                                                        {}).get('on_leave', False) %}
-                                                        <option value="{{ person.username }}"
-                                                            class="{% if is_on_leave %}text-danger{% endif %}">
-                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
-                                                            %}
-                                                        </option>
-                                                        {% endfor %}
-                                                        <option value="VENDOR">VENDOR</option>
-                                                    </select>
-                                                </form>
-                                            </div>
-
-                                            <!-- Add Bundle (Standard Process) -->
-                                            <div class="mt-1 p-1">
-                                                <form action="{{ url_for('admin.assign_task_bundle') }}" method="POST"
-                                                    class="d-flex gap-1">
-                                                    <input type="hidden" name="item_id" value="{{ item.id }}">
-                                                    <input type="hidden" name="bundle_name" value="standard_process">
-                                                    <div class="d-flex align-items-center bg-dark border border-secondary border-opacity-25 rounded px-2"
-                                                        style="height: 24px;">
-                                                        <span class="x-small text-secondary me-1"
-                                                            title="Adds Wash, Re-Wash, Pack">+ Process</span>
-                                                    </div>
-                                                    <select name="technician"
-                                                        class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
-                                                        style="width: 90px;"
-                                                        onchange="if(confirmLeave(this)){this.form.submit()}else{this.value=''}">
-                                                        <option value="" selected disabled>Assign Process..</option>
-                                                        <option value="UNASSIGN" class="text-danger">Unassign (Clear)
-                                                        </option>
-                                                        {% for person in staff %}
-                                                        {% set is_on_leave = leave_status.get(person.username,
-                                                        {}).get('on_leave', False) %}
-                                                        <option value="{{ person.username }}"
-                                                            class="{% if is_on_leave %}text-danger{% endif %}">
-                                                            {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif
-                                                            %}
-                                                        </option>
-                                                        {% endfor %}
-                                                        <option value="VENDOR">VENDOR</option>
-                                                    </select>
-                                                </form>
-                                            </div>
-
                                             {% endif %}
                                         </div>
                                     </td>
@@ -337,6 +297,7 @@
                                             class="d-inline-block">
                                             <input type="hidden" name="order_id" value="{{ item.order.id }}">
                                             <input type="date" name="assignment_start_date"
+                                                id="start_date_{{ item.order.id }}"
                                                 class="form-control form-control-sm bg-black text-light border-secondary border-opacity-25 small"
                                                 style="width: 140px;"
                                                 value="{{ item.order.assignment_start_date.strftime('%Y-%m-%d') if item.order.assignment_start_date else '' }}"
@@ -380,14 +341,52 @@
                                     </td>
                                     <td class="text-end pe-4">
                                         <form action="{{ url_for('admin.assign_task') }}" method="POST"
-                                            class="d-inline-block">
+                                            class="d-flex flex-column gap-2 align-items-end">
                                             <input type="hidden" name="item_id" value="{{ item.id }}">
-                                            <div
-                                                class="input-group input-group-sm rounded-pill overflow-hidden border border-secondary border-opacity-50 {% if not item.technician %}glow-danger{% endif %}">
+
+                                            <!-- Unified Task & Bundle Selects -->
+                                            <div class="d-flex gap-1">
+                                                <select name="service_name"
+                                                    class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                    style="width: 80px;">
+                                                    <option value="" selected disabled>+ Task</option>
+                                                    {% for svc in ['wash', 're wash', 'recolor/paint', 'stitching',
+                                                    'patchwork', 'polish', 'packing'] %}
+                                                    <option value="{{ svc }}">{{ svc|title }}</option>
+                                                    {% endfor %}
+                                                </select>
+
+                                                <select name="bundle_name"
+                                                    class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                    style="width: 85px;">
+                                                    <option value="" selected disabled>+ Process</option>
+                                                    <option value="standard_process">Standard</option>
+                                                    <option value="UNASSIGN" class="text-danger">Clear Bundle</option>
+                                                </select>
+
                                                 <select name="technician"
+                                                    class="form-select form-select-sm bg-dark text-light border-secondary border-opacity-25 x-small py-0"
+                                                    style="width: 85px;">
+                                                    <option value="" selected disabled>Tech..</option>
+                                                    {% for person in staff %}
+                                                    {% set is_on_leave = leave_status.get(person.username,
+                                                    {}).get('on_leave', False) %}
+                                                    <option value="{{ person.username }}"
+                                                        class="{% if is_on_leave %}text-danger{% endif %}">
+                                                        {{ person.username }}{% if is_on_leave %} (ON LEAVE){% endif %}
+                                                    </option>
+                                                    {% endfor %}
+                                                    <option value="VENDOR">VENDOR</option>
+                                                    <option value="UNASSIGN" class="text-danger">Clear</option>
+                                                </select>
+                                            </div>
+
+                                            <!-- Main Lead Select -->
+                                            <div class="input-group input-group-sm rounded-pill overflow-hidden border border-secondary border-opacity-50 {% if not item.technician %}glow-danger{% endif %}"
+                                                style="width: fit-content;">
+                                                <select name="main_lead"
                                                     class="form-select bg-black text-light border-0 shadow-none ps-3 small"
-                                                    style="width: 150px; cursor: pointer;"
-                                                    onchange="if(confirmLeave(this)){this.form.submit()}else{location.reload()}">
+                                                    style="width: 120px; cursor: pointer;">
                                                     <option value="">Main Lead...</option>
                                                     {% for person in staff %}
                                                     {% set is_on_leave = leave_status.get(person.username,
@@ -400,7 +399,14 @@
                                                     {% endfor %}
                                                     <option value="VENDOR" {% if item.technician=='VENDOR' %}selected{%
                                                         endif %}>VENDOR</option>
+                                                    <option value="UNASSIGN" class="text-danger">Clear Lead</option>
                                                 </select>
+                                                {% set is_dc = 'deep clean' in (item.services|lower if item.services
+                                                else '') %}
+                                                <button type="submit" class="btn btn-info border-0 rounded-0 px-3"
+                                                    onclick="return confirmLeaveUnified(this.form, {{ 'true' if is_dc else 'false' }}, '{{ item.order.id }}');">
+                                                    Assign
+                                                </button>
                                             </div>
                                         </form>
                                     </td>
@@ -675,6 +681,127 @@
             </div>
         </div>
     </div>
+
+    <!-- Capacity Management Modal (v02) -->
+    <div class="modal fade" id="capacityModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content bg-dark border-secondary border-opacity-25 text-light rounded-4 shadow-lg">
+                <div class="modal-header border-secondary border-opacity-10 p-4">
+                    <h5 class="modal-title fw-bold">
+                        <i class="bi bi-calendar-check text-info me-2"></i>Daily Order Capacity
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Row 1: Global Settings -->
+                    <div class="bg-black bg-opacity-25 rounded-3 p-3 mb-4 border border-secondary border-opacity-10">
+                        <h6 class="text-secondary x-small text-uppercase fw-bold tracking-wider mb-3">Global
+                            Configuration
+                        </h6>
+                        <form action="{{ url_for('admin.update_default_capacity') }}" method="POST"
+                            class="row align-items-end g-3">
+                            <div class="col-md-8">
+                                <label class="form-label small">Default Daily Capacity (Total pairs/orders per
+                                    day)</label>
+                                <input type="number" name="capacity"
+                                    class="form-control bg-dark border-secondary border-opacity-25"
+                                    value="{{ default_capacity }}" required>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="submit" class="btn btn-primary w-100">Update Default</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Row 2: Overrides List -->
+                    <div class="mt-4">
+                        <h6 class="text-secondary x-small text-uppercase fw-bold tracking-wider mb-3">Date-Specific
+                            Capacity
+                            Overrides</h6>
+
+                        <div class="table-responsive">
+                            <table class="table table-dark table-sm align-middle">
+                                <thead class="x-small text-uppercase text-secondary">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Capacity</th>
+                                        <th>Booked</th>
+                                        <th>Note</th>
+                                        <th class="text-end">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="small">
+                                    {% for o in overrides %}
+                                    <tr>
+                                        <td>{{ o.date.strftime('%d-%m-%Y') }}</td>
+                                        <td><span class="badge bg-info">{{ o.capacity }}</span></td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <div class="progress flex-grow-1" style="height: 4px; min-width: 50px;">
+                                                    <div class="progress-bar {% if o.current_count >= o.capacity %}bg-danger{% else %}bg-success{% endif %}"
+                                                        style="width: {{ [100, (o.current_count / o.capacity * 100)]|min }}%">
+                                                    </div>
+                                                </div>
+                                                <span class="x-small">{{ o.current_count }}</span>
+                                            </div>
+                                        </td>
+                                        <td class="text-secondary">{{ o.note or '-' }}</td>
+                                        <td class="text-end">
+                                            <form
+                                                action="{{ url_for('admin.delete_capacity_override', override_id=o.id) }}"
+                                                method="POST" class="d-inline">
+                                                <button type="submit" class="btn btn-link text-danger p-0"
+                                                    onclick="return confirm('Delete this override?')">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted py-3">No active overrides found.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Add Override Form -->
+                    <div class="bg-black bg-opacity-25 rounded-3 p-3 mt-4 border border-secondary border-opacity-10">
+                        <h6 class="text-secondary x-small text-uppercase fw-bold tracking-wider mb-3">Add / Update
+                            Override
+                        </h6>
+                        <form action="{{ url_for('admin.add_capacity_override') }}" method="POST" class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label x-small">Date</label>
+                                <input type="date" name="date"
+                                    class="form-control form-control-sm bg-dark border-secondary border-opacity-25"
+                                    required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label x-small">Capacity</label>
+                                <input type="number" name="capacity"
+                                    class="form-control form-control-sm bg-dark border-secondary border-opacity-25"
+                                    placeholder="20" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label x-small">Note (Optional)</label>
+                                <input type="text" name="note"
+                                    class="form-control form-control-sm bg-dark border-secondary border-opacity-25"
+                                    placeholder="e.g., Holiday">
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="submit" class="btn btn-info btn-sm w-100">Add</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -839,6 +966,47 @@
             const msg = `⚠️ WARNING: ${username} is on leave (${info.status}) for ${info.date}.\n\nAre you EXTREMELY SURE you want to assign this work to them?`;
             return confirm(msg);
         }
+        return true;
+    }
+
+    function confirmLeaveUnified(form, isDeepClean, orderId) {
+        const taskTech = form.technician ? form.technician.value : null;
+        const mainLead = form.main_lead ? form.main_lead.value : null;
+        const taskName = form.service_name ? form.service_name.value : null;
+        const bundleName = form.bundle_name ? form.bundle_name.value : null;
+
+        // 1. Deep Clean Requirement Check
+        if (isDeepClean) {
+            const dateInput = document.getElementById('start_date_' + orderId);
+            const hasDate = dateInput && dateInput.value;
+
+            if (!hasDate) {
+                alert("⚠️ STOP: You must set a START DATE for Deep Clean items before assigning!");
+                if (dateInput) dateInput.focus();
+                return false;
+            }
+
+            // Ensure either a task is being assigned OR a lead is being assigned
+            if (!mainLead && !(taskName && taskTech) && !(bundleName && taskTech)) {
+                alert("⚠️ Please select either a Main Lead or a Task/Process to assign.");
+                return false;
+            }
+        }
+
+        let warnings = [];
+
+        if (taskTech && taskTech !== 'UNASSIGN' && taskTech !== 'VENDOR' && LEAVE_DATA[taskTech] && LEAVE_DATA[taskTech].on_leave) {
+            warnings.push(`Task Tech ${taskTech} is on leave`);
+        }
+
+        if (mainLead && mainLead !== 'UNASSIGN' && mainLead !== 'VENDOR' && LEAVE_DATA[mainLead] && LEAVE_DATA[mainLead].on_leave) {
+            warnings.push(`Main Lead ${mainLead} is on leave`);
+        }
+
+        if (warnings.length > 0) {
+            return confirm(`⚠️ WARNING:\n- ${warnings.join('\n- ')}\n\nAre you sure you want to proceed with assignment?`);
+        }
+
         return true;
     }
 </script>
